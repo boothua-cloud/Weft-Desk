@@ -1,83 +1,201 @@
 name: build
 
-# 三个平台分别在自己原生环境里构建：Linux 的 Wails 后端依赖 webkit2gtk，
-# 在 macOS 上交叉编译不出来（需要完整的 Linux sysroot），走 Ubuntu runner 最省事。
+# GitHub 专用。Gitea 走 .gitea/workflows/build.yml（那份是主，改动请两边同步）。
+# 这里加 if 判断：Gitea 也会扫描 .github/workflows，避免在自建实例上把
+# windows-latest / macos-latest 的任务排进一个永远没人接的队列。
+#
+# 三个平台的构建命令与 Gitea 那份逐字一致，只把 upload-artifact 换成 v4
+# （GitHub 已停用 v3）。
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
 
+env:
+  GOPROXY: https://goproxy.cn,direct
+  GOSUMDB: sum.golang.google.cn
+  APP_VERSION: 0.1.0
+
 jobs:
-  build:
-    # 这个文件是给 GitHub 用的三平台原生构建；Gitea 的点在
-    # .gitea/workflows/build.yml（Linux 交叉编译 Windows 产物）。
-    # Gitea 也会扫描 .github/workflows，这里加一道判断，避免在自建实例上
-    # 把 windows-latest / macos-latest 的任务排进一个永远没人接的队列。
+  windows:
     if: github.server_url == 'https://github.com'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            name: macos-arm64
-          - os: windows-latest
-            name: windows-amd64
-          - os: ubuntu-22.04
-            name: linux-amd64
-
-    runs-on: ${{ matrix.os }}
-
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-go@v5
         with:
-          # 必须与 go.mod 的 go 指令一致：低于它的工具链会让 go 去下载整包 toolchain
           go-version: "1.27.4"
-
+          cache: true
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: 安装 Linux 依赖
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
-
       - name: 安装 wails3
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+        # CGO_ENABLED=0：linux+cgo 的 CLI 会要 pkg-config gtk4 + webkitgtk-6.0，
+        # 本项目按 gtk3 构建，不该为装个打包工具去拉 GTK4 头文件
+        run: CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
 
-      - name: 准备 WinTun 运行库
-        if: runner.os == 'Windows'
-        shell: bash
-        run: bash scripts/fetch-wintun.sh amd64
-
-      - name: 构建
-        shell: bash
+      - name: 构建前端
+        working-directory: frontend
         run: |
-          wails3 build -tags devtools
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            ./scripts/make-app.sh
-          fi
+          npm ci --include=dev
+          npm run build
 
-      - name: 收集产物
-        shell: bash
+      - name: 生成 Windows 资源并交叉编译
+        run: |
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          (cd build && "$WAILS3" generate syso -arch amd64 -icon windows/icon.ico \
+            -manifest windows/wails.exe.manifest -info windows/info.json \
+            -out ../wails_windows_amd64.syso)
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
+            -tags production -trimpath -buildvcs=false \
+            -ldflags="-w -s -H windowsgui" -o "bin/云栈.exe" .
+          rm -f wails_windows_amd64.syso
+          bash scripts/fetch-wintun.sh amd64
+
+      - name: 打包
         run: |
           mkdir -p release
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            hdiutil create -volname "云栈" -srcfolder "bin/云栈.app" -ov -format UDZO "release/云栈-macos-arm64.dmg"
-          elif [ "${{ runner.os }}" = "Windows" ]; then
-            # wintun.dll 必须和 exe 同目录，单独塞进压缩包，别只发一个 exe
-            cp bin/云栈.exe release/
-            cp bin/wintun.dll release/
-            powershell -Command "Compress-Archive -Path release/云栈.exe,release/wintun.dll -DestinationPath release/云栈-windows-amd64.zip -Force"
-            rm -f release/云栈.exe release/wintun.dll
-          else
-            cp bin/云栈 "release/云栈-linux-amd64"
-          fi
+          cp "bin/云栈.exe" bin/wintun.dll release/
+          (cd release && zip -r -UN=UTF8 -q "云栈-${APP_VERSION}-windows-amd64.zip" "云栈.exe" wintun.dll)
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.name }}
-          path: release/*
+          name: windows-amd64
+          path: release/*.zip
+
+  linux:
+    if: github.server_url == 'https://github.com'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 GTK3 / WebKit2GTK 构建依赖
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential pkg-config \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+
+      - name: 安装 wails3
+        # CGO_ENABLED=0：linux+cgo 的 CLI 会要 pkg-config gtk4 + webkitgtk-6.0，
+        # 本项目按 gtk3 构建，不该为装个打包工具去拉 GTK4 头文件
+        run: CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+
+      - name: 构建前端
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm run build
+
+      - name: 编译并打 deb
+        run: |
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          CGO_ENABLED=1 go build -tags "production gtk3" \
+            -trimpath -buildvcs=false -ldflags="-w -s" -o bin/weft .
+          mkdir -p build/linux release
+          "$WAILS3" generate .desktop -name "云栈" -exec weft -icon weft \
+            -outputfile build/linux/weft.desktop -categories "Network;Utility;"
+          "$WAILS3" tool package -name weft -format deb \
+            -config ./build/linux/nfpm/nfpm.yaml -out release
+          mv release/weft.deb "release/weft_${APP_VERSION}-1_amd64.deb"
+          tar -C bin -czf "release/weft-${APP_VERSION}-linux-amd64.tar.gz" weft
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: |
+            release/*.deb
+            release/*.tar.gz
+
+  macos:
+    if: github.server_url == 'https://github.com'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 构建前端与二进制
+        run: |
+          (cd frontend && npm ci --include=dev && npm run build)
+          CGO_ENABLED=1 \
+          CGO_CFLAGS="-mmacosx-version-min=12.0" \
+          CGO_LDFLAGS="-mmacosx-version-min=12.0" \
+          MACOSX_DEPLOYMENT_TARGET=12.0 \
+          go build -tags production -trimpath -buildvcs=false \
+            -ldflags="-w -s" -o "bin/云栈" .
+
+      - name: 打包 .app 与 dmg
+        run: |
+          ./scripts/make-app.sh
+          mkdir -p release
+          hdiutil create -volname "云栈" -srcfolder "bin/云栈.app" -ov -format UDZO \
+            "release/weft-${APP_VERSION}-macos-arm64.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: release/*.dmg
+
+  installer:
+    if: github.server_url == 'https://github.com' && startsWith(github.ref, 'refs/tags/')
+    needs: windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 wails3 与 NSIS
+        run: |
+          # 必须 CGO_ENABLED=0：wails3 CLI 在 linux+cgo 下会 import
+          # internal/operatingsystem/webkit_linux.go，硬要 pkg-config gtk4 +
+          # webkitgtk-6.0，而本项目按 gtk3 构建，装了 GTK4 纯属为装个打包工具
+          CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nsis
+
+      - name: 构建并打包
+        run: |
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          (cd frontend && npm ci --include=dev && npm run build)
+          (cd build && "$WAILS3" generate syso -arch amd64 -icon windows/icon.ico \
+            -manifest windows/wails.exe.manifest -info windows/info.json \
+            -out ../wails_windows_amd64.syso)
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
+            -tags production -trimpath -buildvcs=false \
+            -ldflags="-w -s -H windowsgui" -o "bin/云栈.exe" .
+          rm -f wails_windows_amd64.syso
+          bash scripts/fetch-wintun.sh amd64
+          # makensis 按 ANSI 解析脚本，-D 传中文路径会报 "Bad text encoding"
+          cp "bin/云栈.exe" bin/weft.exe
+          cd build/windows/nsis
+          "$WAILS3" generate webview2bootstrapper -dir .
+          # WINTUN_DLL 走绝对路径：project.nsi 的默认值是 Windows 反斜杠相对路径，
+          # Linux 上 /FileExists 认不出来，会直接 !error 中断
+          ROOT="$(cd ../../.. && pwd)"
+          makensis -DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user \
+            -DARG_WAILS_AMD64_BINARY="$ROOT/bin/weft.exe" \
+            -DWINTUN_DLL="$ROOT/bin/wintun.dll" project.nsi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: bin/*installer.exe

@@ -1,16 +1,18 @@
 name: build
 
-# Gitea Actions 主流水线。
+# Gitea Actions 主流水线：一次跑出 Windows zip 与 Linux deb。
 #
-# 为什么不在「三平台各自原生构建」：自建 Gitea 通常只注册了 Linux 的 docker
-# runner，`runs-on: windows-latest / macos-latest` 的任务会永远排队，既不失败
-# 也不通过——看起来就是「流水线没法打包」。这里改成在 Linux 上交叉编译
-# Windows 产物（Wails 的 Windows 后端是纯 Go，CGO_ENABLED=0 可以交叉）。
+# 设计前提：自建 Gitea 一般只注册了 Linux 的 docker runner。所以
+#   - Windows 产物用「Linux 上交叉编译」（Wails 的 Windows 后端是纯 Go，CGO_ENABLED=0 可交叉）
+#   - Linux 产物必须原生编译（CGO 要链 gtk/webkit），正好也在同一个 runner 上
+#   - macOS 必须 macOS 主机（Cocoa + hdiutil），拆到 macos.yml，手动触发
 #
-# 为什么不直接 `wails3 build`：Windows 的 Taskfile 里有一步
-# `powershell Remove-item *.syso`（platforms: [windows]），交叉编译时它会被
-# 判定成 windows 平台而在 Linux 上调用 powershell，必然失败。下面把同样的
-# 步骤拆开手写，产物与本地 `wails3 build` 一致。
+# 为什么不直接 `wails3 build`：
+#   1. Windows 的 Taskfile 里有一句用系统 shell 删 syso 的步骤（platforms: [windows]），
+#      交叉编译时会被判成 windows 平台而在 Linux 上执行，必然失败；
+#   2. Linux 默认走 GTK4 + WebKitGTK 6.0，Debian 12 没有 webkitgtk-6.0，
+#      必须显式带 `gtk3` 标签，否则编译期 pkg-config 就找不到库。
+# 下面把步骤拆开手写，产物与本地 `wails3 build` 一致。
 on:
   push:
     branches: [master]
@@ -21,7 +23,7 @@ env:
   # 国内网络直连 proxy.golang.org 常超时
   GOPROXY: https://goproxy.cn,direct
   GOSUMDB: sum.golang.google.cn
-  # 与 build/config.yml 的 version 保持一致
+  # 与 build/config.yml、build/linux/nfpm/nfpm.yaml 的 version 保持一致
   APP_VERSION: 0.1.0
 
 jobs:
@@ -43,7 +45,9 @@ jobs:
           node-version: "20"
 
       - name: 安装 wails3
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+        # CGO_ENABLED=0：linux+cgo 的 CLI 会要 pkg-config gtk4 + webkitgtk-6.0，
+        # 本项目按 gtk3 构建，不该为装个打包工具去拉 GTK4 头文件
+        run: CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
 
       - name: 构建前端
         working-directory: frontend
@@ -53,7 +57,6 @@ jobs:
 
       - name: 生成 Windows 资源（图标 + 清单）
         run: |
-          # 显式取路径，不依赖 $GITHUB_PATH 是否被 runner 正确注入
           WAILS3="$(go env GOPATH)/bin/wails3"
           cd build
           "$WAILS3" generate syso -arch amd64 \
@@ -90,8 +93,77 @@ jobs:
           name: windows-amd64
           path: release/*.zip
 
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+          cache: true
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 GTK3 / WebKit2GTK 构建依赖
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            build-essential pkg-config \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+
+      - name: 安装 wails3
+        # CGO_ENABLED=0：linux+cgo 的 CLI 会要 pkg-config gtk4 + webkitgtk-6.0，
+        # 本项目按 gtk3 构建，不该为装个打包工具去拉 GTK4 头文件
+        run: CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+
+      - name: 构建前端
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm run build
+
+      - name: 编译（CGO + gtk3）
+        run: |
+          go mod download
+          CGO_ENABLED=1 go build -tags "production gtk3" \
+            -trimpath -buildvcs=false -ldflags="-w -s" -o bin/weft .
+
+      - name: 生成 .desktop
+        run: |
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          mkdir -p build/linux
+          "$WAILS3" generate .desktop -name "云栈" -exec weft -icon weft \
+            -outputfile build/linux/weft.desktop -categories "Network;Utility;"
+
+      - name: 打 deb
+        run: |
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          mkdir -p release
+          "$WAILS3" tool package -name weft -format deb \
+            -config ./build/linux/nfpm/nfpm.yaml -out release
+          # wails3 只按 <name>.deb 命名，版本与架构要自己补上，
+          # 否则 next release 会和上一个同名覆盖
+          mv release/weft.deb "release/weft_${APP_VERSION}-1_amd64.deb"
+          # deb 之外再给一份裸二进制：装不上时解压即可运行
+          tar -C bin -czf "release/weft-${APP_VERSION}-linux-amd64.tar.gz" weft
+          ls -la release/
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v3
+        with:
+          name: linux-amd64
+          path: |
+            release/*.deb
+            release/*.tar.gz
+
   installer:
-    # 安装包要 makensis 和 WebView2 bootstrapper，只在打 tag 时做
+    # 安装包依赖 makensis 和 WebView2 bootstrapper，只在打 tag 时做
     needs: windows
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
@@ -112,7 +184,10 @@ jobs:
 
       - name: 安装 wails3 与 NSIS
         run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+          # 必须 CGO_ENABLED=0：wails3 CLI 在 linux+cgo 下会 import
+          # internal/operatingsystem/webkit_linux.go，硬要 pkg-config gtk4 +
+          # webkitgtk-6.0，而本项目按 gtk3 构建，装了 GTK4 纯属为装个打包工具
+          CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
           sudo apt-get update -qq
           sudo apt-get install -y -qq nsis
 
@@ -125,20 +200,25 @@ jobs:
              -out ../wails_windows_amd64.syso)
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
             -tags production -trimpath -buildvcs=false \
-            -ldflags="-w -s -H windowsgui" -o bin/weft.exe .
+            -ldflags="-w -s -H windowsgui" -o "bin/云栈.exe" .
           rm -f wails_windows_amd64.syso
           bash scripts/fetch-wintun.sh amd64
 
       - name: 生成 NSIS 安装包
         run: |
           WAILS3="$(go env GOPATH)/bin/wails3"
+          # makensis 按 ANSI 解析脚本，-D 传中文路径直接报错（"Bad text encoding"），
+          # 所以把 exe 再拷一份 ASCII 名字，project.nsi 的 File 指令吃这个变量
+          cp "bin/云栈.exe" bin/weft.exe
           cd build/windows/nsis
-          # project.nsi 会 File 这个 bootstrapper，缺了打不出安装包
+          # project.nsi 会引用这个 bootstrapper，缺了打不出安装包
           "$WAILS3" generate webview2bootstrapper -dir .
-          # ARG 走仓库内相对路径：makensis 按 ANSI 解析脚本，中文文件名会出错，
-          # 所以这里用 ASCII 的 weft.exe（内容就是刚编译的 云栈.exe）
+          # WINTUN_DLL 走绝对路径：project.nsi 的默认值是 Windows 反斜杠相对路径，
+          # Linux 上 /FileExists 认不出来，会直接 !error 中断
+          ROOT="$(cd ../../.. && pwd)"
           makensis -DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user \
-            -DARG_WAILS_AMD64_BINARY=../../../bin/weft.exe project.nsi
+            -DARG_WAILS_AMD64_BINARY="$ROOT/bin/weft.exe" \
+            -DWINTUN_DLL="$ROOT/bin/wintun.dll" project.nsi
           ls -la ../../../bin/
 
       - name: 上传安装包
