@@ -5,7 +5,8 @@ name: build
 # 设计前提：自建 Gitea 一般只注册了 Linux 的 docker runner。所以
 #   - Windows 产物用「Linux 上交叉编译」（Wails 的 Windows 后端是纯 Go，CGO_ENABLED=0 可交叉）
 #   - Linux 产物必须原生编译（CGO 要链 gtk/webkit），正好也在同一个 runner 上
-#   - macOS 必须 macOS 主机（Cocoa + hdiutil），单独一个 macos job，需要 macos-latest runner
+#   - macOS 必须 macOS 主机（Cocoa + hdiutil），没有 macos-latest runner，不进流水线；
+#     dmg 本地用 scripts/make-dmg.sh 出
 #
 # 为什么不直接 `wails3 build`：
 #   1. Windows 的 Taskfile 里有一句用系统 shell 删 syso 的步骤（platforms: [windows]），
@@ -274,61 +275,3 @@ jobs:
           ./scripts/gitea-release.sh release "$TAG"
 
 
-  macos:
-    runs-on: macos-latest
-    steps:
-      - name: 检出
-        uses: actions/checkout@v4
-
-      - name: 安装 Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.27.4"
-          cache: true
-
-      - name: 安装 Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: 安装 wails3
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
-
-      - name: 构建前端
-        working-directory: frontend
-        run: |
-          npm ci --include=dev
-          npm run build
-
-      - name: 编译（CGO + 最低部署版本 12.0）
-        run: |
-          go mod download
-          CGO_ENABLED=1 \
-          CGO_CFLAGS="-mmacosx-version-min=12.0" \
-          CGO_LDFLAGS="-mmacosx-version-min=12.0" \
-          MACOSX_DEPLOYMENT_TARGET=12.0 \
-          go build -tags production -trimpath -buildvcs=false \
-            -ldflags="-w -s" -o bin/云栈 .
-
-      - name: 打成 .app（含 ad-hoc 签名）
-        run: ./scripts/make-app.sh
-
-      - name: 生成 dmg
-        run: |
-          ARCH="$(uname -m)"
-          [ "$ARCH" = "arm64" ] || ARCH="amd64"
-          mkdir -p release
-          hdiutil create -volname "Weft" -srcfolder "bin/云栈.app" -ov -format UDZO \
-            "release/云栈-${APP_VERSION}-macos-${ARCH}.dmg"
-          ls -la release/
-
-      - name: 直接发到「发布」
-        env:
-          TOKEN: ${{ github.token }}
-        run: |
-          case "$GITHUB_REF" in
-            refs/tags/*) TAG="${GITHUB_REF#refs/tags/}" ;;
-            *) TAG="build-${GITHUB_SHA:0:8}" ;;
-          esac
-          chmod +x scripts/gitea-release.sh
-          ./scripts/gitea-release.sh release "$TAG"
