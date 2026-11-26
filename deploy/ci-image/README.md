@@ -18,10 +18,18 @@
 
 ## 构建
 
+**在 10.0.1.5（amd64）上构建**，别在这台 Mac 上做：
+
 ```bash
 cd deploy/ci-image
 docker build -t weft-ci:1 .
 docker tag weft-ci:1 weft-ci:latest
+```
+
+Mac 是 arm64，直接 `docker build` 出来的镜像也是 arm64，推到 amd64 的 runner 上用不了（报 `exec format error`）。非要在这儿构建就得写平台，走 QEMU 模拟，编译慢好几倍：
+
+```bash
+docker build --platform linux/amd64 -t weft-ci:1 .
 ```
 
 镜像约 1.8G（Node 20 的 1.6G + GTK 依赖 + Go + wails3）。
