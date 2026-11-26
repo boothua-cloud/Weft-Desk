@@ -21,17 +21,23 @@ done
 cp -R "bin/${APP}.app" release/
 wails3 tool package --format dmg --name "$APP" --out release \
   --background build/darwin/dmg-background.png \
-  --window-width 540 --window-height 380 >/dev/null
+  --window-width 540 --window-height 380
 mv "release/${APP}.dmg" "$SRC"
 rm -rf "release/${APP}.app"
 
-hdiutil convert "$SRC" -format UDRW -o "${RW%.dmg}" >/dev/null
-hdiutil attach "$RW" -nobrowse -quiet
+if ! hdiutil convert "$SRC" -format UDRW -o "${RW%.dmg}"; then
+  echo "hdiutil 不可用（大概率是没有图形会话），改为打 zip" >&2
+  ( cd release && zip -qry "../${OUT%.dmg}.zip" "${APP}.app" )
+  rm -f "$SRC"
+  echo "已生成 ${OUT%.dmg}.zip"
+  exit 0
+fi
+hdiutil attach "$RW" -nobrowse
 cp "build/darwin/dmg-background@2x.png" "/Volumes/${APP}/.background@2x.png"
 sync
-hdiutil detach "/Volumes/${APP}" -quiet
+hdiutil detach "/Volumes/${APP}"
 
 rm -f "$OUT"
-hdiutil convert "$RW" -format UDZO -o "$OUT" >/dev/null
+hdiutil convert "$RW" -format UDZO -o "$OUT"
 rm -f "$SRC" "$RW"
 echo "已生成 $OUT"
