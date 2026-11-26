@@ -47,7 +47,7 @@ RUN CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VER
     && wails3 version
 
 # npm 走国内镜像
-RUN npm config set registry https://registry.npmmirror.com
+RUN npm config set registry https://mirrors.cloud.tencent.com/npm/
 
 # 缓存目录留着，runner 会把宿主机的目录挂进来
 ENV GOCACHE=/root/.cache/go-build
