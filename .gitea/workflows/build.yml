@@ -46,6 +46,11 @@ jobs:
         # 不用 actions/setup-go：它要从 github.com 拉源码，容器出网超时。
         # 阿里云镜像有官方 tarball，国内直连。Node 由基础镜像提供，不用另装。
         run: |
+          # weft-ci 镜像里已预装，没有才现下（用普通 node 镜像时走这条）
+          if command -v go >/dev/null 2>&1; then
+            echo "已预装 $(go version)，跳过"
+            exit 0
+          fi
           curl -fsSL "https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
           rm -rf /usr/local/go
           tar -C /usr/local -xzf /tmp/go.tgz
@@ -55,7 +60,9 @@ jobs:
       - name: 安装 wails3
         # CGO_ENABLED=0：linux+cgo 的 CLI 会要 pkg-config gtk4 + webkitgtk-6.0，
         # 本项目按 gtk3 构建，不该为装个打包工具去拉 GTK4 头文件
-        run: CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+        run: |
+          command -v wails3 >/dev/null 2>&1 && { echo "已预装 $(wails3 version)"; exit 0; }
+          CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
 
       - name: 构建前端
         working-directory: frontend
@@ -125,6 +132,11 @@ jobs:
         # 不用 actions/setup-go：它要从 github.com 拉源码，容器出网超时。
         # 阿里云镜像有官方 tarball，国内直连。Node 由基础镜像提供，不用另装。
         run: |
+          # weft-ci 镜像里已预装，没有才现下（用普通 node 镜像时走这条）
+          if command -v go >/dev/null 2>&1; then
+            echo "已预装 $(go version)，跳过"
+            exit 0
+          fi
           curl -fsSL "https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
           rm -rf /usr/local/go
           tar -C /usr/local -xzf /tmp/go.tgz
@@ -154,7 +166,9 @@ jobs:
       - name: 安装 wails3
         # CGO_ENABLED=0：linux+cgo 的 CLI 会要 pkg-config gtk4 + webkitgtk-6.0，
         # 本项目按 gtk3 构建，不该为装个打包工具去拉 GTK4 头文件
-        run: CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+        run: |
+          command -v wails3 >/dev/null 2>&1 && { echo "已预装 $(wails3 version)"; exit 0; }
+          CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
 
       - name: 构建前端
         working-directory: frontend
@@ -221,6 +235,11 @@ jobs:
         # 不用 actions/setup-go：它要从 github.com 拉源码，容器出网超时。
         # 阿里云镜像有官方 tarball，国内直连。Node 由基础镜像提供，不用另装。
         run: |
+          # weft-ci 镜像里已预装，没有才现下（用普通 node 镜像时走这条）
+          if command -v go >/dev/null 2>&1; then
+            echo "已预装 $(go version)，跳过"
+            exit 0
+          fi
           curl -fsSL "https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
           rm -rf /usr/local/go
           tar -C /usr/local -xzf /tmp/go.tgz
@@ -229,6 +248,11 @@ jobs:
 
       - name: 安装 wails3 与 NSIS
         run: |
+          if command -v makensis >/dev/null 2>&1; then
+            echo "makensis 已预装，跳过"
+          else
+            sudo apt-get update && sudo apt-get install -y --no-install-recommends nsis
+          fi
           # 必须 CGO_ENABLED=0：wails3 CLI 在 linux+cgo 下会 import
           # internal/operatingsystem/webkit_linux.go，硬要 pkg-config gtk4 +
           # webkitgtk-6.0，而本项目按 gtk3 构建，装了 GTK4 纯属为装个打包工具
