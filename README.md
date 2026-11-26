@@ -1,0 +1,131 @@
+# 云栈
+
+云栈是 Headscale 的桌面客户端。不安装 Tailscale，节点跑在应用进程内；接管系统网络后，`ssh`、`mysql`、`psql`、`redis-cli` 等外部工具可直接访问 tailnet 与内网网段。
+
+名字取自李白《蜀道难》「天梯石栈相钩连」：在没有路的地方凿出一条通路。工程目录 `WeftDesk`、数据目录 `Weft`、helper 通道 `weft.sock` 是历史命名，保留不动；构建产物已改名为 `云栈`。
+
+## 功能
+
+管理端完整对接 Headscale `/api/v1`（按服务端 swagger）：
+
+| 模块 | 能力 |
+|---|---|
+| 节点 | 列表 / 详情 / 注册 / 重命名 / 标签 / 路由审批 / 强制登出 / 取消到期 / 删除 / 补齐 IP / 调试建节点 |
+| 节点认证 | 按 Auth ID 注册到成员、批准、拒绝 |
+| 成员 | 列表 / 创建 / 重命名 / 删除 |
+| 授权 Key | 列表 / 生成（可复用、临时、ACL 标签、有效期）/ 失效 / 删除 |
+| API Key | 列表 / 创建 / 失效 / 删除 |
+| 策略 | 读取 / 校验 / 保存 |
+| 健康 | `/api/v1/health` 数据库连通性 |
+| 应用 | 内网 Web 书签，应用内窗口或系统浏览器打开 |
+| 端口转发 | 本地端口映射 + SOCKS5 |
+
+服务端报错时直接显示原文，不做假成功。
+
+## 界面
+
+左侧分组导航 + 右侧页头与内容区，亮色 / 暗色两套主题：
+
+- 顶栏月亮/太阳图标一键切换，设置页「外观主题」可选跟随系统 / 亮色 / 暗色
+- 主题记在本地，重开应用保持；跟随系统时随系统外观实时切换
+- 总览页是仪表盘：连接状态与节点地址、在线设备、已接入网段、运行时长、本节点信息、快捷应用、最近事件
+- 快捷应用可直接点击打开，不需要先进「应用管理」
+
+「能力位」「API 风格」这类兼容性探测信息不展示：只对接 Headscale，不做 Tailscale 官方 API 的差异化适配。
+
+## 网络接管方式
+
+真实 TUN + 系统路由：`100.64/10` 与已批准子网都走系统网络栈，`ssh`、`mysql`、`psql` 等外部工具直接填 `100.x` / 内网 IP 就能连，不需要任何代理。需要管理员权限（装过系统助手后只在首次）。
+
+流程：助手建 TUN → 句柄回传主进程 → 注入 `tsnet.Server{Tun: dev}` → 上线后配地址、装路由。子网路由自动接受（等价 `--accept-routes`）；**只有本机已存在完全相同前缀时才跳过**，其余按最长前缀匹配共存。不做默认路由、不做 Exit Node。
+
+## 系统助手（一次授权，之后免密）
+
+| 平台 | 方式 | socket |
+|---|---|---|
+| macOS | LaunchDaemon + `/Library/PrivilegedHelperTools` | `/var/run/weft.sock` |
+| Linux | systemd unit `weft-helper` + `/usr/local/lib/weft/weft` | `/var/run/weft.sock` |
+| Windows | 登录任务（最高权限）启动本体，进程自身提权 | 无（进程内建卡） |
+
+设置页「系统助手」可安装/移除；未安装时 macOS/Linux 回退到一次性授权，Windows 每次启动弹一次 UAC。
+
+## 配置
+
+1. 「设置」填 Headscale 地址与管理 API Key
+2. 隧道另填 Auth Key（留空则首次走浏览器授权）
+3. 测试连接 → 保存 → 回总览点连接
+
+设置页的开关（开机自动连接、断线自动重连、托盘图标、窗口调试）拨一下即时生效并落库，不用再点保存。
+
+凭证只写系统钥匙串。书签、端口转发规则、配置、审计与列表缓存存在本地 SQLite：
+`~/Library/Application Support/Weft/weft.db`（Linux `~/.local/share/Weft`，Windows `%AppData%\Weft`）。
+目录名保留 `Weft`，改名不影响已有配置。
+**没有任何预置数据**，应用与转发规则都由你自己创建。
+
+## 关闭窗口与托盘
+
+关闭窗口（红叉 / `⌘W`）只是把窗口收起，应用继续在后台保持隧道，不会退出。
+
+点菜单栏 / 托盘图标弹出菜单：
+
+| 菜单项 | 结果 |
+|---|---|
+| 状态行 | `已连接 · 100.x` / `未连接 · 控制面地址`，随隧道实时变化 |
+| 连接 / 断开连接 | 不回到窗口也能连或断 |
+| 显示主窗口 | 重新显示主窗口（macOS 也可点 Dock 图标） |
+| 设置… | 显示窗口并直接跳到连接设置 |
+| 退出云栈 | 真正退出应用（`⌘Q` 等同） |
+
+「设置 → 在系统托盘显示图标」控制是否显示托盘图标。关掉后仍可关窗口不退出；
+Windows / Linux 因为只有托盘能找回窗口，关掉托盘时关闭窗口即为退出。
+
+### 两个 Key 不是一回事
+
+| 用途 | Key | 生成方式 | 填在哪 |
+|---|---|---|---|
+| 本机加入 tailnet | `hskey-auth-…` | `headscale preauthkeys create` | 隧道 Auth Key |
+| 管理设备 / 成员 / 路由 | `hskey-apikey-…` | `headscale apikeys create` | 管理 API Key |
+
+## 平台
+
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| TUN | `utunN` | `weft0`（`/dev/net/tun`） | `Weft`（需 `wintun.dll`） |
+| 提权 | `osascript` | `pkexec` / `sudo -n` | UAC（`ShellExecute runas`） |
+| 路由 | `route` | `ip route` | `netsh` |
+
+macOS 已真机验证。Windows / Linux 通过交叉编译与类型检查，提权弹窗与路由清理需真机确认。
+
+## 构建与运行
+
+```bash
+npm --prefix frontend install
+GOPROXY=https://goproxy.cn,direct GOSUMDB=off wails3 build -tags devtools
+./bin/云栈
+```
+
+界面按 `design/weft-ui-design.html` 自绘，无第三方组件库依赖。
+
+`devtools` 标签用于把 WebView 检查器编译进来；不加时 Wails 会把 `OpenDevTools` 编译成空实现。
+
+### 应用窗口调试
+
+设置 → 「应用窗口调试」打开后重开应用，`F12` 或 `⌘⌥I` 打开检查器（需 `devtools` 构建）。
+注意：该标签会让 WebView 标记为可检查，属进程内可见性变化，仅自用建议开启。
+
+### 连通性诊断
+
+```bash
+./bin/云栈 --diag 100.64.0.3:22 10.0.1.1:443
+```
+
+不进 GUI，输出每个对端的 `relay / 直连 / 握手 / 收发字节 / 能力位 / 版本`，以及 TUN 与 netstack 两条通道的 TCP 结果。
+
+## 已知限制
+
+- 只支持 Headscale，不含 Tailscale 官方 API
+- 不做 MagicDNS（一律用 IP）、不做 Exit Node、不做 Taildrop / Taildrive
+- 子网路由需服务端已批准；本机已占用同一前缀时该段跳过
+- **`tailscale.com` 固定 v1.104.7，不要升级**：1.106+ 的 hybrid 后量子握手与 1.104 以下对端不兼容
+- Windows 需随程序分发 `wintun.dll`
+- 应用内窗口是系统 WebView，**不支持加载浏览器扩展**（Bitwarden 等）；需要扩展时用「浏览器打开」，或在书签里勾选「用系统浏览器打开」

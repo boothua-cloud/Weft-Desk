@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weft 桌面版 · 完整 UI 设计规格 v1.0</title>
+<style>
+:root{
+  --s:.78;
+  --bg:#F4F6F8; --surface:#FFFFFF; --surface-2:#F7F8FA; --line:#E4E7EC;
+  --text:#1F2328; --muted:#69727E; --faint:#98A0AB;
+  --brand:#0F6E56; --brand-soft:#E1F5EE; --accent:#D85A30; --accent-soft:#FAECE7;
+  --ok:#1D9E75; --ok-soft:#E1F5EE; --warn:#BA7517; --warn-soft:#FAEEDA;
+  --danger:#A32D2D; --danger-soft:#FCEBEB; --info:#185FA5; --info-soft:#E6F1FB;
+  --r:10px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;font-size:13px;-webkit-font-smoothing:antialiased}
+.page{max-width:1000px;margin:0 auto;padding:40px 24px 90px}
+.doc-head{border-bottom:1px solid var(--line);padding-bottom:26px;margin-bottom:26px}
+.eyebrow{font-size:12px;color:var(--brand);letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+.doc-head h1{font-size:27px;margin:10px 0 8px;font-weight:600;letter-spacing:-.02em}
+.doc-head p{color:var(--muted);margin:0;line-height:1.75;max-width:820px}
+.tokens{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px;align-items:center}
+.tok{display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:11px;color:var(--muted)}
+.sw{width:16px;height:16px;border-radius:4px;border:1px solid rgba(0,0,0,.06)}
+.toc{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:18px}
+.toc a{display:block;padding:8px 10px;background:var(--surface);border:1px solid var(--line);border-radius:7px;font-size:11px;color:var(--muted);text-decoration:none;line-height:1.5}
+.toc a:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-soft)}
+.toc a b{color:var(--brand);margin-right:5px;font-variant-numeric:tabular-nums}
+.group-title{margin:46px 0 18px;padding:0 0 11px;border-bottom:2px solid var(--brand);display:flex;align-items:baseline;gap:12px}
+.group-title h2{font-size:17px;font-weight:600;margin:0}
+.group-title span{font-size:11.5px;color:var(--faint)}
+.board-section{margin-bottom:46px;scroll-margin-top:20px}
+.board-head{display:flex;align-items:baseline;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.board-head h3{font-size:14.5px;font-weight:600;margin:0}
+.board-head span{font-size:11.5px;color:var(--faint)}
+.board-head p{margin:0 0 0 auto;font-size:11.5px;color:var(--muted);max-width:560px;text-align:right;line-height:1.6}
+.board-frame{width:calc(1200px * var(--s));height:calc(760px * var(--s));overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 8px 28px rgba(31,35,40,.07);position:relative;max-width:100%}
+.board{width:1200px;height:760px;transform:scale(var(--s));transform-origin:top left;background:var(--surface)}
+.app{display:flex;height:100%}
+.side{width:216px;flex:none;background:var(--surface-2);border-right:1px solid var(--line);padding:18px 12px 14px;display:flex;flex-direction:column}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{height:60px;flex:none;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 28px;background:var(--surface)}
+.content{flex:1;padding:22px 28px;overflow:hidden;position:relative}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px 20px}
+.logo{width:30px;height:30px;border-radius:9px;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:700;font-size:15px}
+.brand b{display:block;font-size:15px}.brand small{display:block;color:var(--faint);font-size:10px;margin-top:2px}
+.nav-label{display:block;font-size:10px;color:var(--faint);padding:0 10px;margin:14px 0 6px;letter-spacing:.06em}
+.nav-item{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:7px;color:var(--muted);font-size:12.5px}
+.nav-item svg{width:15px;height:15px;flex:none;opacity:.8}
+.nav-item.active{background:var(--brand-soft);color:var(--brand);font-weight:600}
+.nav-item.active svg{opacity:1}
+.side-foot{margin-top:auto;border-top:1px solid var(--line);padding:14px 10px 2px;display:flex;align-items:center;gap:9px}
+.side-foot b{display:block;font-size:11.5px;font-weight:600}.side-foot small{display:block;color:var(--faint);font-size:10px;margin-top:2px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.off{background:var(--faint)}.dot.err{background:var(--danger)}
+.crumb{font-size:13px;color:var(--muted)}.crumb b{color:var(--text);font-weight:600}
+.top-right{display:flex;align-items:center;gap:12px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface-2);border-radius:20px;padding:5px 11px;font-size:11px;color:var(--muted)}
+.chip.brand{background:var(--brand-soft);border-color:#BFE6D8;color:var(--brand)}
+.avatar{width:28px;height:28px;border-radius:50%;background:#DFE4EA;color:#4A5563;display:grid;place-items:center;font-size:11px;font-weight:600}
+.icon-btn{width:28px;height:28px;border:1px solid var(--line);border-radius:7px;display:grid;place-items:center;color:var(--muted);background:var(--surface);font-size:12px}
+h3.sec,h4.sec{font-size:13px;font-weight:600;margin:0 0 12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.card.tight{padding:14px 16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 14px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:12px;font-weight:500;white-space:nowrap}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.danger{color:var(--danger);border-color:#EFCACA;background:var(--danger-soft)}
+.btn.danger-solid{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn.sm{height:28px;padding:0 10px;font-size:11px}
+.btn.disabled{opacity:.42;pointer-events:none}
+.btn.hover{background:var(--surface-2)}
+.input,.select{height:34px;border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:0 11px;color:var(--text);font-size:12px;display:flex;align-items:center;gap:8px}
+.select:after{content:"▾";margin-left:auto;color:var(--faint);font-size:11px}
+.input.muted,.input.ph{color:var(--faint)}
+.input.err,.select.err{border-color:#DFA5A5;background:#FDF4F4}
+.input.disabled{background:var(--surface-2);color:var(--faint)}
+.input.focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(15,110,86,.10)}
+.area{width:100%;border:1px solid var(--line);border-radius:7px;padding:10px 11px;font-size:11.5px;background:var(--surface);color:var(--text);min-height:76px;line-height:1.65}
+.field{margin-bottom:14px}
+.field-label{font-size:11.5px;color:var(--muted);margin-bottom:7px;display:block}
+.req{color:var(--danger);margin-left:3px}
+.help{font-size:10.5px;color:var(--faint);margin-top:5px;line-height:1.6}
+.err-txt{font-size:10.5px;color:var(--danger);margin-top:5px;line-height:1.5}
+.tag{display:inline-block;padding:3px 8px;border-radius:5px;font-size:10.5px;background:var(--surface-2);border:1px solid var(--line);color:var(--muted);margin-right:5px}
+.tag.green{background:var(--ok-soft);border-color:#C3E9DA;color:var(--brand)}
+.tag.amber{background:var(--warn-soft);border-color:#F0DCB4;color:var(--warn)}
+.tag.red{background:var(--danger-soft);border-color:#F0CCCC;color:var(--danger)}
+.tag.blue{background:var(--info-soft);border-color:#C9DEF5;color:var(--info)}
+table.tbl{width:100%;border-collapse:collapse;font-size:11.5px}
+table.tbl th{text-align:left;color:var(--faint);font-weight:500;font-size:10.5px;padding:9px 10px;border-bottom:1px solid var(--line);background:var(--surface-2)}
+table.tbl td{padding:11px 10px;border-bottom:1px solid #EDF0F3;color:var(--text);vertical-align:middle}
+table.tbl tr:last-child td{border-bottom:0}
+.cell-main{font-weight:600;font-size:12px}.cell-sub{color:var(--faint);font-size:10.5px;margin-top:3px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+.row{display:flex;align-items:center;gap:10px}.spread{display:flex;align-items:center;justify-content:space-between}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.muted{color:var(--muted)}.faint{color:var(--faint)}
+.stat-num{font-size:23px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
+.stat-label{font-size:11px;color:var(--muted);margin-top:5px}
+.status-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:20px;background:var(--ok-soft);color:var(--brand);font-size:11px;font-weight:600}
+.status-pill.off{background:var(--surface-2);color:var(--muted)}
+.status-pill.warn{background:var(--warn-soft);color:var(--warn)}
+.timeline{position:relative;padding-left:18px}.timeline:before{content:"";position:absolute;left:4px;top:5px;bottom:5px;width:1px;background:var(--line)}
+.tl-item{position:relative;margin-bottom:15px}
+.tl-item:before{content:"";position:absolute;left:-18px;top:4px;width:7px;height:7px;border-radius:50%;background:var(--ok);border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line)}
+.tl-item.grey:before{background:var(--faint)}
+.tl-item b{display:block;font-size:11.5px;font-weight:500}.tl-item small{display:block;color:var(--faint);font-size:10.5px;margin-top:3px}
+.kv{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #EDF0F3;font-size:11.5px;gap:12px}
+.kv:last-child{border-bottom:0}.kv span:first-child{color:var(--muted);flex:none}
+.switch{width:32px;height:18px;border-radius:10px;background:#D8DDE4;position:relative;flex:none}
+.switch:after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.switch.on{background:var(--brand)}.switch.on:after{left:16px}
+.chk{width:15px;height:15px;border:1px solid #C9D0D8;border-radius:4px;background:#fff;flex:none;display:grid;place-items:center;font-size:10px;color:#fff}
+.chk.on{background:var(--brand);border-color:var(--brand)}
+.radio-card{border:1px solid var(--line);border-radius:9px;padding:12px;background:var(--surface);flex:1;min-width:0}
+.radio-card.active{border-color:var(--brand);background:var(--brand-soft)}
+.tabs{display:flex;gap:22px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.tab{padding:0 0 11px;font-size:12px;color:var(--muted);position:relative}
+.tab.active{color:var(--brand);font-weight:600}.tab.active:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--brand);border-radius:2px}
+.code{background:#FBFCFD;border:1px solid var(--line);border-radius:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.85;overflow:hidden}
+.code-line{display:flex}.code-line .ln{width:38px;flex:none;text-align:right;padding-right:12px;color:#B6BDC6;background:#F7F8FA;border-right:1px solid var(--line)}
+.code-line .src{padding-left:14px;white-space:pre;color:#374151}
+.code-line.bad{background:#FDF0F0}.code-line.bad .ln{background:#FBE3E3;color:var(--danger)}
+.k{color:#0F6E56}.s{color:#BA7517}.p{color:#98A0AB}
+.appcard{border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--surface);display:flex;flex-direction:column;gap:10px}
+.appcard .ico{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:14px}
+.appcard b{font-size:12.5px}.appcard .url{font-size:10.5px;color:var(--faint)}
+.notice{padding:11px 13px;border-radius:8px;font-size:11.5px;line-height:1.7}
+.notice.info{background:var(--info-soft);border:1px solid #C9DEF5;color:#185FA5}
+.notice.warn{background:var(--warn-soft);border:1px solid #F0DCB4;color:#8A5A12}
+.notice.danger{background:var(--danger-soft);border:1px solid #F0CCCC;color:var(--danger)}
+.notice.ok{background:var(--ok-soft);border:1px solid #C3E9DA;color:var(--brand)}
+.notice.neutral{background:var(--surface-2);border:1px solid var(--line);color:var(--muted)}
+.empty{padding:44px 0;text-align:center;color:var(--faint);font-size:11.5px;line-height:1.9}
+.empty .big{font-size:28px;color:#D3DAE1;display:block;margin-bottom:8px}
+.skel{height:11px;border-radius:4px;background:linear-gradient(90deg,#EDF0F3 25%,#F7F8FA 50%,#EDF0F3 75%);background-size:200% 100%;margin-bottom:11px}
+.toast{display:flex;align-items:center;gap:9px;padding:11px 15px;border-radius:9px;box-shadow:0 8px 24px rgba(31,35,40,.16);font-size:11.5px;background:var(--surface);border:1px solid var(--line)}
+.toast.ok{border-left:3px solid var(--ok)}.toast.err{border-left:3px solid var(--danger)}
+.toast.warn{border-left:3px solid var(--warn)}.toast.info{border-left:3px solid var(--info)}
+.menu{width:168px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 26px rgba(31,35,40,.14);padding:5px}
+.menu div{padding:8px 10px;font-size:11.5px;color:var(--text);border-radius:5px}
+.menu div.danger{color:var(--danger)}.menu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+.mask{position:absolute;inset:0;background:rgba(31,35,40,.20);z-index:2}
+.drawer{position:absolute;right:0;top:0;bottom:0;width:360px;background:var(--surface);border-left:1px solid var(--line);box-shadow:-8px 0 24px rgba(31,35,40,.08);padding:22px;z-index:3;display:flex;flex-direction:column}
+.drawer.wide{width:420px}
+.modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:430px;background:var(--surface);border:1px solid #DDE2E8;border-radius:12px;box-shadow:0 18px 46px rgba(31,35,40,.20);z-index:5;overflow:hidden}
+.modal.sm{width:370px}.modal.lg{width:560px}
+.modal-head{padding:16px 18px 12px;border-bottom:1px solid var(--line)}
+.modal-head b{font-size:14px}.modal-head p{margin:5px 0 0;font-size:11px;color:var(--muted);line-height:1.6}
+.modal-body{padding:18px;max-height:440px;overflow:hidden}
+.modal-foot{padding:13px 18px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px;background:var(--surface-2)}
+.x{color:var(--faint);font-size:13px}
+.matrix{display:flex;gap:14px;align-items:flex-start;padding:24px;height:100%;background:var(--surface-2);overflow:auto}
+.dialog{width:350px;flex:none;background:#fff;border:1px solid #DDE2E8;border-radius:12px;box-shadow:0 12px 30px rgba(31,35,40,.12);overflow:hidden}
+.dialog.wide{width:400px}.dialog.narrow{width:310px}
+.dialog-head{padding:13px 15px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-start}
+.dialog-head b{font-size:12.5px}.dialog-head p{margin:4px 0 0;font-size:10.5px;color:var(--muted);line-height:1.55}
+.dialog-body{padding:15px}.dialog-foot{padding:11px 15px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px;background:var(--surface-2)}
+.annot{font-size:10px;color:var(--brand);background:var(--brand-soft);border:1px dashed #9FD3C1;border-radius:5px;padding:3px 7px;display:inline-block;line-height:1.5}
+.annot.grey{color:var(--muted);background:var(--surface-2);border-color:var(--line)}
+.kbd{font-family:ui-monospace,Menlo,monospace;font-size:10px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:1px 5px;background:var(--surface-2);color:var(--muted)}
+.browser{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:840px;height:540px;background:var(--surface);border:1px solid #D9DEE5;border-radius:12px;box-shadow:0 20px 50px rgba(31,35,40,.16);overflow:hidden;z-index:4}
+.browser-bar{height:46px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--surface-2)}
+.win-dots{display:flex;gap:6px}.win-dots i{width:10px;height:10px;border-radius:50%;display:block}
+.addr{flex:1;height:27px;border:1px solid var(--line);border-radius:6px;background:var(--surface);display:flex;align-items:center;padding:0 10px;font-size:11px;color:var(--muted);gap:7px}
+.browser-body{padding:30px;height:calc(100% - 46px);background:#FAFBFC}
+.win-title{position:absolute;left:50%;top:calc(50% - 296px);transform:translateX(-50%);font-size:12px;color:var(--muted)}
+.steps{display:flex;align-items:center;gap:0;margin-bottom:22px}
+.step{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--faint)}
+.step .n{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--surface-2);border:1px solid var(--line);font-size:10.5px;flex:none}
+.step.done .n{background:var(--brand);border-color:var(--brand);color:#fff}.step.done{color:var(--brand)}
+.step.cur .n{background:var(--brand-soft);border-color:var(--brand);color:var(--brand);font-weight:600}.step.cur{color:var(--text);font-weight:600}
+.step-line{width:52px;height:1px;background:var(--line);margin:0 12px}
+.spec{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px;margin-bottom:14px}
+.spec h3{font-size:14px;font-weight:600;margin:0 0 6px}.spec > p{font-size:11.5px;color:var(--muted);margin:0 0 16px;line-height:1.7}
+table.spec-tbl{width:100%;border-collapse:collapse;font-size:11px}
+table.spec-tbl th{text-align:left;background:var(--surface-2);color:var(--muted);font-weight:600;font-size:10.5px;padding:9px 10px;border:1px solid var(--line);white-space:nowrap}
+table.spec-tbl td{padding:9px 10px;border:1px solid var(--line);vertical-align:top;line-height:1.6;color:var(--text)}
+table.spec-tbl td.mono{font-size:10.5px}
+.palette{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}
+.pal{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surface)}
+.pal i{display:block;height:44px}.pal div{padding:8px 9px;font-size:10px;line-height:1.6;color:var(--muted)}
+.pal b{display:block;color:var(--text);font-size:11px}
+.legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;font-size:11.5px;color:var(--muted)}
+.measure{position:absolute;font-size:10px;color:var(--info);background:var(--info-soft);border:1px dashed #A8C9E8;padding:3px 7px;border-radius:4px;z-index:8}
+@media(max-width:1040px){:root{--s:.66}}
+@media(max-width:880px){:root{--s:.52}.board-head p{display:none}.toc{grid-template-columns:repeat(2,1fr)}.palette{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="doc-head">
+    <div class="eyebrow">Weft desktop · complete UI specification v1.0</div>
+    <h1>Weft 桌面版 · 完整 UI 设计规格</h1>
+    <p>覆盖全部 8 个页面、每种连接/加载/错误/空状态，以及所有弹窗、抽屉、表单与字段校验。主窗口 1200 × 760，浅色主题，按 0.78 缩放展示。架构基线：<b>tsnet 内嵌节点 + 系统 TUN 接管（授权一次，之后零打扰）+ 100.64/10 与子网路由</b>；控制面按能力位自动降级。所有弹窗均可由 ✕ / Esc / 点击遮罩关闭，危险操作例外（需显式确认）。</p>
+    <div class="tokens">
+      <div class="tok"><i class="sw" style="background:#0F6E56"></i>主色 #0F6E56</div>
+      <div class="tok"><i class="sw" style="background:#D85A30"></i>强调 #D85A30</div>
+      <div class="tok"><i class="sw" style="background:#1D9E75"></i>成功 #1D9E75</div>
+      <div class="tok"><i class="sw" style="background:#BA7517"></i>警告 #BA7517</div>
+      <div class="tok"><i class="sw" style="background:#A32D2D"></i>危险 #A32D2D</div>
+      <div class="tok"><i class="sw" style="background:#185FA5"></i>信息 #185FA5</div>
+      <div class="tok"><i class="sw" style="background:#F7F8FA;border-color:#E4E7EC"></i>表面 #F7F8FA / 描边 #E4E7EC</div>
+      <div class="tok">圆角 10px 卡片 · 7px 控件 · 12px 弹窗</div>
+      <div class="tok">字号 13 / 12 / 11 / 10.5</div>
+      <div class="tok">控件高 34px（小号 28px）</div>
+    </div>
+    <div class="toc" id="toc">
+      <a href="#b01"><b>01</b>设计令牌与色板</a><a href="#b02"><b>02</b>组件状态矩阵</a>
+      <a href="#b03"><b>03</b>主窗口骨架与尺寸</a><a href="#b04"><b>04</b>托盘与右键菜单</a>
+      <a href="#b05"><b>05</b>首次启动引导</a><a href="#b06"><b>06</b>总览 · 已连接</a>
+      <a href="#b07"><b>07</b>总览 · 未连接/演示</a><a href="#b08"><b>08</b>总览 · 等待授权</a>
+      <a href="#b09"><b>09</b>总览 · 连接失败</a><a href="#b10"><b>10</b>断开连接确认</a>
+      <a href="#b11"><b>11</b>应用内窗口 · 正常</a><a href="#b12"><b>12</b>应用内窗口 · 异常</a>
+      <a href="#b13"><b>13</b>设备管理 · 列表</a><a href="#b14"><b>14</b>设备详情抽屉</a>
+      <a href="#b15"><b>15</b>设备操作弹窗矩阵</a><a href="#b16"><b>16</b>设备空/加载/无结果</a>
+      <a href="#b17"><b>17</b>人员管理 · Headscale</a><a href="#b18"><b>18</b>人员管理 · 官方降级</a>
+      <a href="#b19"><b>19</b>人员操作弹窗矩阵</a><a href="#b20"><b>20</b>授权 Key 列表</a>
+      <a href="#b21"><b>21</b>新建授权 Key 抽屉</a><a href="#b22"><b>22</b>一次性 Key / 吊销</a>
+      <a href="#b23"><b>23</b>API Key / OAuth 列表</a><a href="#b24"><b>24</b>凭证配置弹窗矩阵</a>
+      <a href="#b25"><b>25</b>ACL 编辑器 · 正常</a><a href="#b26"><b>26</b>ACL 错误/冲突/历史</a>
+      <a href="#b27"><b>27</b>应用管理 · 列表</a><a href="#b28"><b>28</b>应用表单/删除/失败</a>
+      <a href="#b29"><b>29</b>连接设置 · 控制面</a><a href="#b30"><b>30</b>连接设置 · 引擎与高级</a>
+      <a href="#b31"><b>31</b>设置 · 官方 OAuth / 关于</a><a href="#b32"><b>32</b>通用弹窗与 Toast 规范</a>
+      <a href="#b33"><b>33</b>表单字段规格总表</a><a href="#b34"><b>34</b>交互状态矩阵</a>
+      <a href="#b35"><b>35</b>审计日志与错误页</a>
+    </div>
+  </div>
+
+  <div class="group-title"><h2>00 · 设计系统</h2><span>颜色、字号、控件状态、尺寸规范</span></div>
+
+  <div class="board-section" id="b01">
+    <div class="board-head"><h3>01 · 设计令牌与色板</h3><span>规格页</span><p>语义色与状态色一一对应，禁止用颜色单独表达状态（必须配文字或图标）。</p></div>
+    <div class="spec">
+      <h3>语义色板</h3><p>浅色主题；所有文本在白底上对比度 ≥ 4.5:1。危险色仅用于不可逆操作与校验错误。</p>
+      <div class="palette">
+        <div class="pal"><i style="background:#0F6E56"></i><div><b>Brand</b>#0F6E56<br>主按钮 / 选中 / 链接</div></div>
+        <div class="pal"><i style="background:#E1F5EE"></i><div><b>Brand soft</b>#E1F5EE<br>选中底 / 成功底</div></div>
+        <div class="pal"><i style="background:#1D9E75"></i><div><b>OK</b>#1D9E75<br>在线 / 已连接</div></div>
+        <div class="pal"><i style="background:#BA7517"></i><div><b>Warn</b>#BA7517<br>待授权 / 即将过期</div></div>
+        <div class="pal"><i style="background:#A32D2D"></i><div><b>Danger</b>#A32D2D<br>删除 / 吊销 / 错误</div></div>
+        <div class="pal"><i style="background:#185FA5"></i><div><b>Info</b>#185FA5<br>提示条 / 能力说明</div></div>
+        <div class="pal"><i style="background:#1F2328"></i><div><b>Text</b>#1F2328<br>主文本</div></div>
+        <div class="pal"><i style="background:#69727E"></i><div><b>Muted</b>#69727E<br>次要文本 / label</div></div>
+        <div class="pal"><i style="background:#98A0AB"></i><div><b>Faint</b>#98A0AB<br>占位 / 辅助说明</div></div>
+        <div class="pal"><i style="background:#E4E7EC"></i><div><b>Line</b>#E4E7EC<br>描边 / 分隔线</div></div>
+        <div class="pal"><i style="background:#F7F8FA"></i><div><b>Surface-2</b>#F7F8FA<br>侧栏 / 表头 / 弹窗脚</div></div>
+        <div class="pal"><i style="background:#F4F6F8"></i><div><b>Background</b>#F4F6F8<br>窗口外底</div></div>
+      </div>
+      <table class="spec-tbl">
+        <tr><th>层级</th><th>字号 / 字重</th><th>用途</th><th>层级</th><th>字号 / 字重</th><th>用途</th></tr>
+        <tr><td>H1 文档标题</td><td class="mono">27 / 600</td><td>仅设计稿</td><td>页面标题</td><td class="mono">16 / 600</td><td>内容区第一屏标题</td></tr>
+        <tr><td>区标题</td><td class="mono">13 / 600</td><td>卡片内小标题</td><td>正文</td><td class="mono">12 / 400</td><td>表格单元格、按钮</td></tr>
+        <tr><td>字段标签</td><td class="mono">11.5 / 400</td><td>表单 label</td><td>辅助说明</td><td class="mono">10.5 / 400</td><td>help / cell-sub / 标注</td></tr>
+        <tr><td>等宽</td><td class="mono">11 / mono</td><td>IP / Key / URL / 代码</td><td>圆角</td><td class="mono">10 / 7 / 12 / 20</td><td>卡片 / 控件 / 弹窗 / 药丸</td></tr>
+      </table>
+    </div>
+    <div class="spec">
+      <h3>状态色映射（全站统一）</h3>
+      <table class="spec-tbl">
+        <tr><th>状态</th><th>圆点 / 标签</th><th>文案</th><th>出现位置</th></tr>
+        <tr><td>已连接 / 在线 / 有效 / 正常 / 已就绪</td><td><span class="dot ok"></span> <span class="tag green">green</span></td><td>「已连接」「在线」</td><td>总览、侧栏脚、设备/Key 列表</td></tr>
+        <tr><td>待授权 / 已使用 / 即将过期 / 演示模式 / 中继</td><td><span class="dot warn"></span> <span class="tag amber">amber</span></td><td>「待授权」「N 天后过期」</td><td>设备、Key、演示提示</td></tr>
+        <tr><td>离线 / 未连接 / 已过期 / 已吊销 / 无权限</td><td><span class="dot off"></span> <span class="tag">neutral</span></td><td>「离线」「只读」</td><td>设备、Key、能力位降级</td></tr>
+        <tr><td>失败 / 错误 / 不可逆操作</td><td><span class="dot err"></span> <span class="tag red">red</span></td><td>「连接失败」「删除」</td><td>错误页、危险按钮、校验</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="board-section" id="b02">
+    <div class="board-head"><h3>02 · 组件状态矩阵</h3><span>规格页</span><p>每个控件的默认 / 悬停 / 聚焦 / 禁用 / 错误 / 加载态，开发按此实现。</p></div>
+    <div class="spec">
+      <h3>按钮</h3>
+      <div class="row" style="gap:9px;flex-wrap:wrap;margin-bottom:8px">
+        <span class="btn primary">主要按钮</span><span class="btn">次要按钮</span><span class="btn hover">悬停</span>
+        <span class="btn focus" style="border-color:var(--brand);box-shadow:0 0 0 3px rgba(15,110,86,.10)">聚焦</span>
+        <span class="btn disabled">禁用</span><span class="btn danger">危险（描边）</span><span class="btn danger-solid">危险（实底）</span>
+        <span class="btn ghost">幽灵</span><span class="btn sm">小号 28px</span><span class="btn primary disabled">◌ 提交中…</span>
+      </div>
+      <p class="help">主按钮一个视图内最多 1 个；危险操作必须二次确认；加载态按钮禁用并显示进度文案，禁止重复提交。</p>
+      <h3 style="margin-top:20px">输入 / 选择 / 文本域</h3>
+      <div class="grid3" style="gap:12px;margin-bottom:8px">
+        <div><label class="field-label">默认</label><div class="input ph">请输入…</div></div>
+        <div><label class="field-label">聚焦</label><div class="input focus">weft</div></div>
+        <div><label class="field-label">禁用</label><div class="input disabled">只读内容</div></div>
+        <div><label class="field-label">错误<span class="req">*</span></label><div class="input err">not-a-url</div><div class="err-txt">地址格式不正确，需以 http(s):// 开头</div></div>
+        <div><label class="field-label">下拉选择</label><div class="select">90 天</div></div>
+        <div><label class="field-label">文本域</label><div class="area" style="min-height:56px">HuJSON 策略内容…</div></div>
+      </div>
+      <h3 style="margin-top:20px">选择类 / 反馈类</h3>
+      <div class="row" style="gap:18px;flex-wrap:wrap;margin-bottom:10px">
+        <div class="row"><span class="switch on"></span><span style="font-size:11.5px">开</span></div>
+        <div class="row"><span class="switch"></span><span style="font-size:11.5px">关</span></div>
+        <div class="row"><span class="chk on">✓</span><span style="font-size:11.5px">已选</span></div>
+        <div class="row"><span class="chk"></span><span style="font-size:11.5px">未选</span></div>
+        <div class="radio-card active" style="max-width:150px"><b style="font-size:11.5px">Headscale</b><div class="faint" style="font-size:10px">已选中</div></div>
+        <div class="radio-card" style="max-width:150px"><b style="font-size:11.5px">Tailscale 官方</b><div class="faint" style="font-size:10px">未选中</div></div>
+      </div>
+      <div class="row" style="gap:9px;flex-wrap:wrap;margin-bottom:10px">
+        <span class="toast ok"><span class="dot ok"></span>配置已保存，凭证已写入系统钥匙串</span>
+        <span class="toast err"><span class="dot err"></span>连接失败：authkey already used</span>
+      </div>
+      <div class="row" style="gap:9px;flex-wrap:wrap">
+        <span class="toast warn"><span class="dot warn"></span>演示模式，操作不会启动节点</span>
+        <span class="toast info"><span class="dot" style="background:var(--info)"></span>JSON 语法通过</span>
+      </div>
+      <p class="help" style="margin-top:12px">Toast 右下角、3.4 秒自动消失；同一时刻只显示一条，新消息覆盖旧的。错误 Toast 不自动消失前允许用户手动关闭。</p>
+    </div>
+    <div class="spec">
+      <h3>空状态 / 加载骨架 / 分页</h3>
+      <div class="grid3">
+        <div class="card tight"><div class="empty"><span class="big">▦</span>暂无应用书签<br><span class="faint" style="font-size:10.5px">点击右上角「＋ 添加应用」开始</span><br><span class="btn sm" style="margin-top:10px">＋ 添加应用</span></div></div>
+        <div class="card tight"><div class="skel" style="width:70%"></div><div class="skel" style="width:100%"></div><div class="skel" style="width:88%"></div><div class="skel" style="width:55%"></div><div class="faint" style="font-size:10.5px;margin-top:12px">加载中骨架，≥300ms 才显示，避免闪烁</div></div>
+        <div class="card tight"><div class="spread"><span class="faint" style="font-size:11px">共 12 条 · 每页 10 条</span><div class="row" style="gap:4px"><span class="btn sm disabled">‹</span><span class="btn sm primary" style="background:var(--brand-soft);color:var(--brand);border-color:#BFE6D8">1</span><span class="btn sm">2</span><span class="btn sm">›</span></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="group-title"><h2>01 · 框架、导航与引导</h2><span>窗口骨架、系统托盘、首次启动向导</span></div>
+
+  <div class="board-section" id="b03">
+    <div class="board-head"><h3>03 · 主窗口骨架与尺寸</h3><span>1200 × 760</span><p>三区固定：侧栏 216px、顶栏 60px、内容区自适应。最小窗口 960 × 640，低于 1040 缩放系数降至 0.66。</p></div>
+    <div class="board-frame"><div class="board" style="position:relative"><div class="app">
+      <aside class="side" data-active="overview"></aside>
+      <main class="main">
+        <header class="topbar" data-crumb="隧道" data-title="总览"></header>
+        <div class="content">
+          <div class="card tight" style="border-style:dashed;background:var(--surface-2);height:120px;display:grid;place-items:center;text-align:center">
+            <div><b style="font-size:13px">内容区 Content</b><div class="faint" style="font-size:11px;margin-top:6px">padding 22px 28px · 内容栅格 12px gap · 卡片圆角 10px</div></div>
+          </div>
+          <div class="grid4" style="margin-top:14px">
+            <div class="card tight" style="border-style:dashed;background:var(--surface-2);height:90px"></div>
+            <div class="card tight" style="border-style:dashed;background:var(--surface-2);height:90px"></div>
+            <div class="card tight" style="border-style:dashed;background:var(--surface-2);height:90px"></div>
+            <div class="card tight" style="border-style:dashed;background:var(--surface-2);height:90px"></div>
+          </div>
+          <div class="notice info" style="margin-top:18px"><b>布局约束</b>：侧栏不滚动（导航 8 项 + 底部状态）；内容区独立滚动；弹窗/抽屉遮罩只覆盖内容区之外不覆盖侧栏（见 10/14）；应用内窗口是独立 OS 窗口，非本容器内的 iframe。</div>
+        </div>
+      </main>
+    </div>
+    <div class="measure" style="left:0;top:0;width:216px;text-align:center;height:20px">← 216px →</div>
+    <div class="measure" style="left:216px;top:0;right:0;text-align:center;height:20px">顶栏 60px · 面包屑 / 控制面芯片 / 刷新 / 头像</div>
+    <div class="measure" style="left:230px;top:70px">内容 padding 28px</div>
+    </div></div>
+    <div class="spec" style="margin-top:14px">
+      <table class="spec-tbl"><tr><th>区域</th><th>尺寸</th><th>滚动</th><th>内容</th><th>交互</th></tr>
+      <tr><td>侧栏</td><td class="mono">216px × 100%</td><td>不滚动</td><td>Logo / 3 组导航（8 项）/ 底部连接状态</td><td>点击切换页面，选中态品牌色底</td></tr>
+      <tr><td>顶栏</td><td class="mono">60px</td><td>不滚动</td><td>面包屑 / 控制面芯片 / 刷新 / 用户头像</td><td>刷新重新拉取当前页数据</td></tr>
+      <tr><td>内容区</td><td class="mono">flex:1 / padding 22px 28px</td><td>独立滚动</td><td>页标题 + 操作条 + 主体</td><td>溢出时仅内容区滚动</td></tr>
+      <tr><td>抽屉</td><td class="mono">360px 或 420px × 100%</td><td>内部滚动</td><td>表单 / 详情</td><td>✕ / Esc / 点遮罩关闭；有未保存改动时二次确认</td></tr>
+      <tr><td>弹窗</td><td class="mono">370 / 430 / 560px</td><td>body 滚动</td><td>确认 / 短表单 / 结果展示</td><td>✕ / Esc / 点遮罩关闭；危险操作不允许点遮罩关闭</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="board-section" id="b04">
+    <div class="board-head"><h3>04 · 系统托盘与右键菜单</h3><span>浮层规范</span><p>托盘菜单是「不打开主窗口也能启停隧道」的唯一入口；行右键菜单承载设备级操作。</p></div>
+    <div class="board-frame"><div class="board"><div class="matrix" style="background:#EDF1F4">
+      <div style="width:330px;flex:none">
+        <div class="annot" style="margin-bottom:10px">系统托盘 · macOS 菜单栏 / Windows 通知区域</div>
+        <div class="card tight" style="background:var(--surface);border:1px solid #D9DEE5;border-radius:10px;padding:0;overflow:hidden;box-shadow:0 12px 30px rgba(31,35,40,.14)">
+          <div style="padding:13px 14px;border-bottom:1px solid var(--line)" class="spread"><div><b style="font-size:12px">Weft</b><div class="faint" style="font-size:10.5px;margin-top:3px">已连接 · 100.64.0.12</div></div><span class="status-pill">已连接</span></div>
+          <div style="padding:7px 6px;font-size:11.5px">
+            <div style="padding:8px 10px;border-radius:5px">断开隧道</div>
+            <div style="padding:8px 10px;border-radius:5px">重连</div>
+            <hr style="border:0;border-top:1px solid var(--line);margin:5px 0">
+            <div class="faint" style="padding:5px 10px;font-size:10px">快捷应用</div>
+            <div style="padding:8px 10px;border-radius:5px">　群晖 NAS</div>
+            <div style="padding:8px 10px;border-radius:5px">　OpenWrt</div>
+            <div style="padding:8px 10px;border-radius:5px">　Home Assistant</div>
+            <hr style="border:0;border-top:1px solid var(--line);margin:5px 0">
+            <div style="padding:8px 10px;border-radius:5px">打开主窗口</div>
+            <div style="padding:8px 10px;border-radius:5px">连接设置…</div>
+            <div style="padding:8px 10px;border-radius:5px;color:var(--danger)">退出 Weft</div>
+          </div>
+        </div>
+        <p class="help" style="margin-top:10px">断开后所有 127.0.0.1 代理端口立即关闭，已打开的应用内窗口显示 502。退出前若已连接，需按 10 号弹窗确认。</p>
+      </div>
+      <div style="width:250px;flex:none">
+        <div class="annot" style="margin-bottom:10px">设备表格 · 行右键菜单</div>
+        <div class="menu">
+          <div>查看详情</div><div>重命名…</div><div>编辑标签…</div><div>复制 Tailscale IP</div>
+          <hr><div>批准此设备</div><div>审批子网路由…</div><hr><div class="danger">删除设备…</div>
+        </div>
+        <p class="help" style="margin-top:10px">菜单项按能力位与设备状态动态禁用；危险项固定置底并用红色文字。</p>
+        <div class="annot grey" style="margin-top:18px;margin-bottom:10px">批量选择条</div>
+        <div class="card tight row" style="background:var(--brand-soft);border-color:#BFE6D8">
+          <span class="chk on">✓</span><b style="font-size:11.5px">已选 3 项</b>
+          <span class="btn sm" style="margin-left:auto">批量改标签</span><span class="btn sm danger">删除</span><span class="btn sm ghost">取消</span>
+        </div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="annot" style="margin-bottom:10px">交互约定</div>
+        <div class="spec" style="padding:16px;margin:0">
+          <table class="spec-tbl">
+            <tr><th>入口</th><th>触发</th><th>行为</th></tr>
+            <tr><td>托盘图标左键</td><td>单击</td><td>展开/收起菜单</td></tr>
+            <tr><td>托盘图标右键</td><td>单击</td><td>同左键</td></tr>
+            <tr><td>快捷应用</td><td>单击</td><td>分配本地端口并新开 WebView 窗口</td></tr>
+            <tr><td>关闭主窗口</td><td>点击 ✕</td><td>最小化到托盘（开关可控），隧道继续运行</td></tr>
+            <tr><td>退出 Weft</td><td>托盘菜单</td><td>确认 → 关闭节点与代理 → 退出</td></tr>
+            <tr><td>设备行右键</td><td>右键</td><td>菜单跟随鼠标，边界内翻转</td></tr>
+            <tr><td>键盘</td><td class="mono">Esc</td><td>关闭菜单 / 弹窗 / 抽屉</td></tr>
+          </table>
+        </div>
+      </div>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b05">
+    <div class="board-head"><h3>05 · 首次启动引导（3 步向导）</h3><span>1200 × 760 · 弹窗 560px</span><p>只在无配置时显示。步骤条 + 明确字段；可随时「跳过并进入演示模式」。</p></div>
+    <div class="board-frame"><div class="board" style="position:relative"><div class="app">
+      <aside class="side" data-active="overview" data-status="disconnected"></aside>
+      <main class="main"><header class="topbar" data-crumb="隧道" data-title="总览"></header><div class="content"></div></main>
+    </div>
+    <div class="mask"></div>
+    <div class="modal lg">
+      <div class="modal-head"><div class="spread"><b>欢迎使用 Weft</b><span class="x">✕</span></div><p>三步完成配置。Weft 不需要安装 Tailscale；连接时请求一次管理员授权，用于创建虚拟网卡与安装路由。</p></div>
+      <div class="modal-body">
+        <div class="steps">
+          <div class="step done"><span class="n">✓</span>控制面</div><span class="step-line"></span>
+          <div class="step cur"><span class="n">2</span>连接信息</div><span class="step-line"></span>
+          <div class="step"><span class="n">3</span>授权方式</div>
+        </div>
+        <div class="notice info" style="margin-bottom:16px">第 1 步已选 <b>Headscale（自建控制面）</b>。如需改用 Tailscale 官方，点左下角「上一步」。</div>
+        <div class="grid2" style="gap:12px">
+          <div class="field" style="margin:0"><label class="field-label">服务地址 Base URL<span class="req">*</span></label><div class="input mono focus">https://hs.example.com</div><div class="help">即 Headscale 的 server_url，必须为根地址、不带路径</div></div>
+          <div class="field" style="margin:0"><label class="field-label">本节点名称 Hostname<span class="req">*</span></label><div class="input mono">weft</div><div class="help">tailnet 内显示的名字，2–63 位字母/数字/连字符</div></div>
+        </div>
+        <div class="field" style="margin-top:14px;margin-bottom:0"><label class="field-label">控制面 API Key（可选，管理功能用）</label><div class="input ph">留空则仅启用隧道，管理页稍后补充</div><div class="help">只写系统钥匙串，不进本地数据库。仅隧道连通不需要此项。</div></div>
+        <div class="annot grey" style="margin-top:14px">校验：URL 必须以 http(s):// 开头且可解析；Hostname 非空且合法；点「测试连接」失败给出具体错误，不阻断「下一步」。</div>
+      </div>
+      <div class="modal-foot"><span class="btn ghost" style="margin-right:auto">跳过，进入演示模式</span><span class="btn">上一步</span><span class="btn">测试连接</span><span class="btn primary">下一步 →</span></div>
+    </div>
+    </div></div>
+    <div class="spec" style="margin-top:14px"><table class="spec-tbl">
+      <tr><th>步骤</th><th>内容</th><th>必填</th><th>下一步条件</th><th>可跳过</th></tr>
+      <tr><td>1 控制面</td><td>Headscale / Tailscale 官方 单选卡片</td><td>是</td><td>已选择</td><td>否</td></tr>
+      <tr><td>2 连接信息</td><td>Base URL、Hostname、控制面 API Key（选填）</td><td>前两项</td><td>URL + Hostname 合法</td><td>否（测试连接可选）</td></tr>
+      <tr><td>3 授权方式</td><td>Auth Key 输入 / 留空走浏览器授权 / 有效期说明</td><td>否</td><td>始终可完成</td><td>是</td></tr>
+      <tr><td>完成</td><td>保存 → 自动拉起 tsnet 节点 → 跳总览</td><td>—</td><td>—</td><td>—</td></tr>
+    </table></div>
+  </div>
+
+  <div class="group-title"><h2>02 · 隧道总览与应用内窗口</h2><span>全部连接状态、授权流程、独立 WebView 窗口</span></div>
+
+  <div class="board-section" id="b06">
+    <div class="board-head"><h3>06 · 隧道总览 · 已连接（默认态）</h3><span>1200 × 760</span><p>首屏必须一眼看清：连没连上、连的哪个控制面、本机 IP、以及应用内窗口怎么访问内网。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="overview" data-status="connected"></aside>
+      <main class="main"><header class="topbar" data-crumb="隧道" data-title="总览"></header>
+        <div class="content">
+          <div class="card" style="padding:20px 22px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div class="row" style="gap:16px"><div style="width:44px;height:44px;border-radius:12px;background:var(--brand-soft);display:grid;place-items:center"><span class="dot ok" style="width:14px;height:14px"></span></div>
+              <div><div class="row" style="gap:9px"><span style="font-size:18px;font-weight:600">已连接</span><span class="status-pill">系统接管</span></div>
+                <div class="faint" style="margin-top:6px;font-size:11.5px">Headscale · hs.example.com · 运行时长 4 分 32 秒 · 断线自动重连已开启</div></div></div>
+            <div class="row"><span class="btn ghost sm">重连</span><span class="btn sm">复制本机 IP</span><span class="btn danger">断开连接</span></div>
+          </div>
+          <div class="grid4" style="margin-bottom:14px">
+            <div class="card tight"><div class="stat-num mono">100.64.0.12</div><div class="stat-label">本机 IP</div></div>
+            <div class="card tight"><div class="stat-num">8 <span style="font-size:13px;color:var(--faint)">/ 12</span></div><div class="stat-label">在线设备 / 全部设备</div></div>
+            <div class="card tight"><div class="stat-num">6 <span style="font-size:13px;color:var(--faint)">直连</span> · 2 <span style="font-size:13px;color:var(--faint)">中继</span></div><div class="stat-label">连接方式 · DERP</div></div>
+            <div class="card tight"><div class="stat-num" style="font-size:17px">↑ 1.2 · ↓ 3.8 <span class="faint">MB/s</span></div><div class="stat-label">实时流量（仅本进程）</div></div>
+          </div>
+          <div class="grid2">
+            <div class="card"><h3 class="sec">本节点</h3>
+              <div class="kv"><span>主机名</span><b>weft</b></div>
+              <div class="kv"><span>控制面</span><b>Headscale · hs.example.com</b></div>
+              <div class="kv"><span>隧道引擎</span><b>系统接管 · TUN 网卡（全系统可达）</b></div>
+              <div class="kv"><span>访问方式</span><b class="faint" style="font-weight:400;font-size:11px">系统路由已接管：SSH / 数据库等外部工具直接连 100.x 与子网 IP</b></div>
+              <div class="kv"><span>访问范围</span><b>仅 Weft 内窗口 · 系统其它程序不在 tailnet</b></div>
+              <div class="kv"><span>API 风格 / 能力位</span><span><span class="tag green">ACL 可写</span><span class="tag green">人员可管理</span></span></div>
+            </div>
+            <div class="card"><h3 class="sec">最近事件</h3><div class="timeline">
+              <div class="tl-item"><b>隧道已建立 · 6 个节点直连</b><small>14:02:11 · 耗时 1.4s</small></div>
+              <div class="tl-item"><b>控制面同步完成 · 12 台设备</b><small>14:02:10 · hs.example.com</small></div>
+              <div class="tl-item grey"><b>网络切换 Wi-Fi → 以太网，自动重连</b><small>13:58:40 · 已恢复</small></div>
+              <div class="tl-item grey"><b>ACL 策略由 boothua 更新</b><small>11:20:06 · v12 → v13</small></div>
+            </div></div>
+          </div>
+          <div class="card tight row" style="margin-top:14px;flex-wrap:wrap"><span class="faint" style="font-size:11px">快捷应用</span><span class="tag green">群晖 NAS</span><span class="tag green">OpenWrt</span><span class="tag green">Home Assistant</span><span class="tag green">GitLab</span><span class="btn sm" style="margin-left:auto">管理应用 →</span></div>
+        </div>
+      </main>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b07">
+    <div class="board-head"><h3>07 · 隧道总览 · 未连接 / 演示模式</h3><span>1200 × 760</span><p>区分「已配置但未连」与「演示模式」：前者连接按钮可用，后者所有数据为模拟且连接不启动节点。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="overview" data-status="demo"></aside>
+      <main class="main"><header class="topbar" data-crumb="隧道" data-title="总览"></header>
+        <div class="content">
+          <div class="card" style="padding:20px 22px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div class="row" style="gap:16px"><div style="width:44px;height:44px;border-radius:12px;background:var(--surface-2);display:grid;place-items:center"><span class="dot off" style="width:14px;height:14px"></span></div>
+              <div><div class="row" style="gap:9px"><span style="font-size:18px;font-weight:600">未连接</span><span class="status-pill off">演示模式</span></div>
+                <div class="faint" style="margin-top:6px;font-size:11.5px">演示数据 · 未启动内嵌节点 · 运行时长 —</div></div></div>
+            <div class="row"><span class="btn ghost sm">重连</span><span class="btn primary">连接</span></div>
+          </div>
+          <div class="notice warn" style="margin-bottom:14px"><b>演示模式已开启</b>：所有列表均为本地模拟数据，连接/断开不会创建虚拟网卡，也不会改动系统路由。到「连接设置」关闭演示模式后，App 会自动拉起进程内节点；隧道只需 Auth Key（或首次浏览器授权），控制面管理另需 API Key / OAuth 凭证。</div>
+          <div class="grid4" style="margin-bottom:14px">
+            <div class="card tight"><div class="stat-num mono">—</div><div class="stat-label">本机 IP</div></div>
+            <div class="card tight"><div class="stat-num">5 <span style="font-size:13px;color:var(--faint)">/ 7</span></div><div class="stat-label">在线设备 / 全部设备（模拟）</div></div>
+            <div class="card tight"><div class="stat-num" style="font-size:17px">已就绪</div><div class="stat-label">网络引擎状态</div></div>
+            <div class="card tight"><div class="stat-num" style="font-size:16px">demo 0.1</div><div class="stat-label">控制面版本</div></div>
+          </div>
+          <div class="grid2">
+            <div class="card"><h3 class="sec">启用真实连接（三步）</h3>
+              <div class="kv"><span>① 关闭演示模式</span><b>连接设置 → 演示模式 关</b></div>
+              <div class="kv"><span>② 填控制面地址</span><b class="mono">https://hs.example.com</b></div>
+              <div class="kv"><span>③ 填 Auth Key</span><b>或留空，首次走浏览器授权</b></div>
+              <div class="kv"><span>保存后</span><b>自动拉起节点，无需手动点连接</b></div>
+              <div class="row" style="margin-top:14px"><span class="btn primary sm">前往连接设置</span><span class="btn sm">查看使用文档</span></div>
+            </div>
+            <div class="card"><h3 class="sec">零安装说明</h3><div class="faint" style="font-size:11.5px;line-height:2">
+              · 不需要本机安装 Tailscale 客户端<br>· 不需要管理员 / root 权限<br>· 不创建 TUN 网卡、不改路由与 DNS<br>· 系统其它程序不在 tailnet 内<br>· 节点身份持久化，重开自动连回</div>
+              <div class="notice neutral" style="margin-top:14px">需要全局 VPN 时，可在设置里把引擎切回 CLI（要求已装官方客户端 + 提权）。</div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b08">
+    <div class="board-head"><h3>08 · 隧道总览 · 连接中 / 等待浏览器授权</h3><span>1200 × 760</span><p>首次未填 Auth Key 时出现。节点异步上线，UI 每 3 秒轮询状态，授权完成自动切到 06。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="overview" data-status="demo"></aside>
+      <main class="main"><header class="topbar" data-crumb="隧道" data-title="总览"></header>
+        <div class="content">
+          <div class="card" style="padding:20px 22px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div class="row" style="gap:16px"><div style="width:44px;height:44px;border-radius:12px;background:var(--warn-soft);display:grid;place-items:center"><span class="dot warn" style="width:14px;height:14px"></span></div>
+              <div><div class="row" style="gap:9px"><span style="font-size:18px;font-weight:600">等待授权</span><span class="status-pill warn">连接中</span></div>
+                <div class="faint" style="margin-top:6px;font-size:11.5px">正在启动进程内节点… · 已等待 00:12 · 自动重试已开启</div></div></div>
+            <div class="row"><span class="btn ghost sm">取消连接</span><span class="btn primary disabled">◌ 连接中…</span></div>
+          </div>
+          <div class="notice warn" style="margin-bottom:14px">
+            <div class="spread" style="gap:12px"><div style="min-width:0"><b style="font-size:12px">首次需要完成授权</b>
+              <div class="mono" style="font-size:10.5px;margin-top:6px;word-break:break-all;color:var(--text)">https://login.tailscale.com/a/6f2c9d1e4b7a</div></div>
+              <span class="btn sm">复制登录链接</span></div>
+            <div style="font-size:11px;margin-top:9px">在系统浏览器打开并完成授权后，节点会自动上线；以后重开 App 不再需要登录。链接由 tsnet 给出，Weft 不中转账号密码。</div>
+          </div>
+          <div class="grid2">
+            <div class="card"><h3 class="sec">连接进度</h3>
+              <div class="kv"><span>① 启动 tsnet 节点</span><span class="tag green">完成</span></div>
+              <div class="kv"><span>② 读取持久化身份</span><span class="tag green">完成</span></div>
+              <div class="kv"><span>③ 注册到控制面</span><span class="tag amber">等待授权</span></div>
+              <div class="kv"><span>④ 获取 100.x 地址</span><span class="tag">待执行</span></div>
+              <div class="kv"><span>⑤ 开启本地代理端口</span><span class="tag">待执行</span></div>
+              <div class="faint" style="font-size:10.5px;margin-top:12px;line-height:1.7">状态由后台 goroutine 推进，不阻塞 UI；5 分钟未上线自动重试（间隔 5 秒），用户点「取消连接」即终止。</div>
+            </div>
+            <div class="card"><h3 class="sec">如果一直卡在这里</h3>
+              <div class="faint" style="font-size:11.5px;line-height:2">· 检查 Base URL 是否为 Headscale 的 server_url 根地址<br>· 确认控制面可从本机访问（证书 / 反向代理）<br>· Headscale 需允许新节点注册或提供 Auth Key<br>· 网络切换会触发自动重连，无需手动操作</div>
+              <div class="row" style="margin-top:14px"><span class="btn sm">查看日志</span><span class="btn sm">改用 Auth Key</span><span class="btn sm">测试连接</span></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b09">
+    <div class="board-head"><h3>09 · 隧道总览 · 连接失败 / 可重试错误</h3><span>1200 × 760</span><p>错误信息必须给出可执行的下一步，不能只显示原始异常。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="overview" data-status="error"></aside>
+      <main class="main"><header class="topbar" data-crumb="隧道" data-title="总览"></header>
+        <div class="content">
+          <div class="card" style="padding:20px 22px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-color:#EFCACA">
+            <div class="row" style="gap:16px"><div style="width:44px;height:44px;border-radius:12px;background:var(--danger-soft);display:grid;place-items:center"><span class="dot err" style="width:14px;height:14px"></span></div>
+              <div><div class="row" style="gap:9px"><span style="font-size:18px;font-weight:600">连接失败</span><span class="tag red">需要检查配置</span></div>
+                <div class="faint" style="margin-top:6px;font-size:11.5px">16:02:41 · 已自动重试 2 次 · 下一次 5 秒后</div></div></div>
+            <div class="row"><span class="btn sm">查看原始日志</span><span class="btn primary">重试连接</span></div>
+          </div>
+          <div class="notice danger" style="margin-bottom:14px"><b>authkey already used</b>（控制面返回 401）<br>这个 Auth Key 已被消费且不可复用。请在 Headscale 重新生成时勾选 <b>Reusable</b>，或在 Weft 里清空 Auth Key 改走浏览器授权。</div>
+          <div class="grid2">
+            <div class="card"><h3 class="sec">常见原因与处置</h3>
+              <table class="tbl"><thead><tr><th>现象</th><th>原因</th><th>处置</th></tr></thead><tbody>
+                <tr><td>authkey already used</td><td>一次性 key 被重复注册</td><td>换 Reusable key</td></tr>
+                <tr><td>control URL unreachable</td><td>Base URL 错误 / 证书不受信</td><td>测试连接 → 改地址</td></tr>
+                <tr><td>node needs approval</td><td>控制面未批准新节点</td><td>设备管理 → 批准</td></tr>
+                <tr><td>DERP 全部不可达</td><td>网络受限 / 出网被拦</td><td>检查代理设置</td></tr>
+                <tr><td>app restarted, no state</td><td>身份目录被清理</td><td>重新授权一次</td></tr>
+              </tbody></table>
+            </div>
+            <div class="card"><h3 class="sec">诊断信息</h3>
+              <div class="kv"><span>控制面</span><b class="mono">https://hs.example.com</b></div>
+              <div class="kv"><span>引擎 / 版本</span><b>tsnet · tailscale.com v1.106.1</b></div>
+              <div class="kv"><span>状态目录</span><b class="mono" style="font-size:10px">~/Library/Application Support/Weft/tsnet-headscale</b></div>
+              <div class="kv"><span>身份是否持久化</span><span class="tag green">是</span></div>
+              <div class="kv"><span>控制面能力探测</span><span class="tag amber">未通过</span></div>
+              <div class="row" style="margin-top:14px"><span class="btn sm">复制诊断信息</span><span class="btn sm">打开连接设置</span></div>
+            </div>
+          </div>
+          <div class="notice neutral" style="margin-top:14px">失败不阻断其它页面：设备管理/ACL 等仍可打开，只是数据来自上次缓存并标注「缓存 · 16:02」。</div>
+        </div>
+      </main>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b10">
+    <div class="board-head"><h3>10 · 断开连接确认弹窗</h3><span>1200 × 760 · 弹窗 430px</span><p>断开会关闭所有本地代理端口，属于影响已打开窗口的操作，必须二次确认。</p></div>
+    <div class="board-frame"><div class="board" style="position:relative"><div class="app">
+      <aside class="side" data-active="overview" data-status="connected"></aside>
+      <main class="main"><header class="topbar" data-crumb="隧道" data-title="总览"></header><div class="content">
+        <div class="card" style="padding:20px 22px;display:flex;align-items:center;justify-content:space-between"><div class="row" style="gap:16px"><div style="width:44px;height:44px;border-radius:12px;background:var(--brand-soft);display:grid;place-items:center"><span class="dot ok" style="width:14px;height:14px"></span></div><div><div style="font-size:18px;font-weight:600">已连接</div><div class="faint" style="margin-top:6px;font-size:11.5px">Headscale · hs.example.com · 运行时长 4 分 32 秒</div></div></div><span class="btn danger">断开连接</span></div>
+      </div></main>
+    </div>
+    <div class="mask"></div>
+    <div class="modal">
+      <div class="modal-head"><div class="spread"><b>确认断开隧道？</b><span class="x">✕</span></div><p>节点会停止，但身份与配置保留，下次连接无需重新授权。</p></div>
+      <div class="modal-body">
+        <div class="notice warn"><b>会影响</b><br>· 当前 3 个应用内窗口将立即显示 502（127.0.0.1 代理端口已关闭）<br>· 系统浏览器里通过「↗」打开的地址同样失效<br>· 其它程序不受影响（本来就不在 tailnet 内）</div>
+        <div class="field" style="margin-top:16px;margin-bottom:0"><label class="field-label">断开原因（可选，写入审计日志）</label><div class="input ph">例如：切换控制面 / 临时关闭</div></div>
+      </div>
+      <div class="modal-foot"><span class="btn">取消</span><span class="btn danger-solid">确认断开</span></div>
+    </div>
+    </div></div>
+    <div class="spec" style="margin-top:14px"><table class="spec-tbl"><tr><th>项</th><th>规格</th></tr>
+      <tr><td>触发</td><td>总览「断开连接」/ 托盘「断开隧道」/ 退出 Weft 时已连接</td></tr>
+      <tr><td>关闭方式</td><td>✕ / Esc / 点遮罩 / 取消；<b>点遮罩不执行断开</b></td></tr>
+      <tr><td>主按钮</td><td>危险实底「确认断开」，点击后按钮进入加载态，完成后 Toast「隧道已断开」</td></tr>
+      <tr><td>副作用</td><td>关闭 tsnet 节点 + 全部 127.0.0.1 监听 + 取消自动重连；写审计日志</td></tr>
+      <tr><td>例外</td><td>演示模式下不弹此窗，仅切换模拟状态</td></tr>
+    </table></div>
+  </div>
+
+  <div class="board-section" id="b11">
+    <div class="board-head"><h3>11 · 应用内窗口 · 正常</h3><span>独立 WebView · 840 × 540</span><p>Wails v3 多窗口，非 iframe。地址是 Go 侧分配的 127.0.0.1 端口，由反向代理转发到 100.x。</p></div>
+    <div class="board-frame"><div class="board" style="position:relative;background:#E9EDF1">
+      <div class="app" style="opacity:.45"><aside class="side" data-active="apps"></aside><main class="main"><header class="topbar" data-crumb="工作台" data-title="应用管理"></header><div class="content"></div></main></div>
+      <div class="win-title">群晖 NAS · Weft　<span class="faint">— 独立窗口，可自由缩放 / 最小化</span></div>
+      <div class="browser">
+        <div class="browser-bar">
+          <div class="win-dots"><i style="background:#E96A5E"></i><i style="background:#E9B84A"></i><i style="background:#5FBF78"></i></div>
+          <div class="icon-btn" style="width:26px;height:26px">‹</div><div class="icon-btn" style="width:26px;height:26px">›</div><div class="icon-btn" style="width:26px;height:26px">↻</div>
+          <div class="addr"><span class="dot ok" style="width:6px;height:6px"></span>http://127.0.0.1:53127 <span style="margin-left:auto;color:var(--faint)">本地代理 → 100.64.0.3:5000</span></div>
+          <div class="icon-btn" style="width:26px;height:26px" title="在系统浏览器打开">↗</div>
+          <div class="icon-btn" style="width:26px;height:26px" title="复制地址">⧉</div>
+        </div>
+        <div class="browser-body">
+          <div class="spread" style="margin-bottom:20px"><div><b style="font-size:16px">DSM 7.2 · 群晖 NAS</b><div class="faint" style="font-size:11px;margin-top:5px">经 Weft 本地代理加载 · 目标 100.64.0.3:5000</div></div><span class="tag green">已连接</span></div>
+          <div class="grid3" style="gap:12px"><div class="card tight"><b style="font-size:12px">存储池 1</b><div class="faint" style="font-size:10.5px;margin-top:6px">已用 3.2 / 8.0 TB</div></div><div class="card tight"><b style="font-size:12px">系统状态</b><div class="faint" style="font-size:10.5px;margin-top:6px">正常 · 运行 42 天</div></div><div class="card tight"><b style="font-size:12px">网络</b><div class="faint" style="font-size:10.5px;margin-top:6px">100.64.0.3</div></div></div>
+          <div class="notice info" style="margin-top:20px">页面内的相对链接、重定向 Location、WebSocket 都由反向代理自动改写；Host 头被重写为原始目标，避免内网应用校验失败。</div>
+        </div>
+      </div>
+    </div></div>
+    <div class="spec" style="margin-top:14px"><table class="spec-tbl">
+      <tr><th>元素</th><th>规格</th><th>元素</th><th>规格</th></tr>
+      <tr><td>窗口标题</td><td>「{应用名} · Weft」</td><td>默认尺寸</td><td class="mono">1100 × 720（设计稿内按 840 × 540 示意）</td></tr>
+      <tr><td>地址栏</td><td>只读、可复制；显示 127.0.0.1:P 与目标映射</td><td>工具栏</td><td>返回 / 前进 / 刷新 / 系统浏览器 / 复制地址</td></tr>
+      <tr><td>返回 / 前进</td><td>WebView 历史栈；无历史时禁用</td><td>系统浏览器</td><td>用同一本地代理地址调系统 open（Weft 退出即失效）</td></tr>
+      <tr><td>HTTPS 目标</td><td>TLS 由 Go 侧发起，浏览器侧仍是 http://127.0.0.1</td><td>自签证书</td><td>默认严格校验；开启「信任自签」才放行，见 12</td></tr>
+      <tr><td>多窗口</td><td>同一应用可开多个窗口，共用同一本地端口</td><td>端口分配</td><td>按目标 URL 复用，断开/退出统一关闭</td></tr>
+    </table></div>
+  </div>
+
+  <div class="board-section" id="b12">
+    <div class="board-head"><h3>12 · 应用内窗口 · 加载 / 502 / 证书警告</h3><span>异常态矩阵</span><p>所有失败都要说明「是节点没连、目标不可达、还是证书问题」，并给可点的恢复动作。</p></div>
+    <div class="board-frame"><div class="board"><div class="matrix" style="flex-wrap:wrap;align-content:flex-start">
+      <div class="dialog wide">
+        <div class="dialog-head"><div><b>加载中</b><p>WebView 已创建，代理正在拨号</p></div><span class="x">✕</span></div>
+        <div class="dialog-body" style="min-height:230px">
+          <div class="skel" style="width:60%;height:16px"></div><div class="skel" style="width:100%"></div><div class="skel" style="width:92%"></div><div class="skel" style="width:70%"></div>
+          <div class="notice neutral" style="margin-top:18px;font-size:11px">正在连接 <b class="mono">100.64.0.3:5000</b>…<br>超过 10 秒未响应将显示 502 错误页。</div>
+        </div>
+        <div class="dialog-foot"><span class="btn sm">取消加载</span><span class="btn sm">刷新</span></div>
+      </div>
+      <div class="dialog wide">
+        <div class="dialog-head"><div><b>502 · 无法连接到目标</b><p>Weft 本地代理返回</p></div><span class="x">✕</span></div>
+        <div class="dialog-body" style="min-height:230px">
+          <div class="notice danger" style="font-size:11px"><b>Weft 无法连接到 100.64.0.3:5000</b><br><span class="mono">dial tcp: no route to host</span></div>
+          <table class="spec-tbl" style="margin-top:14px"><tr><th>可能原因</th><th>处置</th></tr>
+            <tr><td>节点已断开</td><td>回总览连接</td></tr><tr><td>目标离线 / ACL 拒绝</td><td>设备管理查看</td></tr><tr><td>端口或协议写错</td><td>编辑应用地址</td></tr><tr><td>Weft 已退出</td><td>代理端口已关</td></tr></table>
+        </div>
+        <div class="dialog-foot"><span class="btn sm">打开总览</span><span class="btn sm">编辑此应用</span><span class="btn sm primary">重试</span></div>
+      </div>
+      <div class="dialog narrow">
+        <div class="dialog-head"><div><b>⚠ 证书不受信任</b><p>目标使用自签 HTTPS 证书</p></div></div>
+        <div class="dialog-body">
+          <div class="notice warn" style="font-size:11px">目标 <b class="mono">100.64.0.3:5000</b> 的证书链无法验证。继续将跳过 TLS 校验，仅在你确认这是自己的内网服务时启用。</div>
+          <div class="kv" style="margin-top:12px"><span>颁发者</span><b class="mono" style="font-size:10px">self-signed</b></div>
+          <div class="kv"><span>有效期</span><b class="mono" style="font-size:10px">2024-01-01 ~ 2034</b></div>
+          <div class="field" style="margin-top:14px;margin-bottom:0"><div class="row"><span class="chk"></span><span style="font-size:11px">对本站始终信任（写入设置）</span></div></div>
+        </div>
+        <div class="dialog-foot"><span class="btn sm">返回</span><span class="btn sm danger">仍要继续</span></div>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <div class="annot" style="margin-bottom:10px">错误码约定</div>
+        <div class="spec" style="padding:14px;margin:0"><table class="spec-tbl">
+          <tr><th>场景</th><th>展示</th></tr>
+          <tr><td>节点未启动</td><td>不分配端口，打开前 Toast 提示先连接</td></tr>
+          <tr><td>拨号失败</td><td>502 错误页 + 原始错误第二行</td></tr>
+          <tr><td>TLS 校验失败</td><td>证书警告弹窗（默认不跳过）</td></tr>
+          <tr><td>目标返回 4xx/5xx</td><td>原样透传给 WebView，不改写</td></tr>
+          <tr><td>重定向循环</td><td>WebView 内置错误页 + 复制地址</td></tr>
+        </table></div>
+        <p class="help" style="margin-top:10px">默认严格校验证书；「信任自签 HTTPS 证书」开关位于连接设置，默认关闭，开启后对所有 HTTPS 目标生效。</p>
+      </div>
+    </div></div></div>
+  </div>
+
+  <div class="group-title"><h2>03 · 设备管理</h2><span>列表、详情、批量、5 类操作弹窗、空/加载/无结果</span></div>
+
+  <div class="board-section" id="b13">
+    <div class="board-head"><h3>13 · 设备管理 · 列表 / 搜索 / 批量 / 行菜单</h3><span>1200 × 760</span><p>列表按状态着色；「待授权」行需突出，因为它会阻断新设备入网。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="devices"></aside>
+      <main class="main"><header class="topbar" data-crumb="控制面管理" data-title="设备管理"></header>
+        <div class="content">
+          <div class="spread" style="margin-bottom:14px"><div><h3 class="sec" style="font-size:16px;margin-bottom:5px">设备管理</h3><div class="faint" style="font-size:11.5px">数据来源：Headscale REST API · 12 台设备 · 2 台待授权</div></div>
+            <div class="row"><span class="btn">导出 CSV</span><span class="btn">刷新</span></div></div>
+          <div class="tabs"><span class="tab active">设备管理</span><span class="tab">人员管理</span><span class="tab">授权 Key</span><span class="tab">API Key / OAuth</span></div>
+          <div class="card tight row" style="margin-bottom:12px;gap:9px">
+            <div class="input" style="width:270px">🔍 搜索名称 / 用户 / IP / 标签…</div>
+            <div class="select" style="width:130px">全部状态</div><div class="select" style="width:130px">全部用户</div>
+            <span class="tag amber" style="margin-left:auto">2 台待授权</span><span class="faint" style="font-size:11px">已选 0 / 12 条</span>
+          </div>
+          <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+            <table class="tbl"><thead><tr>
+              <th style="width:24px"><span class="chk"></span></th><th style="width:25%">设备</th><th>归属用户</th><th>Tailscale IP</th><th>标签</th><th>最后在线</th><th>状态</th><th style="width:80px"></th>
+            </tr></thead><tbody>
+              <tr><td><span class="chk"></span></td><td><div class="cell-main">boothua-macbook</div><div class="cell-sub">macOS 26.1 · 本设备</div></td><td>boothua</td><td class="mono">100.64.0.12</td><td><span class="tag blue">tag:dev</span></td><td>刚刚</td><td><span class="tag green">在线</span></td><td><span class="btn ghost sm">···</span></td></tr>
+              <tr><td><span class="chk on">✓</span></td><td><div class="cell-main">nas-synology</div><div class="cell-sub">Linux · DSM 7.2</div></td><td>boothua</td><td class="mono">100.64.0.3</td><td><span class="tag blue">tag:server</span></td><td>刚刚</td><td><span class="tag green">在线</span></td><td><span class="btn ghost sm">···</span></td></tr>
+              <tr><td><span class="chk"></span></td><td><div class="cell-main">home-openwrt</div><div class="cell-sub">Linux · 子网路由 192.168.1.0/24</div></td><td>boothua</td><td class="mono">100.64.0.1</td><td><span class="tag blue">tag:server</span></td><td>2 分钟前</td><td><span class="tag green">在线</span></td><td><span class="btn ghost sm">···</span></td></tr>
+              <tr><td><span class="chk"></span></td><td><div class="cell-main">gitlab-runner-01</div><div class="cell-sub">Linux · Docker</div></td><td>ci</td><td class="mono">100.64.0.21</td><td><span class="tag blue">tag:ci</span></td><td>5 分钟前</td><td><span class="tag green">在线</span></td><td><span class="btn ghost sm">···</span></td></tr>
+              <tr style="background:#FEFAF0"><td><span class="chk"></span></td><td><div class="cell-main">new-laptop-pro</div><div class="cell-sub">Windows 11 · 等待批准</div></td><td>family</td><td class="mono">100.64.0.27</td><td>—</td><td>刚刚</td><td><span class="tag amber">待授权</span></td><td><span class="btn sm primary" style="height:24px">批准</span></td></tr>
+              <tr><td><span class="chk"></span></td><td><div class="cell-main">iphone-15pro</div><div class="cell-sub">iOS 26 · 官方客户端</div></td><td>boothua</td><td class="mono">100.64.0.18</td><td>—</td><td>1 小时前</td><td><span class="tag">离线</span></td><td><span class="btn ghost sm">···</span></td></tr>
+            </tbody></table>
+          </div>
+          <div class="spread"><span class="faint" style="font-size:11px">共 12 条 · 每页 10 条 · 已选 1 项</span><div class="row" style="gap:4px"><span class="btn sm disabled">‹</span><span class="btn sm primary" style="background:var(--brand-soft);color:var(--brand);border-color:#BFE6D8">1</span><span class="btn sm">2</span><span class="btn sm">›</span></div></div>
+        </div>
+      </main>
+    </div>
+    <div class="menu" style="position:absolute;right:36px;bottom:96px;z-index:6"><div>查看详情</div><div>重命名…</div><div>编辑标签…</div><div>复制 Tailscale IP</div><hr><div>审批子网路由…</div><hr><div class="danger">删除设备…</div></div>
+    </div></div>
+    <div class="spec" style="margin-top:14px"><table class="spec-tbl"><tr><th>列</th><th>内容</th><th>排序 / 交互</th></tr>
+      <tr><td>设备</td><td>名称 + OS / 备注副行；本设备标「本设备」</td><td>点击名称打开 14 号详情抽屉</td></tr>
+      <tr><td>归属用户 / 标签</td><td>Headscale 命名空间 / tag:xxx 蓝色标签</td><td>筛选下拉</td></tr>
+      <tr><td>Tailscale IP</td><td>等宽字体；可点击复制</td><td>点击复制并 Toast</td></tr>
+      <tr><td>状态</td><td>在线 / 离线 / 待授权 / 已过期</td><td>待授权行浅黄底 + 行内「批准」按钮</td></tr>
+      <tr><td>批量</td><td>复选框 → 批量条（改标签 / 删除 / 取消）</td><td>删除需 15 号确认弹窗</td></tr>
+      <tr><td>行菜单</td><td>详情 / 重命名 / 标签 / 复制 IP / 审批路由 / 删除</td><td>右键或「···」；按能力位禁用</td></tr>
+    </table></div>
+  </div>
+
+  <div class="board-section" id="b14">
+    <div class="board-head"><h3>14 · 设备详情抽屉</h3><span>1200 × 760 · 抽屉 360px</span><p>只读信息 + 操作入口；抽屉内不嵌套第二层弹窗，操作点击后关闭抽屉再打开弹窗。</p></div>
+    <div class="board-frame"><div class="board" style="position:relative"><div class="app">
+      <aside class="side" data-active="devices"></aside>
+      <main class="main"><header class="topbar" data-crumb="控制面管理" data-title="设备管理"></header><div class="content">
+        <div class="card"><h3 class="sec" style="font-size:16px">设备管理</h3><div class="faint" style="font-size:11.5px">数据来源：Headscale REST API · 12 台设备</div></div>
+      </div></main>
+    </div>
+    <div class="mask"></div>
+    <div class="drawer">
+      <div class="spread" style="margin-bottom:18px"><div><b style="font-size:15px">nas-synology</b><div class="faint" style="font-size:10.5px;margin-top:4px">设备详情 · 只读信息来自控制面</div></div><span class="btn ghost sm">✕</span></div>
+      <div class="row" style="gap:10px;margin-bottom:18px"><div class="ico" style="width:38px;height:38px;border-radius:9px;background:#185FA5;color:#fff;display:grid;place-items:center;font-weight:700">N</div><div><span class="tag green">在线</span><span class="tag blue">tag:server</span><div class="faint" style="font-size:10.5px;margin-top:5px">Linux · DSM 7.2</div></div></div>
+      <h4 class="sec">网络</h4>
+      <div class="kv"><span>Tailscale IP</span><b class="mono">100.64.0.3</b></div>
+      <div class="kv"><span>IPv6</span><b class="mono" style="font-size:10px">fd7a:115c:a1e0::3</b></div>
+      <div class="kv"><span>归属用户</span><b>boothua</b></div>
+      <div class="kv"><span>连接方式</span><b>直连 · 延迟 12 ms</b></div>
+      <div class="kv"><span>公告子网路由</span><b class="mono" style="font-size:10px">192.168.1.0/24</b></div>
+      <h4 class="sec" style="margin-top:20px">身份与时间</h4>
+      <div class="kv"><span>节点 ID</span><b class="mono" style="font-size:10px">n2f8c…</b></div>
+      <div class="kv"><span>最后在线</span><b>刚刚</b></div>
+      <div class="kv"><span>节点密钥到期</span><b>2027-05-18</b></div>
+      <div class="kv"><span>创建时间</span><b>2025-11-02</b></div>
+      <div class="notice neutral" style="margin-top:18px;font-size:11px">修改类操作会二次确认；删除设备不可逆，且会立即断开该节点。</div>
+      <div style="margin-top:auto;display:grid;gap:8px;padding-top:16px">
+        <div class="row" style="gap:8px"><span class="btn" style="flex:1">重命名</span><span class="btn" style="flex:1">编辑标签</span></div>
+        <span class="btn" style="width:100%">审批子网路由…</span>
+        <span class="btn danger" style="width:100%">删除设备…</span>
+      </div>
+    </div>
+    </div></div>
+  </div>
+
+  <div class="board-section" id="b15">
+    <div class="board-head"><h3>15 · 设备操作弹窗矩阵（5 类）</h3><span>弹窗 310–350px</span><p>每个弹窗都给出字段、必填、校验、主/次按钮与关闭方式，见 33 号字段规格总表。</p></div>
+    <div class="board-frame"><div class="board"><div class="matrix" style="flex-wrap:wrap;align-content:flex-start">
+      <div class="dialog narrow">
+        <div class="dialog-head"><div><b>重命名设备</b><p>仅修改控制面显示名</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="field" style="margin:0"><label class="field-label">设备名称<span class="req">*</span></label><div class="input focus">nas-synology</div><div class="help">1–63 位，允许字母/数字/连字符；tailnet 内唯一</div></div>
+          <div class="notice neutral" style="margin-top:12px;font-size:10.5px">原名 <b class="mono">nas-synology</b> · 修改不影响 100.x 地址</div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm primary">保存</span></div>
+      </div>
+      <div class="dialog narrow">
+        <div class="dialog-head"><div><b>删除设备</b><p>不可逆操作</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="notice danger" style="font-size:10.5px"><b>确认删除 nas-synology？</b><br>节点会立即从 tailnet 移除，使用该设备的所有连接中断；此操作不可撤销。</div>
+          <div class="field" style="margin-top:12px;margin-bottom:0"><label class="field-label">输入设备名以确认<span class="req">*</span></label><div class="input ph">nas-synology</div><div class="help">名称完全匹配后「删除」按钮才可用</div></div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm danger-solid disabled">删除设备</span></div>
+      </div>
+      <div class="dialog narrow">
+        <div class="dialog-head"><div><b>批准设备入网</b><p>new-laptop-pro · family</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="kv"><span>申请设备</span><b>new-laptop-pro</b></div><div class="kv"><span>操作系统</span><b>Windows 11</b></div><div class="kv"><span>申请用户</span><b>family</b></div><div class="kv"><span>申请时间</span><b>刚刚</b></div>
+          <div class="field" style="margin-top:12px;margin-bottom:0"><label class="field-label">分配标签（可选）</label><div class="select">tag:dev</div></div></div>
+        <div class="dialog-foot"><span class="btn sm">拒绝</span><span class="btn sm primary">批准并分配 IP</span></div>
+      </div>
+      <div class="dialog narrow">
+        <div class="dialog-head"><div><b>编辑标签</b><p>影响 ACL 匹配</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="field" style="margin:0"><label class="field-label">标签<span class="req">*</span></label><div class="input mono focus">tag:server</div><div class="err-txt">标签须以 tag: 开头，且在 tagOwners 中已声明</div></div>
+          <div class="row" style="margin-top:10px;flex-wrap:wrap"><span class="tag blue">tag:server</span><span class="tag">tag:ci</span><span class="tag">tag:dev</span></div>
+          <div class="notice warn" style="margin-top:12px;font-size:10.5px">改标签会立即改变 ACL 命中结果，请确认策略后再保存。</div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm primary">保存标签</span></div>
+      </div>
+      <div class="dialog narrow">
+        <div class="dialog-head"><div><b>审批子网路由</b><p>home-openwrt · 1 条待审</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="row" style="margin-bottom:10px"><span class="chk on">✓</span><b class="mono" style="font-size:11px">192.168.1.0/24</b><span class="tag amber" style="margin-left:auto">待审批</span></div>
+          <div class="row" style="margin-bottom:12px"><span class="chk"></span><b class="mono" style="font-size:11px">10.0.0.0/8</b><span class="tag green" style="margin-left:auto">已启用</span></div>
+          <div class="notice info" style="font-size:10.5px">启用后本节点可经由该设备访问对应子网；不会把子网暴露给整个 tailnet 之外的程序。</div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm primary">启用所选路由</span></div>
+      </div>
+      <div style="flex:1;min-width:220px">
+        <div class="annot" style="margin-bottom:10px">统一规则</div>
+        <div class="spec" style="padding:14px;margin:0"><table class="spec-tbl">
+          <tr><th>项</th><th>规则</th></tr>
+          <tr><td>关闭</td><td>✕ / Esc / 取消 / 点遮罩；删除类不允许点遮罩关闭</td></tr>
+          <tr><td>校验时机</td><td>失焦即校验；提交时全量校验</td></tr>
+          <tr><td>主按钮禁用</td><td>必填为空 / 格式错误 / 提交中</td></tr>
+          <tr><td>成功后</td><td>关闭弹窗 → 刷新列表 → Toast「已保存」→ 写审计</td></tr>
+          <tr><td>失败后</td><td>弹窗保持打开，顶部插入错误条，字段保留</td></tr>
+          <tr><td>能力位</td><td>官方控制面不支持的操作置灰并提示原因</td></tr>
+        </table></div>
+      </div>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b16">
+    <div class="board-head"><h3>16 · 设备管理 · 空 / 加载 / 搜索无结果</h3><span>1200 × 760</span><p>三种非数据态必须与「请求失败」区分开；失败态见 35 号错误页。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="devices"></aside>
+      <main class="main"><header class="topbar" data-crumb="控制面管理" data-title="设备管理"></header>
+        <div class="content">
+          <div class="spread" style="margin-bottom:16px"><div><h3 class="sec" style="font-size:16px;margin-bottom:5px">设备管理</h3><div class="faint" style="font-size:11.5px">三种非数据态示意</div></div><span class="btn">刷新</span></div>
+          <div class="grid3">
+            <div class="card" style="padding:0;overflow:hidden"><div style="padding:11px 14px;border-bottom:1px solid var(--line);font-size:11px;color:var(--muted)">① 空数据（首次接入）</div>
+              <div class="empty"><span class="big">▦</span>tailnet 里还没有设备<br><span class="faint" style="font-size:10.5px">用授权 Key 添加第一台设备</span><br><span class="btn sm primary" style="margin-top:12px">＋ 新建授权 Key</span></div></div>
+            <div class="card" style="padding:0;overflow:hidden"><div style="padding:11px 14px;border-bottom:1px solid var(--line);font-size:11px;color:var(--muted)">② 加载中（≥300ms 才显示）</div>
+              <div style="padding:16px"><div class="skel" style="width:80%;height:13px"></div><div class="skel" style="height:26px"></div><div class="skel" style="height:26px"></div><div class="skel" style="height:26px"></div><div class="skel" style="width:60%;height:26px"></div></div></div>
+            <div class="card" style="padding:0;overflow:hidden"><div style="padding:11px 14px;border-bottom:1px solid var(--line);font-size:11px;color:var(--muted)">③ 搜索无结果</div>
+              <div class="empty"><span class="big">⌕</span>没有匹配「xyz-phone」的设备<br><span class="faint" style="font-size:10.5px">试试清空筛选条件</span><br><span class="btn sm" style="margin-top:12px">清除筛选</span></div></div>
+          </div>
+          <div class="notice info" style="margin-top:18px"><b>状态判定</b>：请求进行中 → 骨架；成功且 0 条 → 空数据（带引导动作）；成功但有筛选且 0 条 → 无结果（带「清除筛选」）；请求异常 → 35 号错误页（带「重试」），三者不可混用。</div>
+          <div class="card tight" style="margin-top:14px"><h4 class="sec">缓存与离线</h4><div class="faint" style="font-size:11.5px;line-height:1.9">控制面不可达时展示上次成功拉取的缓存，标题右侧标「缓存 · 16:02」，并提供「重试」；缓存数据只读，所有写操作按钮置灰。</div></div>
+        </div>
+      </main>
+    </div></div></div>
+  </div>
+
+  <div class="group-title"><h2>04 · 人员管理</h2><span>Headscale 可增删改 / Tailscale 官方只读降级</span></div>
+
+  <div class="board-section" id="b17">
+    <div class="board-head"><h3>17 · 人员管理 · Headscale（完整能力）</h3><span>1200 × 760</span><p>Headscale 的 user 是命名空间，支持创建、重命名、删除；顶部行内创建是高频操作。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="users"></aside>
+      <main class="main"><header class="topbar" data-crumb="控制面管理" data-title="人员管理"></header>
+        <div class="content">
+          <div class="spread" style="margin-bottom:14px"><div><h3 class="sec" style="font-size:16px;margin-bottom:5px">人员管理</h3><div class="faint" style="font-size:11.5px">数据来源：Headscale REST API · 3 个命名空间</div></div><span class="btn">刷新</span></div>
+          <div class="tabs"><span class="tab">设备管理</span><span class="tab active">人员管理</span><span class="tab">授权 Key</span><span class="tab">API Key / OAuth</span></div>
+          <div class="card tight row" style="margin-bottom:14px;gap:9px">
+            <div class="input focus" style="width:220px">ci-runner</div>
+            <span class="btn primary">创建用户</span>
+            <span class="annot">回车或点击创建；名称唯一，创建后进入列表</span>
+            <span class="faint" style="margin-left:auto;font-size:11px">共 3 条</span>
+          </div>
+          <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+            <table class="tbl"><thead><tr><th>用户 / 命名空间</th><th>角色</th><th>设备数</th><th>状态</th><th style="width:180px"></th></tr></thead><tbody>
+              <tr><td><div class="cell-main">boothua</div><div class="cell-sub">所有者 · 主命名空间</div></td><td>所有者</td><td>4</td><td><span class="tag green">正常</span></td><td><span class="btn ghost sm">重命名</span><span class="btn ghost sm">删除</span></td></tr>
+              <tr><td><div class="cell-main">ci</div><div class="cell-sub">CI / 自动化节点</div></td><td>用户</td><td>2</td><td><span class="tag green">正常</span></td><td><span class="btn ghost sm">重命名</span><span class="btn ghost sm">删除</span></td></tr>
+              <tr><td><div class="cell-main">family</div><div class="cell-sub">家庭设备</div></td><td>用户</td><td>1</td><td><span class="tag green">正常</span></td><td><span class="btn ghost sm">重命名</span><span class="btn ghost sm">删除</span></td></tr>
+            </tbody></table>
+          </div>
+          <div class="notice info">两套控制面的语义差异由适配层收敛：Headscale 的 <b>user 是命名空间</b>（可创建/删除），Tailscale 官方的 <b>users 是组织成员</b>（只读 + 角色管理）。UI 依据能力位自动禁用不支持的操作，见 18。</div>
+        </div>
+      </main>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b18">
+    <div class="board-head"><h3>18 · 人员管理 · Tailscale 官方（能力位降级）</h3><span>1200 × 760</span><p>降级不是报错：明确说明「为什么不能改」以及「去哪里能改」。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="users"></aside>
+      <main class="main"><header class="topbar" data-cp="tailscale" data-crumb="控制面管理" data-title="人员管理"></header>
+        <div class="content">
+          <div class="spread" style="margin-bottom:14px"><div><h3 class="sec" style="font-size:16px;margin-bottom:5px">人员管理</h3><div class="faint" style="font-size:11.5px">数据来源：Tailscale 官方 API v2 · 组织成员 4 人</div></div><span class="btn">刷新</span></div>
+          <div class="tabs"><span class="tab">设备管理</span><span class="tab active">人员管理</span><span class="tab">授权 Key</span><span class="tab">API Key / OAuth</span></div>
+          <div class="card tight row" style="margin-bottom:14px;gap:9px;background:var(--surface-2)">
+            <div class="input disabled" style="width:220px">新用户名称（不可用）</div><span class="btn disabled">创建用户</span>
+            <span class="tag">只读</span><span class="faint" style="font-size:11px">Tailscale 官方不支持创建成员，仅可管理角色与审批</span>
+          </div>
+          <div class="notice warn" style="margin-bottom:14px"><b>当前控制面能力受限</b>：成员由组织的身份提供方（SSO）管理，Weft 无法新建/删除/重命名成员。需要增减成员请到 Tailscale Admin Console → Users。可写操作：修改角色、停用/审批设备。</div>
+          <div class="card" style="padding:0;overflow:hidden">
+            <table class="tbl"><thead><tr><th>成员</th><th>邮箱</th><th>角色</th><th>状态</th><th style="width:150px"></th></tr></thead><tbody>
+              <tr><td><div class="cell-main">boothua</div><div class="cell-sub">Owner</div></td><td class="mono">boothua@example.com</td><td>所有者</td><td><span class="tag green">正常</span></td><td><span class="btn sm">修改角色</span></td></tr>
+              <tr><td><div class="cell-main">ci-bot</div><div class="cell-sub">Service account</div></td><td class="mono">ci@example.com</td><td>成员</td><td><span class="tag green">正常</span></td><td><span class="btn sm">修改角色</span></td></tr>
+              <tr><td><div class="cell-main">family-01</div></td><td class="mono">family@example.com</td><td>成员</td><td><span class="tag amber">待审批</span></td><td><span class="btn sm primary" style="height:24px">审批</span></td></tr>
+              <tr><td><div class="cell-main">guest</div></td><td class="mono">guest@example.com</td><td>访客</td><td><span class="tag">已停用</span></td><td><span class="btn sm">修改角色</span></td></tr>
+            </tbody></table>
+          </div>
+          <div class="card tight" style="margin-top:14px"><h4 class="sec">能力位对照</h4>
+            <div class="grid4"><div><span class="tag green">可写</span> <span style="font-size:11px">修改角色</span></div><div><span class="tag green">可写</span> <span style="font-size:11px">设备审批</span></div><div><span class="tag">只读</span> <span style="font-size:11px">成员列表</span></div><div><span class="tag">不可用</span> <span style="font-size:11px">创建 / 删除 / 重命名</span></div></div>
+          </div>
+        </div>
+      </main>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b19">
+    <div class="board-head"><h3>19 · 人员操作弹窗矩阵（4 类）</h3><span>弹窗 350px</span><p>删除用户必须显示影响范围（该命名空间下的设备与 Key 数量）。</p></div>
+    <div class="board-frame"><div class="board"><div class="matrix" style="flex-wrap:wrap;align-content:flex-start">
+      <div class="dialog">
+        <div class="dialog-head"><div><b>新建用户 / 命名空间</b><p>Headscale 专用</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="field"><label class="field-label">名称<span class="req">*</span></label><div class="input focus">ci-runner</div><div class="help">2–63 位字母/数字/连字符/下划线，tailnet 内唯一</div></div>
+          <div class="field" style="margin-bottom:0"><label class="field-label">备注（可选）</label><div class="input ph">用途说明，仅本地保存</div></div>
+          <div class="err-txt" style="margin-top:8px">示例错误态：名称「ci」已存在</div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm primary">创建</span></div>
+      </div>
+      <div class="dialog">
+        <div class="dialog-head"><div><b>删除用户</b><p>影响范围确认 · 不可逆</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="notice danger" style="font-size:10.5px"><b>确认删除命名空间 ci？</b><br>其下 <b>2 台设备</b>、<b>3 个授权 Key</b> 将一并失效，相关节点会立即断网。</div>
+          <table class="spec-tbl" style="margin-top:12px"><tr><th>受影响对象</th><th>数量</th></tr><tr><td>设备</td><td>2</td></tr><tr><td>授权 Key</td><td>3</td></tr><tr><td>ACL 引用</td><td>1 处（group:ci）</td></tr></table>
+          <div class="field" style="margin-top:12px;margin-bottom:0"><label class="field-label">输入名称以确认<span class="req">*</span></label><div class="input ph">ci</div></div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm danger-solid disabled">删除用户</span></div>
+      </div>
+      <div class="dialog">
+        <div class="dialog-head"><div><b>重命名用户</b><p>ACL 中的引用不会自动更新</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="field"><label class="field-label">新名称<span class="req">*</span></label><div class="input focus">ci-automation</div><div class="help">原名称：ci · 需同步修改 ACL 中的 group 引用</div></div>
+          <div class="notice warn" style="font-size:10.5px">若 ACL 策略引用了 <b class="mono">group:ci</b>，重命名后需到 ACL 编辑器手动更新，否则规则失配。</div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm primary">保存并打开 ACL</span></div>
+      </div>
+      <div class="dialog">
+        <div class="dialog-head"><div><b>修改成员角色</b><p>Tailscale 官方专用</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="kv"><span>成员</span><b>ci-bot</b></div><div class="kv"><span>当前角色</span><b>成员</b></div>
+          <div class="field" style="margin-top:12px;margin-bottom:0"><label class="field-label">新角色<span class="req">*</span></label><div class="select">管理员</div><div class="help">可选：所有者 / 管理员 / 成员 / 访客 / 计费</div></div>
+          <div class="notice info" style="margin-top:12px;font-size:10.5px">提升为管理员会授予设备审批与 ACL 写权限，请确认后再保存。</div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm primary">保存角色</span></div>
+      </div>
+      <div style="flex:1;min-width:200px"><div class="annot" style="margin-bottom:10px">能力位降级规则</div>
+        <div class="spec" style="padding:14px;margin:0"><table class="spec-tbl">
+          <tr><th>操作</th><th>Headscale</th><th>官方</th></tr>
+          <tr><td>创建用户</td><td>✅ 弹窗</td><td>置灰 + 说明</td></tr>
+          <tr><td>重命名 / 删除</td><td>✅ 弹窗</td><td>隐藏</td></tr>
+          <tr><td>修改角色</td><td>隐藏</td><td>✅ 弹窗</td></tr>
+          <tr><td>审批设备</td><td>✅</td><td>✅</td></tr>
+          <tr><td>只读列表</td><td>✅</td><td>✅</td></tr>
+        </table></div>
+        <p class="help" style="margin-top:10px">所有降级项必须同时给出原因文案与替代入口，不允许只置灰不解释。</p>
+      </div>
+    </div></div></div>
+  </div>
+
+  <div class="group-title"><h2>05 · 密钥管理</h2><span>授权 Key / API Key / OAuth，含一次性明文展示</span></div>
+
+  <div class="board-section" id="b20">
+    <div class="board-head"><h3>20 · 授权 Key · 列表 / 筛选 / 吊销</h3><span>1200 × 760</span><p>Key 明文永远不落库、不进日志；列表只显示前缀。状态含有效 / 已过期 / 已吊销 / 已用尽。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="keys"></aside>
+      <main class="main"><header class="topbar" data-crumb="控制面管理" data-title="授权 Key"></header>
+        <div class="content">
+          <div class="spread" style="margin-bottom:14px"><div><h3 class="sec" style="font-size:16px;margin-bottom:5px">授权 Key</h3><div class="faint" style="font-size:11.5px">数据来源：Headscale REST API · 4 个 Key</div></div>
+            <div class="row"><span class="btn">刷新</span><span class="btn primary">＋ 新建授权 Key</span></div></div>
+          <div class="tabs"><span class="tab">设备管理</span><span class="tab">人员管理</span><span class="tab active">授权 Key</span><span class="tab">API Key / OAuth</span></div>
+          <div class="card tight row" style="margin-bottom:12px;gap:9px">
+            <div class="input" style="width:260px">🔍 搜索 Key 前缀 / 用户…</div><div class="select" style="width:130px">全部状态</div><div class="select" style="width:130px">全部用户</div>
+            <span class="tag amber" style="margin-left:auto">1 个 7 天内到期</span><span class="faint" style="font-size:11px">4 条记录</span>
+          </div>
+          <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+            <table class="tbl"><thead><tr><th>Key</th><th>归属用户</th><th>类型</th><th>到期</th><th>创建时间</th><th>状态</th><th style="width:80px"></th></tr></thead><tbody>
+              <tr><td><div class="cell-main mono">hskey-auth-k9f3…7d2a</div><div class="cell-sub">已使用 3 次</div></td><td>boothua</td><td>可复用</td><td>2026-12-25</td><td>2026-11-20</td><td><span class="tag green">有效</span></td><td><span class="btn ghost sm">吊销</span></td></tr>
+              <tr><td><div class="cell-main mono">hskey-auth-m2b8…p0q1</div><div class="cell-sub">已使用 0 次</div></td><td>ci</td><td>一次性 <span class="tag amber">临时节点</span></td><td style="color:var(--warn)">2026-11-26</td><td>2026-11-25</td><td><span class="tag amber">即将过期</span></td><td><span class="btn ghost sm">吊销</span></td></tr>
+              <tr><td><div class="cell-main mono">hskey-auth-a1c4…9xzz</div><div class="cell-sub">已使用 1 次</div></td><td>family</td><td>一次性</td><td>2026-11-01</td><td>2026-10-02</td><td><span class="tag">已过期</span></td><td><span class="btn ghost sm disabled">吊销</span></td></tr>
+              <tr><td><div class="cell-main mono">hskey-auth-v7n5…3k8j</div><div class="cell-sub">已使用 8 次</div></td><td>boothua</td><td>可复用</td><td>2027-01-10</td><td>2026-10-11</td><td><span class="tag red">已吊销</span></td><td><span class="btn ghost sm disabled">吊销</span></td></tr>
+            </tbody></table>
+          </div>
+          <div class="notice warn"><b>自用提醒</b>：一次性 Key 只能注册一次。若客户端重启后需要重新注册，请生成时勾选「可复用」，否则会出现 <b class="mono">authkey already used</b>。临时节点（Ephemeral）离线后会被控制面删除。</div>
+          <div class="card tight row" style="margin-top:14px"><span class="faint" style="font-size:11px">状态说明</span><span class="tag green">有效</span><span class="tag amber">即将过期 / 已用尽</span><span class="tag">已过期</span><span class="tag red">已吊销</span></div>
+        </div>
+      </main>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b21">
+    <div class="board-head"><h3>21 · 新建授权 Key 抽屉（表单全字段）</h3><span>1200 × 760 · 抽屉 360px</span><p>唯一会返回明文 Key 的表单；生成成功后抽屉就地切换到 22 号结果态。</p></div>
+    <div class="board-frame"><div class="board" style="position:relative"><div class="app">
+      <aside class="side" data-active="keys"></aside>
+      <main class="main"><header class="topbar" data-crumb="控制面管理" data-title="授权 Key"></header><div class="content"><div class="card"><h3 class="sec" style="font-size:16px">授权 Key</h3><div class="faint" style="font-size:11.5px">点击右上角「＋ 新建授权 Key」打开抽屉</div></div></div></main>
+    </div>
+    <div class="mask"></div>
+    <div class="drawer">
+      <div class="spread" style="margin-bottom:20px"><div><b style="font-size:14px">新建授权 Key</b><div class="faint" style="font-size:10.5px;margin-top:4px">用于把新设备注册进 tailnet</div></div><span class="btn ghost sm">✕</span></div>
+      <div class="field"><label class="field-label">归属用户 / 命名空间<span class="req">*</span></label><div class="select">boothua</div><div class="help">没有可选用户时显示「(请先创建用户)」并禁用生成按钮</div></div>
+      <div class="field"><label class="field-label">有效期<span class="req">*</span></label><div class="select">90 天</div><div class="help">可选：1 / 7 / 30 / 90 / 180 天</div></div>
+      <div class="spread" style="margin-bottom:12px"><div><b style="font-size:12px">可复用 Reusable</b><div class="faint" style="font-size:10.5px;margin-top:3px">允许多台设备使用同一 Key；默认开启</div></div><span class="switch on"></span></div>
+      <div class="spread" style="margin-bottom:18px"><div><b style="font-size:12px">临时节点 Ephemeral</b><div class="faint" style="font-size:10.5px;margin-top:3px">离线后自动删除设备；默认关闭</div></div><span class="switch"></span></div>
+      <div class="notice warn" style="font-size:10.5px;margin-bottom:18px">生成的 Key <b>仅显示一次</b>，关闭后无法再查看明文。请立即复制并保存到密码管理器。</div>
+      <div style="margin-top:auto"><span class="btn primary" style="width:100%;height:38px">生成 Key</span><span class="btn" style="width:100%;margin-top:8px">取消</span></div>
+    </div>
+    </div></div>
+    <div class="spec" style="margin-top:14px"><table class="spec-tbl">
+      <tr><th>字段</th><th>控件</th><th>必填</th><th>默认</th><th>校验 / 说明</th></tr>
+      <tr><td>归属用户</td><td>下拉单选</td><td>是</td><td>列表第一个</td><td>无用户时禁用提交并提示先创建</td></tr>
+      <tr><td>有效期</td><td>下拉单选（天）</td><td>是</td><td>90 天</td><td>1 / 7 / 30 / 90 / 180</td></tr>
+      <tr><td>可复用</td><td>开关</td><td>否</td><td>开</td><td>关 = 一次性，重启重连会报 already used</td></tr>
+      <tr><td>临时节点</td><td>开关</td><td>否</td><td>关</td><td>开 = 离线即删设备</td></tr>
+      <tr><td>提交</td><td>主按钮（全宽）</td><td>—</td><td>—</td><td>提交中禁用并显示「生成中…」；失败保留表单</td></tr>
+    </table></div>
+  </div>
+
+  <div class="board-section" id="b22">
+    <div class="board-head"><h3>22 · 一次性 Key 展示 / 吊销确认</h3><span>弹窗矩阵</span><p>明文结果页必须阻断「点遮罩误关」；吊销是不可逆操作，需明确后果。</p></div>
+    <div class="board-frame"><div class="board"><div class="matrix">
+      <div class="dialog wide">
+        <div class="dialog-head"><div><b>Key 已生成 · 仅显示一次</b><p>请立即复制保存，关闭后无法再查看</p></div></div>
+        <div class="dialog-body">
+          <div class="notice warn" style="font-size:10.5px">此明文不会写入本地数据库、日志或前端事件；Weft 只在内存中保留到本次弹窗关闭。</div>
+          <label class="field-label" style="margin-top:14px">生成的 Key</label>
+          <div class="area mono" style="height:74px;word-break:break-all;background:var(--surface-2)">hskey-auth-k9f3c81d7e2a4b6f905c3d1e8a7b2f4c6…7d2a</div>
+          <div class="kv"><span>归属用户</span><b>boothua</b></div><div class="kv"><span>有效期</span><b>90 天 · 2026-12-25</b></div>
+          <div class="kv"><span>类型</span><b>可复用 · 非临时节点</b></div>
+          <div class="row" style="margin-top:12px"><span class="btn sm">复制 Key</span><span class="btn sm">复制并前往设备页</span></div>
+        </div>
+        <div class="dialog-foot"><span class="btn sm primary">我已保存，关闭</span></div>
+      </div>
+      <div class="dialog">
+        <div class="dialog-head"><div><b>吊销授权 Key</b><p>不可逆操作</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="notice danger" style="font-size:10.5px"><b>确认吊销 hskey-auth-k9f3…7d2a？</b><br>已使用该 Key 注册的设备<b>不会被踢下线</b>，但任何新设备都无法再用它注册。</div>
+          <div class="kv" style="margin-top:12px"><span>归属用户</span><b>boothua</b></div><div class="kv"><span>已使用</span><b>3 次</b></div><div class="kv"><span>到期</span><b>2026-12-25</b></div>
+          <div class="field" style="margin-top:12px;margin-bottom:0"><label class="field-label">吊销原因（可选，写入审计）</label><div class="input ph">例如：疑似泄露</div></div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm danger-solid">确认吊销</span></div>
+      </div>
+      <div style="flex:1;min-width:190px"><div class="annot" style="margin-bottom:10px">密钥安全约定</div>
+        <div class="spec" style="padding:14px;margin:0"><table class="spec-tbl">
+          <tr><th>项</th><th>规则</th></tr>
+          <tr><td>明文展示</td><td>只在结果弹窗；不允许点遮罩关闭，必须点「我已保存」</td></tr>
+          <tr><td>复制</td><td>写入剪贴板后 Toast「已复制」；失败提示手动选中</td></tr>
+          <tr><td>列表</td><td>只显示前缀 + 后缀，禁止完整明文</td></tr>
+          <tr><td>日志</td><td>审计只记 Key ID 前缀，不记明文</td></tr>
+          <tr><td>本地库</td><td>不存任何 Key 明文；Auth Key 存系统钥匙串</td></tr>
+          <tr><td>吊销后</td><td>行状态改「已吊销」，吊销按钮禁用</td></tr>
+        </table></div>
+      </div>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b23">
+    <div class="board-head"><h3>23 · API Key / OAuth · 列表（两种控制面）</h3><span>1200 × 760</span><p>Headscale 是 API Key；官方是 OAuth Client / API access token，语义不同但共用一页。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="api"></aside>
+      <main class="main"><header class="topbar" data-crumb="控制面管理" data-title="API Key"></header>
+        <div class="content">
+          <div class="spread" style="margin-bottom:14px"><div><h3 class="sec" style="font-size:16px;margin-bottom:5px">API Key / OAuth</h3><div class="faint" style="font-size:11.5px">数据来源：Headscale REST API · 2 个凭证</div></div>
+            <div class="row"><span class="btn">刷新</span><span class="btn primary">＋ 新建凭证</span></div></div>
+          <div class="tabs"><span class="tab">设备管理</span><span class="tab">人员管理</span><span class="tab">授权 Key</span><span class="tab active">API Key / OAuth</span></div>
+          <div class="notice info" style="margin-bottom:14px">凭证只写系统钥匙串（macOS Keychain / Windows Credential Manager / libsecret），不进本地 SQLite；Tailscale 官方 OAuth access token 1 小时过期，客户端到期前 60 秒自动刷新。</div>
+          <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+            <table class="tbl"><thead><tr><th>凭证</th><th>类型</th><th>到期</th><th>创建时间</th><th>状态</th><th style="width:80px"></th></tr></thead><tbody>
+              <tr><td><div class="cell-main mono">hskey-api-x7c2…</div><div class="cell-sub">Weft 桌面端</div></td><td>Headscale API Key</td><td>2027-02-18</td><td>2026-11-18</td><td><span class="tag green">有效</span></td><td><span class="btn ghost sm">撤销</span></td></tr>
+              <tr><td><div class="cell-main mono">hskey-api-q9m1…</div><div class="cell-sub">临时脚本</div></td><td>Headscale API Key</td><td style="color:var(--warn)">2026-12-01</td><td>2026-09-01</td><td><span class="tag amber">即将过期</span></td><td><span class="btn ghost sm">撤销</span></td></tr>
+            </tbody></table>
+          </div>
+          <div class="grid2">
+            <div class="card tight"><h4 class="sec">切到 Tailscale 官方时</h4><div class="faint" style="font-size:11px;line-height:1.9">列表列改为：OAuth Client / Scopes / 创建时间 / 状态；不提供「新建 API Key」，改为「配置 OAuth Client」（Client ID + Secret + Scopes）。API access token 1–90 天，需定期轮换。</div></div>
+            <div class="card tight"><h4 class="sec">能力位</h4><div class="kv"><span>API Key CRUD</span><span class="tag green">Headscale 支持</span></div><div class="kv"><span>OAuth Client 管理</span><span class="tag">官方只读 / 配置</span></div><div class="kv"><span>ACL 写入</span><span class="tag green">支持（带 ETag）</span></div></div>
+          </div>
+          <div class="notice warn" style="margin-top:14px">撤销当前正在使用的凭证会立即导致所有管理页失效；Weft 会保留隧道连接，并在顶部提示「凭证已失效，请重新配置」。</div>
+        </div>
+      </main>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b24">
+    <div class="board-head"><h3>24 · 凭证配置弹窗矩阵（3 类）</h3><span>弹窗 350px</span><p>所有凭证输入框默认 type=password，提供显示/隐藏切换；保存后立即写钥匙串。</p></div>
+    <div class="board-frame"><div class="board"><div class="matrix" style="flex-wrap:wrap;align-content:flex-start">
+      <div class="dialog">
+        <div class="dialog-head"><div><b>新建 API Key</b><p>Headscale 专用</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="field"><label class="field-label">有效期<span class="req">*</span></label><div class="select">90 天</div><div class="help">Headscale 默认 90 天，最长由服务端限制</div></div>
+          <div class="field" style="margin-bottom:0"><label class="field-label">备注（可选）</label><div class="input ph">例如：Weft 桌面端</div></div>
+          <div class="notice warn" style="margin-top:12px;font-size:10.5px">生成后明文只显示一次，规则同 22 号弹窗。</div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm primary">生成</span></div>
+      </div>
+      <div class="dialog wide">
+        <div class="dialog-head"><div><b>配置 OAuth Client</b><p>Tailscale 官方 · api.tailscale.com</p></div><span class="x">✕</span></div>
+        <div class="dialog-body">
+          <div class="field"><label class="field-label">OAuth Client ID<span class="req">*</span></label><div class="input mono focus">oc_xxxxxxxxxxxx</div></div>
+          <div class="field"><label class="field-label">Client Secret<span class="req">*</span></label><div class="input mono">•••••••••••••••••••• <span style="margin-left:auto;font-size:10px;color:var(--brand)">显示</span></div><div class="help">只写系统钥匙串，前端事件与日志不出现明文</div></div>
+          <div class="field" style="margin-bottom:0"><label class="field-label">Scopes<span class="req">*</span></label>
+            <div class="row" style="flex-wrap:wrap;gap:8px"><span class="tag green">devices:core</span><span class="tag green">auth_keys</span><span class="tag green">acl</span><span class="tag">dns</span></div>
+            <div class="help">按需最小授权；access token 1 小时过期，自动刷新</div></div>
+        </div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm">测试连接</span><span class="btn sm primary">保存</span></div>
+      </div>
+      <div class="dialog narrow">
+        <div class="dialog-head"><div><b>撤销凭证</b><p>不可逆 · 影响管理功能</p></div></div>
+        <div class="dialog-body"><div class="notice danger" style="font-size:10.5px"><b>确认撤销 hskey-api-x7c2…？</b><br>所有依赖此凭证的管理页会立即变为只读/失败；<b>隧道不受影响</b>。</div>
+          <div class="kv" style="margin-top:12px"><span>类型</span><b>Headscale API Key</b></div><div class="kv"><span>到期</span><b>2027-02-18</b></div>
+          <div class="field" style="margin-top:12px;margin-bottom:0"><label class="field-label">撤销原因（可选）</label><div class="input ph">例如：轮换凭证</div></div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm danger-solid">确认撤销</span></div>
+      </div>
+      <div style="flex:1;min-width:180px"><div class="annot" style="margin-bottom:10px">凭证处理红线</div>
+        <div class="spec" style="padding:14px;margin:0"><table class="spec-tbl">
+          <tr><th>项</th><th>规则</th></tr>
+          <tr><td>输入</td><td>password 类型 + 显示切换</td></tr>
+          <tr><td>存储</td><td>系统钥匙串；SQLite 只存「已配置」标记</td></tr>
+          <tr><td>回显</td><td>编辑时输入框留空 = 不修改，占位提示「留空表示不修改」</td></tr>
+          <tr><td>日志</td><td>审计只记「更新凭证 · 类型」，不记值</td></tr>
+          <tr><td>失败</td><td>错误条显示服务端原文，不含 secret</td></tr>
+        </table></div>
+      </div>
+    </div></div></div>
+  </div>
+
+  <div class="group-title"><h2>06 · ACL 策略</h2><span>编辑器、校验、并发冲突、版本历史</span></div>
+
+  <div class="board-section" id="b25">
+    <div class="board-head"><h3>25 · ACL 编辑器 · 正常 / 校验通过</h3><span>1200 × 760</span><p>保存一律带 ETag 乐观锁；编辑器必须显示当前 ETag 与「保存会立即影响整张 tailnet」。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="acl"></aside>
+      <main class="main"><header class="topbar" data-crumb="控制面管理" data-title="ACL 策略"></header>
+        <div class="content">
+          <div class="spread" style="margin-bottom:14px"><div><h3 class="sec" style="font-size:16px;margin-bottom:5px">ACL 策略</h3><div class="faint mono" style="font-size:11px">ETag "v13-8f2c" · 保存时自动携带 If-Match，避免覆盖他人修改</div></div>
+            <div class="row"><span class="btn">历史版本</span><span class="btn">校验</span><span class="btn primary">保存并应用</span></div></div>
+          <div style="display:grid;grid-template-columns:1fr 250px;gap:14px">
+            <div><div class="code" style="height:470px;overflow:hidden">
+              <div class="code-line"><span class="ln">1</span><span class="src"><span class="p">{</span></span></div>
+              <div class="code-line"><span class="ln">2</span><span class="src">  <span class="k">"groups"</span><span class="p">: {</span></span></div>
+              <div class="code-line"><span class="ln">3</span><span class="src">    <span class="k">"group:admins"</span><span class="p">: [</span><span class="s">"boothua"</span><span class="p">],</span></span></div>
+              <div class="code-line"><span class="ln">4</span><span class="src">    <span class="k">"group:devs"</span><span class="p">: [</span><span class="s">"ci"</span><span class="p">, </span><span class="s">"family"</span><span class="p">]</span></span></div>
+              <div class="code-line"><span class="ln">5</span><span class="src">  <span class="p">},</span></span></div>
+              <div class="code-line"><span class="ln">6</span><span class="src">  <span class="k">"tagOwners"</span><span class="p">: {</span></span></div>
+              <div class="code-line"><span class="ln">7</span><span class="src">    <span class="k">"tag:server"</span><span class="p">: [</span><span class="s">"group:admins"</span><span class="p">]</span></span></div>
+              <div class="code-line"><span class="ln">8</span><span class="src">  <span class="p">},</span></span></div>
+              <div class="code-line"><span class="ln">9</span><span class="src">  <span class="k">"acls"</span><span class="p">: [</span></span></div>
+              <div class="code-line"><span class="ln">10</span><span class="src">    <span class="p">{</span><span class="k">"action"</span><span class="p">: </span><span class="s">"accept"</span><span class="p">, </span><span class="k">"src"</span><span class="p">: [</span><span class="s">"group:admins"</span><span class="p">], </span><span class="k">"dst"</span><span class="p">: [</span><span class="s">"*:*"</span><span class="p">]}</span></span></div>
+              <div class="code-line"><span class="ln">11</span><span class="src">  <span class="p">]</span></span></div>
+              <div class="code-line"><span class="ln">12</span><span class="src"><span class="p">}</span></span></div>
+              </div>
+              <div class="notice ok" style="margin-top:10px">✓ JSON 语法通过。服务端仍会做一次 HuJSON 与语义校验。</div>
+            </div>
+            <div>
+              <div class="card tight" style="margin-bottom:12px"><h4 class="sec">策略说明</h4><div class="faint" style="font-size:11px;line-height:1.9">groups 定义用户组<br>tagOwners 定义标签归属<br>acls 定义访问规则<br>grants / ssh / nodeAttrs 以服务端支持为准</div></div>
+              <div class="card tight" style="margin-bottom:12px"><h4 class="sec">能力位</h4><div class="kv"><span>控制面</span><b>Headscale</b></div><div class="kv"><span>策略写入</span><span class="tag green">支持</span></div><div class="kv"><span>并发保护</span><b>ETag / If-Match</b></div><div class="kv"><span>版本历史</span><b>本地 12 版</b></div></div>
+              <div class="notice warn" style="font-size:10.5px">保存会立即影响整张 tailnet。建议先在设备管理确认目标设备，再小步修改规则。</div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b26">
+    <div class="board-head"><h3>26 · ACL · 语法错误 / ETag 冲突 / 历史版本 / 恢复</h3><span>异常态与弹窗矩阵</span><p>HuJSON 允许 // 注释，纯 JSON 校验会误报，错误文案必须说明「可交给服务端校验」。</p></div>
+    <div class="board-frame"><div class="board"><div class="matrix" style="flex-wrap:wrap;align-content:flex-start">
+      <div class="dialog wide">
+        <div class="dialog-head"><div><b>语法错误（编辑器内）</b><p>校验按钮触发，不阻断编辑</p></div></div>
+        <div class="dialog-body"><div class="code" style="font-size:10px">
+          <div class="code-line"><span class="ln">9</span><span class="src">  "acls": [</span></div>
+          <div class="code-line bad"><span class="ln">10</span><span class="src">    {"action": "accept", "src": ["group:admins"],</span></div>
+          <div class="code-line"><span class="ln">11</span><span class="src">  ]</span></div></div>
+          <div class="notice danger" style="margin-top:10px;font-size:10.5px"><b>语法错误</b>：第 10 行缺少闭合括号。若使用了 <b class="mono">//</b> 注释（HuJSON），前端校验会失败，可交给服务端校验。</div>
+          <div class="row" style="margin-top:10px"><span class="btn sm">定位到 10 行</span><span class="btn sm">仍要保存（服务端校验）</span></div></div>
+        <div class="dialog-foot"><span class="btn sm primary disabled">保存并应用</span></div>
+      </div>
+      <div class="dialog">
+        <div class="dialog-head"><div><b>⚠ 策略已被他人修改</b><p>ETag 不匹配 · If-Match 失败</p></div></div>
+        <div class="dialog-body"><div class="notice warn" style="font-size:10.5px">当前策略在读取后被 <b>boothua（另一台设备）</b> 更新为 v14。直接覆盖会丢失对方的改动。</div>
+          <table class="spec-tbl" style="margin-top:12px"><tr><th>版本</th><th>时间</th><th>修改者</th></tr><tr><td>v13（你的基础）</td><td>11:20</td><td>你</td></tr><tr><td>v14（服务端最新）</td><td>11:26</td><td>boothua</td></tr></table>
+          <div class="faint" style="font-size:10.5px;margin-top:10px">你的未保存改动会保留在编辑器，不会丢失。</div></div>
+        <div class="dialog-foot"><span class="btn sm">放弃我的改动</span><span class="btn sm">查看差异</span><span class="btn sm danger-solid">强制覆盖</span></div>
+      </div>
+      <div class="dialog wide">
+        <div class="dialog-head"><div><b>策略历史版本</b><p>本地保存 · 12 个版本</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="row" style="gap:8px;margin-bottom:10px"><div class="input" style="flex:1;font-size:11px">🔍 搜索版本 / 时间…</div><span class="btn sm">对比选中</span></div>
+          <table class="spec-tbl"><tr><th></th><th>版本</th><th>时间</th><th>ETag</th><th></th></tr>
+            <tr><td><span class="chk on">✓</span></td><td>v13</td><td>11:20</td><td class="mono">8f2c</td><td><span class="btn sm">恢复</span></td></tr>
+            <tr><td><span class="chk"></span></td><td>v12</td><td>09:41</td><td class="mono">a71d</td><td><span class="btn sm">恢复</span></td></tr>
+            <tr><td><span class="chk"></span></td><td>v11</td><td>昨天</td><td class="mono">c03b</td><td><span class="btn sm">恢复</span></td></tr></table>
+          <div class="code" style="margin-top:12px;font-size:10px"><div class="code-line"><span class="ln">-</span><span class="src" style="color:var(--danger)">- "dst": ["*:*"]</span></div><div class="code-line"><span class="ln">+</span><span class="src" style="color:var(--brand)">+ "dst": ["tag:server:22,80,443"]</span></div></div></div>
+        <div class="dialog-foot"><span class="btn sm">关闭</span><span class="btn sm primary">恢复所选版本</span></div>
+      </div>
+      <div class="dialog narrow">
+        <div class="dialog-head"><div><b>恢复历史版本</b><p>v13 · 11:20</p></div></div>
+        <div class="dialog-body"><div class="notice warn" style="font-size:10.5px"><b>确认恢复 v13？</b><br>恢复会以当前 ETag 提交一次新保存，等同于修改整张 tailnet 的 ACL，并生成一个新历史版本。</div>
+          <div class="kv" style="margin-top:12px"><span>目标版本</span><b>v13</b></div><div class="kv"><span>当前版本</span><b>v14</b></div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm primary">确认恢复</span></div>
+      </div>
+      <div style="flex:1;min-width:200px"><div class="annot" style="margin-bottom:10px">ACL 保存流程</div>
+        <div class="spec" style="padding:14px;margin:0"><table class="spec-tbl">
+          <tr><th>步骤</th><th>行为</th></tr>
+          <tr><td>1 读取</td><td>GET 策略 + ETag，缓存到编辑器</td></tr>
+          <tr><td>2 编辑</td><td>本地校验（JSON），HuJSON 注释交给服务端</td></tr>
+          <tr><td>3 保存</td><td>重新取 ETag → PUT + If-Match</td></tr>
+          <tr><td>4 冲突</td><td>弹冲突窗，保留用户草稿</td></tr>
+          <tr><td>5 成功</td><td>写本地历史 + 审计 + Toast</td></tr>
+        </table></div>
+        <p class="help" style="margin-top:10px">禁止静默覆盖；「强制覆盖」用危险实底按钮并再次确认。</p>
+      </div>
+    </div></div></div>
+  </div>
+
+  <div class="group-title"><h2>07 · 应用管理</h2><span>书签卡片、表单、删除、打开失败</span></div>
+
+  <div class="board-section" id="b27">
+    <div class="board-head"><h3>27 · 应用管理 · 卡片列表 / 搜索 / 分组</h3><span>1200 × 760</span><p>卡片显示原始 100.x 地址，实际打开由 Go 侧映射为 127.0.0.1 端口（见 11）。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="apps"></aside>
+      <main class="main"><header class="topbar" data-crumb="工作台" data-title="应用管理"></header>
+        <div class="content">
+          <div class="spread" style="margin-bottom:16px"><div><h3 class="sec" style="font-size:16px;margin-bottom:5px">应用管理</h3><div class="faint" style="font-size:11.5px">共 6 个内网应用 · 书签保存在本地 SQLite</div></div><span class="btn primary">＋ 添加应用</span></div>
+          <div class="card tight row" style="margin-bottom:14px;gap:10px"><div class="input" style="width:260px">🔍 搜索名称 / 地址 / 分组…</div><div class="select" style="width:130px">全部分组</div>
+            <span class="faint" style="margin-left:auto;font-size:11px">「应用内打开」直接加载 tailnet 地址；系统接管后 WebView 无需代理</span></div>
+          <div class="grid3" style="margin-bottom:12px">
+            <div class="appcard"><div class="row"><div class="ico" style="background:#185FA5">N</div><div style="min-width:0"><b>群晖 NAS</b><div class="url mono">http://100.64.0.3:5000</div></div><span class="tag" style="margin-left:auto">常用</span></div><div class="row" style="gap:6px"><span class="btn sm primary" style="flex:1">应用内打开</span><span class="btn sm ghost">↗</span><span class="btn sm ghost">✎</span><span class="btn sm ghost">✕</span></div></div>
+            <div class="appcard"><div class="row"><div class="ico" style="background:#0F6E56">O</div><div style="min-width:0"><b>OpenWrt</b><div class="url mono">http://100.64.0.1</div></div><span class="tag" style="margin-left:auto">基础设施</span></div><div class="row" style="gap:6px"><span class="btn sm primary" style="flex:1">应用内打开</span><span class="btn sm ghost">↗</span><span class="btn sm ghost">✎</span><span class="btn sm ghost">✕</span></div></div>
+            <div class="appcard"><div class="row"><div class="ico" style="background:#378ADD">H</div><div style="min-width:0"><b>Home Assistant</b><div class="url mono">http://100.64.0.3:8123</div></div><span class="tag" style="margin-left:auto">常用</span></div><div class="row" style="gap:6px"><span class="btn sm primary" style="flex:1">应用内打开</span><span class="btn sm ghost">↗</span><span class="btn sm ghost">✎</span><span class="btn sm ghost">✕</span></div></div>
+            <div class="appcard"><div class="row"><div class="ico" style="background:#D85A30">G</div><div style="min-width:0"><b>GitLab</b><div class="url mono">http://100.64.0.21:8080</div></div><span class="tag" style="margin-left:auto">开发</span></div><div class="row" style="gap:6px"><span class="btn sm primary" style="flex:1">应用内打开</span><span class="btn sm ghost">↗</span><span class="btn sm ghost">✎</span><span class="btn sm ghost">✕</span></div></div>
+            <div class="appcard"><div class="row"><div class="ico" style="background:#BA7517">Gr</div><div style="min-width:0"><b>Grafana</b><div class="url mono">http://100.64.0.9:3000</div></div><span class="tag" style="margin-left:auto">监控</span></div><div class="row" style="gap:6px"><span class="btn sm primary" style="flex:1">应用内打开</span><span class="btn sm ghost">↗</span><span class="btn sm ghost">✎</span><span class="btn sm ghost">✕</span></div></div>
+            <div class="appcard" style="border-style:dashed;background:var(--surface-2);align-items:center;justify-content:center;min-height:120px;cursor:default"><div style="font-size:22px;color:var(--faint)">＋</div><b>添加应用</b><div class="faint" style="font-size:10.5px">名称 · 地址 · 分组 · 图标</div></div>
+          </div>
+          <div class="notice info">演示模式下内嵌节点未启动，100.x 不可达。关闭演示模式并连接后即可正常访问内网 Web 应用。</div>
+        </div>
+      </main>
+    </div></div></div>
+    <div class="spec" style="margin-top:14px"><table class="spec-tbl"><tr><th>卡片元素</th><th>规格</th><th>操作</th></tr>
+      <tr><td>图标</td><td>36×36 圆角 9px，取名称前 2 字，颜色可选 6 色</td><td>—</td></tr>
+      <tr><td>名称 / 地址</td><td>名称 12.5px 加粗；地址等宽 10.5px，超长省略</td><td>点击名称 = 应用内打开</td></tr>
+      <tr><td>分组标签</td><td>右上角，筛选下拉联动</td><td>—</td></tr>
+      <tr><td>应用内打开</td><td>主按钮，占满剩余宽度</td><td>分配端口 → 新开 WebView</td></tr>
+      <tr><td>↗ / ✎ / ✕</td><td>系统浏览器 / 编辑抽屉 / 删除确认</td><td>删除需 28 号确认</td></tr>
+      <tr><td>空态</td><td>见 16 号「空数据」样式，引导「＋ 添加应用」</td><td>—</td></tr>
+    </table></div>
+  </div>
+
+  <div class="board-section" id="b28">
+    <div class="board-head"><h3>28 · 应用表单 / 删除确认 / 打开失败</h3><span>抽屉 360px + 弹窗矩阵</span><p>地址校验要明确：支持 100.x IP、MagicDNS 名称、自定义域名，必须带 http(s)://。</p></div>
+    <div class="board-frame"><div class="board" style="position:relative"><div class="app">
+      <aside class="side" data-active="apps"></aside>
+      <main class="main"><header class="topbar" data-crumb="工作台" data-title="应用管理"></header><div class="content"><div class="card"><h3 class="sec" style="font-size:16px">应用管理</h3><div class="faint" style="font-size:11.5px">共 6 个内网应用</div></div></div></main>
+    </div>
+    <div class="mask"></div>
+    <div class="drawer">
+      <div class="spread" style="margin-bottom:20px"><div><b style="font-size:14px">添加应用</b><div class="faint" style="font-size:10.5px;margin-top:4px">编辑态标题改为「编辑应用」</div></div><span class="btn ghost sm">✕</span></div>
+      <div class="field"><label class="field-label">应用名称<span class="req">*</span></label><div class="input focus">群晖 NAS</div><div class="help">1–40 字，窗口标题会带上「· Weft」</div></div>
+      <div class="field"><label class="field-label">访问地址<span class="req">*</span></label><div class="input mono focus">http://100.64.0.3:5000</div><div class="help">支持 100.x IP、MagicDNS 名称、自定义域名；需 http(s):// 前缀</div></div>
+      <div class="field"><label class="field-label">错误示例（URL 不合法）</label><div class="input mono err">100.64.0.3:5000</div><div class="err-txt">地址格式不正确，需以 http:// 或 https:// 开头</div></div>
+      <div class="field"><label class="field-label">分组</label><div class="input">常用</div><div class="help">自由文本；相同分组在筛选下拉里归为一类</div></div>
+      <div class="field"><label class="field-label">图标颜色</label><div class="row" style="gap:7px"><span class="sw" style="width:26px;height:26px;border-radius:7px;background:#0F6E56;box-shadow:0 0 0 2px var(--brand)"></span><span class="sw" style="width:26px;height:26px;border-radius:7px;background:#185FA5"></span><span class="sw" style="width:26px;height:26px;border-radius:7px;background:#378ADD"></span><span class="sw" style="width:26px;height:26px;border-radius:7px;background:#D85A30"></span><span class="sw" style="width:26px;height:26px;border-radius:7px;background:#BA7517"></span><span class="sw" style="width:26px;height:26px;border-radius:7px;background:#534AB7"></span></div></div>
+      <div class="notice info" style="font-size:10.5px">打开时 Go 侧自动分配一个 127.0.0.1 端口做反向代理；「↗ 系统浏览器」同样走该代理，仅 Weft 运行期间有效。</div>
+      <div style="margin-top:auto"><span class="btn primary" style="width:100%;height:38px">保存</span><span class="btn" style="width:100%;margin-top:8px">取消</span></div>
+    </div>
+    <div class="toast err" style="position:absolute;right:24px;bottom:22px;z-index:6;width:330px"><span class="dot err"></span>打开失败：内嵌节点尚未启动，请先在「隧道总览」点击连接</div>
+    </div></div>
+    <div class="spec" style="margin-top:14px">
+      <div class="grid3" style="gap:12px">
+        <div class="card tight"><b style="font-size:12px">删除应用确认弹窗</b><div class="faint" style="font-size:10.5px;line-height:1.8;margin-top:8px">标题「删除应用？」；正文列出名称与地址；说明「仅删除本地书签，不影响内网服务本身」；按钮「取消 / 删除」（危险实底）；无需输入名称确认（可重建）。</div></div>
+        <div class="card tight"><b style="font-size:12px">打开失败 Toast</b><div class="faint" style="font-size:10.5px;line-height:1.8;margin-top:8px">节点未启动 → 不分配端口、不新开窗口，直接 Toast 提示先连接；已启动但拨号失败 → 新开窗口显示 502（见 12）。</div></div>
+        <div class="card tight"><b style="font-size:12px">保存后行为</b><div class="faint" style="font-size:10.5px;line-height:1.8;margin-top:8px">关闭抽屉 → 刷新卡片列表 → Toast「应用已保存到本地数据库」→ 写审计；编辑已有应用时保留 ID 与图标色。</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="group-title"><h2>08 · 连接设置</h2><span>控制面、凭证、隧道引擎、高级开关、测试连接</span></div>
+
+  <div class="board-section" id="b29">
+    <div class="board-head"><h3>29 · 连接设置 · 控制面与凭证（Headscale）</h3><span>1200 × 760</span><p>表单分左右：150px 子导航 + 内容。所有凭证框「留空表示不修改」。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="settings"></aside>
+      <main class="main"><header class="topbar" data-crumb="工作台" data-title="连接设置"></header>
+        <div class="content">
+          <h3 class="sec" style="font-size:16px;margin-bottom:6px">连接设置</h3><div class="faint" style="font-size:11.5px;margin-bottom:18px">配置控制面与隧道引擎，保存后自动重连</div>
+          <div style="display:grid;grid-template-columns:150px 1fr;gap:16px">
+            <div class="card tight" style="align-self:start;padding:8px"><div style="font-size:11.5px;padding:9px 8px;border-radius:6px;background:var(--brand-soft);color:var(--brand);font-weight:600">控制面</div><div style="font-size:11.5px;padding:9px 8px;color:var(--muted)">隧道引擎</div><div style="font-size:11.5px;padding:9px 8px;color:var(--muted)">外观与行为</div><div style="font-size:11.5px;padding:9px 8px;color:var(--muted)">关于</div></div>
+            <div>
+              <label class="field-label">控制面类型<span class="req">*</span></label>
+              <div class="row" style="margin-bottom:18px"><div class="radio-card active"><div class="row" style="gap:8px"><span class="dot ok"></span><b style="font-size:12px">Headscale</b><span class="tag green" style="margin-left:auto">当前</span></div><div class="faint" style="font-size:10.5px;margin-top:7px">自建控制面 · /api/v1 REST · API Key</div></div>
+                <div class="radio-card"><div class="row" style="gap:8px"><span class="dot off"></span><b style="font-size:12px">Tailscale 官方</b></div><div class="faint" style="font-size:10.5px;margin-top:7px">api.tailscale.com · OAuth / API Token</div></div></div>
+              <div class="grid2" style="gap:12px;margin-bottom:12px"><div><label class="field-label">服务地址 Base URL<span class="req">*</span></label><div class="input mono focus">https://hs.example.com</div><div class="help">Headscale 的 server_url 根地址，不带路径</div></div>
+                <div><label class="field-label">API 风格</label><div class="select">自动探测（推荐）</div><div class="help">/probe /version + /api/v1/openapi + v2 兼容层</div></div></div>
+              <div class="grid2" style="gap:12px;margin-bottom:12px"><div><label class="field-label">认证方式</label><div class="select">API Key（Bearer）</div></div>
+                <div><label class="field-label">控制面凭证（存系统钥匙串）</label><div class="input" type="password">••••••••••••••••••••</div><div class="help">留空表示不修改；明文永不写入 SQLite</div></div></div>
+              <div class="card tight" style="margin-bottom:14px;background:var(--info-soft);border-color:#C9DEF5"><div class="row" style="gap:8px"><span class="dot" style="background:var(--info)"></span><b style="font-size:11.5px;color:var(--info)">能力探测结果</b></div><div style="font-size:10.5px;color:var(--info);margin-top:7px;line-height:1.7">Headscale 0.29.7 · v1 REST 可用 · v2 兼容层可用（devices / keys / acl / users）· 人员管理完整支持</div></div>
+              <div class="row"><span class="btn">测试连接</span><span class="btn primary">保存配置</span><span class="tag green" style="margin-left:6px">上次测试成功 · 128 ms</span></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b30">
+    <div class="board-head"><h3>30 · 连接设置 · 隧道引擎与高级开关</h3><span>1200 × 760</span><p>system 为默认引擎（接管系统网络）；常驻助手让授权只发生一次；userspace 是零提权回退。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="settings"></aside>
+      <main class="main"><header class="topbar" data-crumb="工作台" data-title="连接设置"></header>
+        <div class="content">
+          <h3 class="sec" style="font-size:16px;margin-bottom:6px">连接设置 · 隧道引擎</h3><div class="faint" style="font-size:11.5px;margin-bottom:18px">修改后保存会自动重连，正在打开的应用内窗口会短暂中断</div>
+          <div style="display:grid;grid-template-columns:150px 1fr;gap:16px">
+            <div class="card tight" style="align-self:start;padding:8px"><div style="font-size:11.5px;padding:9px 8px;color:var(--muted)">控制面</div><div style="font-size:11.5px;padding:9px 8px;border-radius:6px;background:var(--brand-soft);color:var(--brand);font-weight:600">隧道引擎</div><div style="font-size:11.5px;padding:9px 8px;color:var(--muted)">外观与行为</div><div style="font-size:11.5px;padding:9px 8px;color:var(--muted)">关于</div></div>
+            <div>
+              <label class="field-label">隧道引擎<span class="req">*</span></label>
+              <div class="card tight" style="margin-bottom:14px"><div class="spread"><div><b style="font-size:12px">系统接管 · TUN 网卡</b><div class="faint" style="font-size:10.5px;margin-top:4px">管理员授权一次 · 100.64/10 + 子网路由 · 外部 SSH / 数据库工具直连</div></div><span class="tag green">当前</span></div>
+                <div class="spread" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)"><div><b style="font-size:12px">CLI · 系统 tailscaled（可选回退）</b><div class="faint" style="font-size:10.5px;margin-top:4px">需已装官方客户端 + 提权 · 全局 VPN · WebView 直连 100.x</div></div><span class="tag">未启用</span></div></div>
+              <div class="card tight" style="margin-bottom:14px"><div class="spread" style="margin-bottom:9px"><div><b style="font-size:12px">系统提权助手</b><div class="faint" style="font-size:10.5px;margin-top:3px">常驻助手已就绪：打开即可连接，不再请求管理员授权</div></div><span class="tag green" style="flex:none">运行中</span></div>
+                <div class="row"><span class="btn">重新安装（一次授权）</span><span class="btn danger">移除</span></div></div>
+              <div class="grid2" style="gap:12px;margin-bottom:12px"><div><label class="field-label">本节点名称 Hostname<span class="req">*</span></label><div class="input mono">weft</div><div class="help">2–63 位字母/数字/连字符</div></div>
+                <div><label class="field-label">隧道注册 Auth Key（可选，存钥匙串）</label><div class="input mono ph">tskey-auth-… / hskey-auth-…</div><div class="help">留空则首次走浏览器授权（见 08）</div></div></div>
+              <div class="grid2" style="gap:12px;margin-bottom:14px"><div><label class="field-label">内网应用证书</label><div class="spread card tight" style="margin:0"><span style="font-size:11.5px">信任自签 HTTPS 证书</span><span class="switch"></span></div><div class="help">默认关闭；开启后代理跳过目标 TLS 校验</div></div>
+                <div><label class="field-label">节点状态目录（只读）</label><div class="input mono disabled" style="font-size:10px">~/Library/Application Support/Weft/tsnet-headscale</div><div class="help">私钥与登录态持久化于此，重开复用同一身份</div></div></div>
+              <div class="card tight" style="margin-bottom:14px"><div class="spread" style="margin-bottom:10px"><div><b style="font-size:12px">演示模式</b><div class="faint" style="font-size:10.5px;margin-top:3px">开启后所有列表用本地模拟数据，连接按钮不会启动内嵌节点</div></div><span class="switch"></span></div>
+                <div class="spread" style="margin-bottom:10px"><span style="font-size:11.5px">开机自动连接</span><span class="switch on"></span></div>
+                <div class="spread" style="margin-bottom:10px"><span style="font-size:11.5px">断线自动重连</span><span class="switch on"></span></div>
+                <div class="spread"><span style="font-size:11.5px">关闭时最小化到托盘</span><span class="switch on"></span></div></div>
+              <div class="notice info" style="margin-bottom:12px">「系统接管」会创建虚拟网卡并安装 100.64/10 与子网路由，系统里的 ssh、mysql、psql 可直接访问 tailnet。安装常驻助手后只需授权一次，之后打开即连；与本机同网段的路由会被自动跳过，避免断网。</div>
+              <div class="notice warn" style="margin-bottom:14px">隧道只需 Auth Key（或不填走浏览器授权）；控制面管理功能另需 API Key / OAuth 凭证。凭证只写系统钥匙串，不进 SQLite；Tailscale 官方 OAuth access token 1 小时过期，客户端会自动刷新。</div>
+              <div class="row"><span class="btn">恢复默认</span><span class="btn primary">保存配置</span></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b31">
+    <div class="board-head"><h3>31 · 设置 · Tailscale 官方 OAuth / 外观 / 关于</h3><span>1200 × 760</span><p>切换控制面时表单字段联动变化；外观页只放客户端行为，关于页给出版本与开源信息。</p></div>
+    <div class="board-frame"><div class="board"><div class="app">
+      <aside class="side" data-active="settings"></aside>
+      <main class="main"><header class="topbar" data-cp="tailscale" data-crumb="工作台" data-title="连接设置"></header>
+        <div class="content">
+          <div style="display:grid;grid-template-columns:150px 1fr;gap:16px">
+            <div class="card tight" style="align-self:start;padding:8px"><div style="font-size:11.5px;padding:9px 8px;border-radius:6px;background:var(--brand-soft);color:var(--brand);font-weight:600">控制面</div><div style="font-size:11.5px;padding:9px 8px;color:var(--muted)">隧道引擎</div><div style="font-size:11.5px;padding:9px 8px;color:var(--muted)">外观与行为</div><div style="font-size:11.5px;padding:9px 8px;color:var(--muted)">关于</div></div>
+            <div>
+              <div class="row" style="margin-bottom:18px"><div class="radio-card"><div class="row" style="gap:8px"><span class="dot off"></span><b style="font-size:12px">Headscale</b></div><div class="faint" style="font-size:10.5px;margin-top:7px">自建控制面 · /api/v1 REST</div></div>
+                <div class="radio-card active"><div class="row" style="gap:8px"><span class="dot ok"></span><b style="font-size:12px">Tailscale 官方</b></div><div class="faint" style="font-size:10.5px;margin-top:7px">api.tailscale.com · OAuth Client</div></div></div>
+              <div class="grid2" style="gap:12px;margin-bottom:12px"><div><label class="field-label">服务地址 Base URL</label><div class="input mono disabled">https://api.tailscale.com</div></div>
+                <div><label class="field-label">Tailnet</label><div class="input mono">-</div><div class="help">「-」表示自己的 tailnet</div></div></div>
+              <div class="grid2" style="gap:12px;margin-bottom:12px"><div><label class="field-label">认证方式<span class="req">*</span></label><div class="select">OAuth Client（自动刷新 token）</div></div>
+                <div><label class="field-label">API access token（备用）</label><div class="input ph">留空表示不修改</div><div class="help">1–90 天有效，需定期轮换</div></div></div>
+              <div class="grid2" style="gap:12px;margin-bottom:14px"><div><label class="field-label">OAuth Client ID<span class="req">*</span></label><div class="input mono">oc_xxxxxxxxxxxx</div></div>
+                <div><label class="field-label">Client Secret<span class="req">*</span></label><div class="input">••••••••••••••••••••</div></div></div>
+              <div class="notice info" style="margin-bottom:14px">OAuth access token 1 小时过期，客户端到期前 60 秒自动换取；Client Secret 只存系统钥匙串。所需 scopes：devices:core、auth_keys、acl。</div>
+              <div class="grid2" style="gap:12px">
+                <div class="card tight"><h4 class="sec">外观与行为</h4><div class="spread" style="margin-bottom:9px"><span style="font-size:11px">主题（跟随系统 / 浅色 / 深色）</span><span class="select sm" style="height:26px;font-size:10.5px">跟随系统</span></div><div class="spread" style="margin-bottom:9px"><span style="font-size:11px">语言</span><span class="select sm" style="height:26px;font-size:10.5px">简体中文</span></div><div class="spread" style="margin-bottom:9px"><span style="font-size:11px">开机自启</span><span class="switch on"></span></div><div class="spread"><span style="font-size:11px">关闭时最小化到托盘</span><span class="switch on"></span></div></div>
+                <div class="card tight"><h4 class="sec">关于</h4><div class="kv"><span>版本</span><b class="mono">Weft 0.1.0</b></div><div class="kv"><span>引擎</span><b class="mono">tailscale.com v1.106.1</b></div><div class="kv"><span>框架</span><b class="mono">Wails v3.0.0</b></div><div class="kv"><span>状态目录</span><b class="mono" style="font-size:9.5px">~/Library/…/weft</b></div><div class="row" style="margin-top:12px"><span class="btn sm">查看日志</span><span class="btn sm">检查更新</span></div></div>
+              </div>
+              <div class="row" style="margin-top:14px"><span class="btn">测试连接</span><span class="btn primary">保存配置</span></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div></div></div>
+  </div>
+
+  <div class="group-title"><h2>09 · 通用规范与规格总表</h2><span>弹窗/Toast 规范、全量字段表、状态矩阵、审计与错误页</span></div>
+
+  <div class="board-section" id="b32">
+    <div class="board-head"><h3>32 · 通用弹窗与 Toast 规范</h3><span>弹窗矩阵</span><p>所有弹窗共用一套头/体/脚结构；危险操作与普通确认视觉上必须可区分。</p></div>
+    <div class="board-frame"><div class="board"><div class="matrix" style="flex-wrap:wrap;align-content:flex-start">
+      <div class="dialog">
+        <div class="dialog-head"><div><b>普通确认</b><p>可撤销 / 影响面小</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div style="font-size:11.5px;line-height:1.8">确定要重新连接隧道吗？当前连接会先断开再重连，已打开的应用内窗口需要刷新。</div>
+          <div class="notice neutral" style="margin-top:12px;font-size:10.5px">次按钮在左、主按钮在右；主按钮用品牌色。</div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm primary">确认</span></div>
+      </div>
+      <div class="dialog">
+        <div class="dialog-head"><div><b>危险确认</b><p>不可逆 / 影响面大</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="notice danger" style="font-size:10.5px"><b>此操作不可撤销</b><br>删除后数据无法恢复，相关连接会立即中断。</div>
+          <div class="field" style="margin-top:12px;margin-bottom:0"><label class="field-label">输入名称以确认<span class="req">*</span></label><div class="input ph">对象名称</div><div class="help">高危操作必须输入名称解锁主按钮</div></div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm danger-solid disabled">删除</span></div>
+      </div>
+      <div class="dialog">
+        <div class="dialog-head"><div><b>信息 / 结果弹窗</b><p>只读内容 / 一次性明文</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="notice info" style="font-size:10.5px">信息条：说明这是什么、下一步该做什么。</div>
+          <div class="area mono" style="height:58px;background:var(--surface-2);font-size:10px">只读内容 · 可复制 · 不入库</div>
+          <div class="row" style="margin-top:10px"><span class="btn sm">复制</span></div></div>
+        <div class="dialog-foot"><span class="btn sm primary">我知道了</span></div>
+      </div>
+      <div class="dialog narrow">
+        <div class="dialog-head"><div><b>提交中 / 加载态</b><p>防止重复提交</p></div></div>
+        <div class="dialog-body"><div class="skel" style="width:70%;height:13px"></div><div class="skel" style="width:100%"></div><div class="skel" style="width:55%"></div>
+          <div class="notice neutral" style="margin-top:14px;font-size:10.5px">正在提交，请勿关闭窗口…</div></div>
+        <div class="dialog-foot"><span class="btn sm disabled">取消</span><span class="btn sm primary disabled">◌ 保存中…</span></div>
+      </div>
+      <div style="width:330px;flex:none">
+        <div class="annot" style="margin-bottom:10px">Toast 四型 · 右下角 · 3.4s</div>
+        <div style="display:grid;gap:8px"><span class="toast ok"><span class="dot ok"></span>配置已保存，凭证已写入系统钥匙串</span>
+          <span class="toast info"><span class="dot" style="background:var(--info)"></span>JSON 语法通过</span>
+          <span class="toast warn"><span class="dot warn"></span>演示模式，操作不会启动节点</span>
+          <span class="toast err"><span class="dot err"></span>连接失败：authkey already used</span></div>
+        <p class="help" style="margin-top:10px">同一时刻只显示一条，新消息覆盖旧消息；错误 Toast 文案需包含可执行的下一步。</p>
+      </div>
+      <div style="flex:1;min-width:200px"><div class="annot" style="margin-bottom:10px">弹窗统一规则</div>
+        <div class="spec" style="padding:14px;margin:0"><table class="spec-tbl">
+          <tr><th>项</th><th>规则</th></tr>
+          <tr><td>宽度</td><td class="mono">370 / 430 / 560px；抽屉 360 / 420px</td></tr>
+          <tr><td>遮罩</td><td class="mono">rgba(31,35,40,.20)</td></tr>
+          <tr><td>头</td><td>标题 14px + 副标题 11px + ✕</td></tr>
+          <tr><td>脚</td><td>右对齐；次按钮左、主按钮右</td></tr>
+          <tr><td>关闭</td><td class="mono">✕ / Esc / 取消 / 点遮罩</td></tr>
+          <tr><td>例外</td><td>危险确认、一次性明文结果：禁点遮罩关闭</td></tr>
+          <tr><td>键盘</td><td><span class="kbd">Esc</span> 关闭 · <span class="kbd">Enter</span> 提交（焦点不在文本域时）</td></tr>
+          <tr><td>未保存</td><td>抽屉内有改动时关闭需再确认「放弃改动？」</td></tr>
+          <tr><td>失败</td><td>弹窗保持打开、字段保留、顶部插入错误条</td></tr>
+        </table></div>
+      </div>
+    </div></div></div>
+  </div>
+
+  <div class="board-section" id="b33">
+    <div class="board-head"><h3>33 · 表单字段规格总表</h3><span>规格页 · 全量字段</span><p>开发按此表实现：控件、必填、默认值、校验、提交按钮、关闭行为。</p></div>
+    <div class="spec">
+      <h3>连接 / 隧道</h3>
+      <table class="spec-tbl">
+        <tr><th>所属</th><th>字段</th><th>控件</th><th>必填</th><th>默认</th><th>校验 / 帮助</th><th>主按钮 / 关闭</th></tr>
+        <tr><td>首次引导 1</td><td>控制面类型</td><td>单选卡片 ×2</td><td>是</td><td>Headscale</td><td>必选；切换后清空不相关字段</td><td>下一步 / 跳过进演示</td></tr>
+        <tr><td>首次引导 2</td><td>Base URL</td><td>文本</td><td>是</td><td>空</td><td>http(s):// 开头、根地址、可解析</td><td>下一步 / 上一步 / ✕</td></tr>
+        <tr><td>首次引导 2</td><td>Hostname</td><td>文本</td><td>是</td><td>weft</td><td>2–63 位字母数字连字符</td><td>同上</td></tr>
+        <tr><td>首次引导 2</td><td>控制面 API Key</td><td>password</td><td>否</td><td>空</td><td>仅管理功能需要；写钥匙串</td><td>同上</td></tr>
+        <tr><td>首次引导 3</td><td>Auth Key</td><td>password</td><td>否</td><td>空</td><td>留空 = 浏览器授权</td><td>完成并连接</td></tr>
+        <tr><td>连接设置</td><td>API 风格</td><td>下拉</td><td>否</td><td>自动探测</td><td>auto / v1 / v2</td><td>保存配置</td></tr>
+        <tr><td>连接设置</td><td>认证方式</td><td>下拉</td><td>是</td><td>API Key</td><td>apikey / oauth；官方强制 OAuth</td><td>保存配置</td></tr>
+        <tr><td>连接设置</td><td>控制面凭证 / Secret</td><td>password</td><td>否</td><td>空（不修改）</td><td>留空=不修改；不回显明文</td><td>保存配置</td></tr>
+        <tr><td>连接设置</td><td>Tailnet / Client ID</td><td>文本</td><td>官方必填</td><td>- / 空</td><td>Client ID 以 oc_ 开头</td><td>保存配置</td></tr>
+        <tr><td>连接设置</td><td>隧道引擎</td><td>单选卡片 ×2</td><td>是</td><td>tsnet</td><td>选 CLI 时提示需安装客户端 + 提权</td><td>保存配置（自动重连）</td></tr>
+        <tr><td>连接设置</td><td>Auth Key（隧道）</td><td>password</td><td>否</td><td>空</td><td>tskey-/hskey- 前缀；写钥匙串</td><td>保存配置</td></tr>
+        <tr><td>连接设置</td><td>信任自签证书</td><td>开关</td><td>否</td><td>关</td><td>开启需二次说明风险</td><td>保存配置</td></tr>
+        <tr><td>连接设置</td><td>演示 / 自动连接 / 自动重连 / 托盘</td><td>开关 ×4</td><td>否</td><td>开 / 开 / 开 / 开</td><td>演示开时其余操作不启动节点</td><td>保存配置</td></tr>
+        <tr><td>断开确认</td><td>断开原因</td><td>文本</td><td>否</td><td>空</td><td>写审计；≤80 字</td><td>确认断开（危险）/ 取消</td></tr>
+      </table>
+      <h3 style="margin-top:24px">控制面管理</h3>
+      <table class="spec-tbl">
+        <tr><th>所属</th><th>字段</th><th>控件</th><th>必填</th><th>默认</th><th>校验 / 帮助</th><th>主按钮 / 关闭</th></tr>
+        <tr><td>设备 · 重命名</td><td>设备名称</td><td>文本</td><td>是</td><td>原名</td><td>1–63 位、tailnet 内唯一</td><td>保存 / 取消</td></tr>
+        <tr><td>设备 · 删除</td><td>输入设备名</td><td>文本</td><td>是</td><td>空</td><td>完全匹配才解锁</td><td>删除设备（危险实底）</td></tr>
+        <tr><td>设备 · 批准</td><td>分配标签</td><td>下拉</td><td>否</td><td>空</td><td>需已在 tagOwners 声明</td><td>批准并分配 IP / 拒绝</td></tr>
+        <tr><td>设备 · 编辑标签</td><td>标签</td><td>文本</td><td>是</td><td>原标签</td><td>tag: 前缀 + tagOwners 校验</td><td>保存标签 / 取消</td></tr>
+        <tr><td>设备 · 路由审批</td><td>路由复选框</td><td>复选 ×N</td><td>是（至少 1）</td><td>待审项勾选</td><td>CIDR 格式由服务端校验</td><td>启用所选路由 / 取消</td></tr>
+        <tr><td>人员 · 新建</td><td>名称 / 备注</td><td>文本 ×2</td><td>名称是</td><td>空</td><td>2–63 位、唯一；备注仅本地</td><td>创建 / 取消</td></tr>
+        <tr><td>人员 · 删除</td><td>输入名称 + 影响表</td><td>文本 / 只读表</td><td>是</td><td>空</td><td>列出设备/Key/ACL 引用数</td><td>删除用户（危险实底）</td></tr>
+        <tr><td>人员 · 重命名</td><td>新名称</td><td>文本</td><td>是</td><td>原名</td><td>提示 ACL group 引用需同步</td><td>保存并打开 ACL</td></tr>
+        <tr><td>人员 · 角色</td><td>新角色</td><td>下拉</td><td>是</td><td>当前角色</td><td>所有者/管理员/成员/访客/计费</td><td>保存角色 / 取消</td></tr>
+        <tr><td>授权 Key · 新建</td><td>归属用户</td><td>下拉</td><td>是</td><td>第一个用户</td><td>无用户时禁用提交</td><td>生成 Key / 取消</td></tr>
+        <tr><td>授权 Key · 新建</td><td>有效期</td><td>下拉（天）</td><td>是</td><td>90 天</td><td>1/7/30/90/180</td><td>同上</td></tr>
+        <tr><td>授权 Key · 新建</td><td>Reusable / Ephemeral</td><td>开关 ×2</td><td>否</td><td>开 / 关</td><td>关闭 Reusable 会在重连时 already used</td><td>同上</td></tr>
+        <tr><td>授权 Key · 结果</td><td>明文 Key</td><td>只读文本域</td><td>—</td><td>—</td><td>仅一次；禁点遮罩关闭</td><td>我已保存，关闭 / 复制</td></tr>
+        <tr><td>授权 Key · 吊销</td><td>吊销原因</td><td>文本</td><td>否</td><td>空</td><td>写审计；不影响已注册设备</td><td>确认吊销（危险）/ 取消</td></tr>
+        <tr><td>API Key · 新建</td><td>有效期 / 备注</td><td>下拉 / 文本</td><td>有效期是</td><td>90 天 / 空</td><td>明文只显示一次</td><td>生成 / 取消</td></tr>
+        <tr><td>OAuth · 配置</td><td>Client ID / Secret / Scopes</td><td>文本 ×2 / 标签多选</td><td>前两项是</td><td>空</td><td>Secret 写钥匙串；最小授权</td><td>保存 / 测试连接 / 取消</td></tr>
+        <tr><td>凭证 · 撤销</td><td>撤销原因</td><td>文本</td><td>否</td><td>空</td><td>提示管理页失效但隧道不受影响</td><td>确认撤销（危险）/ 取消</td></tr>
+        <tr><td>ACL · 编辑器</td><td>策略内容</td><td>代码文本域</td><td>是</td><td>服务端当前策略</td><td>JSON 本地校验；HuJSON 注释交服务端</td><td>保存并应用 / 校验 / 历史</td></tr>
+        <tr><td>ACL · 冲突</td><td>版本对照表</td><td>只读</td><td>—</td><td>—</td><td>保留用户草稿</td><td>查看差异 / 强制覆盖 / 放弃</td></tr>
+        <tr><td>ACL · 历史</td><td>版本选择 / diff</td><td>复选 / 只读</td><td>是（选 1 版）</td><td>最新版</td><td>本地历史，恢复会生成新版本</td><td>恢复所选版本 / 关闭</td></tr>
+      </table>
+      <h3 style="margin-top:24px">工作台</h3>
+      <table class="spec-tbl">
+        <tr><th>所属</th><th>字段</th><th>控件</th><th>必填</th><th>默认</th><th>校验 / 帮助</th><th>主按钮 / 关闭</th></tr>
+        <tr><td>应用 · 添加/编辑</td><td>名称</td><td>文本</td><td>是</td><td>空</td><td>1–40 字</td><td>保存 / 取消</td></tr>
+        <tr><td>应用 · 添加/编辑</td><td>访问地址</td><td>文本（等宽）</td><td>是</td><td>空</td><td>必须 http(s)://；支持 100.x / MagicDNS / 域名</td><td>同上</td></tr>
+        <tr><td>应用 · 添加/编辑</td><td>分组</td><td>文本</td><td>否</td><td>常用</td><td>自由文本，联动筛选</td><td>同上</td></tr>
+        <tr><td>应用 · 添加/编辑</td><td>图标颜色</td><td>6 色色块单选</td><td>否</td><td>#0F6E56</td><td>选中态加 2px 描边</td><td>同上</td></tr>
+        <tr><td>应用 · 删除</td><td>确认（只读）</td><td>无输入</td><td>—</td><td>—</td><td>说明只删本地书签</td><td>删除（危险）/ 取消</td></tr>
+        <tr><td>应用内窗口 · 证书</td><td>始终信任本站</td><td>复选</td><td>否</td><td>不勾</td><td>勾选后写入设置开关</td><td>仍要继续（危险）/ 返回</td></tr>
+        <tr><td>应用内窗口 · 502</td><td>无输入</td><td>只读原因表</td><td>—</td><td>—</td><td>给重试 / 编辑 / 打开总览</td><td>重试</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="board-section" id="b34">
+    <div class="board-head"><h3>34 · 交互状态矩阵</h3><span>规格页 · 全功能 6 态</span><p>每个功能必须实现的状态；「禁用」需同时给出原因文案。</p></div>
+    <div class="spec">
+      <table class="spec-tbl">
+        <tr><th>功能</th><th>默认</th><th>加载中</th><th>空 / 无结果</th><th>错误</th><th>成功</th><th>禁用 / 降级</th></tr>
+        <tr><td>隧道总览</td><td>06 已连接</td><td>08 连接中 + 进度</td><td>07 未连接 / 演示</td><td>09 失败 + 原因与重试</td><td>Toast「隧道已建立」</td><td>演示模式下连接不启动节点</td></tr>
+        <tr><td>应用内窗口</td><td>11 正常加载</td><td>12 骨架 + 10s 超时</td><td>—</td><td>12 502 / 证书警告</td><td>地址栏显示映射</td><td>节点未启动 → 不分配端口</td></tr>
+        <tr><td>设备管理</td><td>13 列表</td><td>16 表格骨架</td><td>16 空 / 无结果</td><td>35 错误页 + 重试</td><td>行内状态更新 + Toast</td><td>官方端不支持的写操作置灰</td></tr>
+        <tr><td>人员管理</td><td>17 Headscale</td><td>骨架</td><td>空 + 创建引导</td><td>错误页</td><td>列表刷新 + Toast</td><td>18 官方只读降级 + 原因</td></tr>
+        <tr><td>授权 Key</td><td>20 列表</td><td>骨架</td><td>空 + 新建引导</td><td>错误页</td><td>22 明文结果弹窗</td><td>无用户时禁用生成；已吊销禁用吊销</td></tr>
+        <tr><td>API Key / OAuth</td><td>23 列表</td><td>骨架</td><td>空 + 新建引导</td><td>错误页 / token 过期</td><td>结果弹窗 + 自动刷新 token</td><td>官方端隐藏「新建 API Key」</td></tr>
+        <tr><td>ACL 策略</td><td>25 编辑器</td><td>保存中按钮</td><td>空策略提示模板</td><td>26 语法错误 / ETag 冲突</td><td>历史版本 +1 / Toast</td><td>只读能力位 → 保存按钮置灰</td></tr>
+        <tr><td>应用管理</td><td>27 卡片列表</td><td>卡片骨架</td><td>16 空 + 添加引导</td><td>28 打开失败 Toast</td><td>卡片新增/更新 + Toast</td><td>演示模式提示不可达</td></tr>
+        <tr><td>连接设置</td><td>29/30/31 表单</td><td>测试连接中</td><td>—</td><td>测试失败错误条（不丢表单）</td><td>能力探测结果 + 自动重连</td><td>官方端字段联动、CLI 未装时不可选</td></tr>
+        <tr><td>审计日志</td><td>35 抽屉列表</td><td>骨架</td><td>空 + 说明</td><td>错误页</td><td>新事件置顶</td><td>只读，无编辑</td></tr>
+      </table>
+      <p class="help" style="margin-top:14px">通用规则：加载 ≥300ms 才显示骨架；错误态必须含原因 + 可执行的下一步；成功态必须写审计日志（仅记对象 ID / 前缀，不记密钥明文）；所有禁用控件 hover 时显示原因。</p>
+    </div>
+  </div>
+
+  <div class="board-section" id="b35">
+    <div class="board-head"><h3>35 · 审计日志抽屉 / 断网 / 权限不足 / 服务端错误</h3><span>抽屉 + 错误页矩阵</span><p>审计只读；三类错误页必须区分，不能统一显示「加载失败」。</p></div>
+    <div class="board-frame"><div class="board"><div class="matrix" style="flex-wrap:wrap;align-content:flex-start">
+      <div class="dialog wide">
+        <div class="dialog-head"><div><b>审计日志（抽屉）</b><p>本地只读 · 最近 20 条</p></div><span class="x">✕</span></div>
+        <div class="dialog-body"><div class="row" style="gap:8px;margin-bottom:12px"><div class="input" style="flex:1;font-size:11px">🔍 搜索动作 / 时间…</div><span class="btn sm">导出</span></div>
+          <table class="spec-tbl"><tr><th>时间</th><th>动作</th><th>详情</th></tr>
+            <tr><td class="mono">16:02</td><td>连接隧道</td><td>tsnet</td></tr>
+            <tr><td class="mono">15:58</td><td>保存配置</td><td>headscale · hs.example.com</td></tr>
+            <tr><td class="mono">15:40</td><td>生成授权 Key</td><td>boothua（仅 ID 前缀）</td></tr>
+            <tr><td class="mono">15:31</td><td>保存 ACL 策略</td><td>ETag v13-8f2c</td></tr>
+            <tr><td class="mono">15:02</td><td>打开应用</td><td>群晖 NAS</td></tr>
+            <tr><td class="mono">14:58</td><td>更新凭证</td><td>apikey（不记明文）</td></tr></table>
+          <div class="notice neutral" style="margin-top:12px;font-size:10.5px">审计只记动作、对象 ID 前缀与时间；<b>绝不记录 API Key / Auth Key / OAuth Secret 明文</b>。</div></div>
+        <div class="dialog-foot"><span class="btn sm">清空日志…</span><span class="btn sm primary">关闭</span></div>
+      </div>
+      <div class="dialog">
+        <div class="dialog-head"><div><b>断网 / 控制面不可达</b><p>网络层失败</p></div></div>
+        <div class="dialog-body"><div class="empty" style="padding:24px 0"><span class="big">⌁</span>无法连接到 hs.example.com<br><span class="faint" style="font-size:10.5px">请检查网络、代理或控制面状态</span></div>
+          <div class="notice neutral" style="font-size:10.5px">已展示上次成功拉取的缓存（15:40），缓存期间所有写操作置灰。</div>
+          <div class="kv" style="margin-top:10px"><span>最近成功</span><b>15:40</b></div><div class="kv"><span>重试次数</span><b>2</b></div></div>
+        <div class="dialog-foot"><span class="btn sm">连接设置</span><span class="btn sm primary">重试</span></div>
+      </div>
+      <div class="dialog">
+        <div class="dialog-head"><div><b>权限不足 / 凭证失效</b><p>HTTP 401 / 403</p></div></div>
+        <div class="dialog-body"><div class="notice danger" style="font-size:10.5px"><b>401 Unauthorized</b><br>API Key 已过期或被撤销。隧道仍在运行，但管理功能不可用。</div>
+          <div class="kv" style="margin-top:12px"><span>控制面</span><b>Headscale</b></div><div class="kv"><span>凭证状态</span><span class="tag red">已失效</span></div><div class="kv"><span>隧道</span><span class="tag green">不受影响</span></div>
+          <div class="notice info" style="margin-top:12px;font-size:10.5px">请到「连接设置」更新控制面凭证；Headscale API Key 默认 90 天有效。</div></div>
+        <div class="dialog-foot"><span class="btn sm">取消</span><span class="btn sm primary">前往连接设置</span></div>
+      </div>
+      <div class="dialog narrow">
+        <div class="dialog-head"><div><b>服务端错误 5xx</b><p>控制面异常</p></div></div>
+        <div class="dialog-body"><div class="notice warn" style="font-size:10.5px"><b>Headscale 返回 500</b><br>本次请求失败，已自动重试 1 次。</div>
+          <div class="area mono" style="height:60px;font-size:10px;background:var(--surface-2);margin-top:12px">internal error: policy reload failed</div>
+          <div class="help">点击「复制诊断信息」可把错误原文带给服务端排查；不含任何密钥。</div></div>
+        <div class="dialog-foot"><span class="btn sm">复制诊断</span><span class="btn sm primary">重试</span></div>
+      </div>
+    </div></div></div>
+    <div class="spec" style="margin-top:14px"><table class="spec-tbl">
+      <tr><th>错误类型</th><th>判定</th><th>页面行为</th><th>恢复动作</th></tr>
+      <tr><td>断网 / 超时</td><td>网络层失败、无 HTTP 状态</td><td>展示缓存数据并标注时间，写操作置灰</td><td>重试 / 检查网络与代理</td></tr>
+      <tr><td>401 / 403</td><td>凭证过期、被撤销、scope 不足</td><td>提示管理功能不可用，隧道保持</td><td>前往连接设置更新凭证</td></tr>
+      <tr><td>4xx 其它</td><td>参数 / 校验失败</td><td>表单内错误条，字段保留</td><td>按提示修改字段</td></tr>
+      <tr><td>5xx</td><td>控制面异常</td><td>错误页 + 原始错误第二行</td><td>重试 / 复制诊断信息</td></tr>
+      <tr><td>409 / ETag 冲突</td><td>并发修改</td><td>26 号冲突弹窗，保留草稿</td><td>查看差异 / 强制覆盖 / 放弃</td></tr>
+    </table></div>
+  </div>
+
+
+  <div class="legend"><span>画板尺寸 1200 × 760，按 0.78 缩放</span><span>侧栏 216px · 顶栏 60px · 内容区 padding 28px</span><span>表格行高 44px · 控件高 34px · 抽屉 360/420px · 弹窗 370/430/560px</span><span>全部数据为示意</span></div>
+</div>
+<script>
+const I={
+ overview:'<rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/>',
+ tunnel:'<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c3 3 3 9 0 12M8 2C5 5 5 11 8 14"/>',
+ devices:'<rect x="2" y="3" width="12" height="8" rx="1.5"/><path d="M1 13h14"/>',
+ users:'<circle cx="8" cy="5" r="2.5"/><path d="M3 14c0-3 2.2-5 5-5s5 5 5 5"/>',
+ keys:'<circle cx="5.5" cy="10.5" r="2.5"/><path d="M7.5 8.5 14 2M11 5l2 2M9 7l2 2"/>',
+ api:'<path d="M6 3H5a2 2 0 0 0-2 2v2a2 2 0 0 1-2 2 2 2 0 0 1 2 2v2a2 2 0 0 0 2 2h1M10 3h1a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0-2 2v2a2 2 0 0 1-2 2h-1"/>',
+ acl:'<path d="M8 1.5 14 4v4c0 3.5-2.5 5.5-6 6.5-3.5-1-6-3-6-6.5V4z"/><path d="M5.5 8l1.7 1.7L11 6"/>',
+ apps:'<rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/>',
+ settings:'<circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5 13 13M13 3l-1.5 1.5M4.5 11.5 3 13"/>'
+};
+const NAV=[
+ {label:'总览',items:[['overview','隧道总览']]},
+ {label:'控制面管理',items:[['devices','设备管理'],['users','人员管理'],['keys','授权 Key'],['api','API Key'],['acl','ACL 策略']]},
+ {label:'工作台',items:[['apps','应用管理'],['settings','连接设置']]}
+];
+const svg=k=>'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">'+(I[k]||I.overview)+'</svg>';
+document.querySelectorAll('.side').forEach(el=>{
+ const a=el.dataset.active||'overview', st=el.dataset.status||'connected';
+ const M={connected:['ok','hs.example.com','已连接 · Headscale'],disconnected:['off','未连接','点击总览连接'],demo:['warn','演示模式','本地模拟数据'],error:['err','连接失败','查看总览错误详情']};
+ const m=M[st]||M.connected;
+ let h='<div class="brand"><span class="logo">W</span><div><b>Weft</b><small>桌面版 v0.1.0</small></div></div>';
+ NAV.forEach(g=>{h+='<span class="nav-label">'+g.label+'</span>';g.items.forEach(it=>{h+='<div class="nav-item'+(it[0]===a?' active':'')+'">'+svg(it[0])+it[1]+'</div>'})});
+ h+='<div class="side-foot"><span class="dot '+m[0]+'"></span><div><b>'+m[1]+'</b><small>'+m[2]+'</small></div></div>';
+ el.innerHTML=h;
+});
+document.querySelectorAll('.topbar').forEach(el=>{
+ const cp=el.dataset.cp||'headscale';
+ const label=cp==='tailscale'?'Tailscale 官方 · api.tailscale.com':'Headscale · hs.example.com';
+ el.innerHTML='<div class="crumb">'+el.dataset.crumb+' <span style="margin:0 6px;color:#C9D0D8">/</span> <b>'+el.dataset.title+'</b></div>'+
+ '<div class="top-right"><span class="chip brand"><span class="dot ok" style="width:6px;height:6px"></span>'+label+'</span><div class="icon-btn">↻</div><div class="avatar">BT</div></div>';
+});
+</script>
+</body>
+</html>
