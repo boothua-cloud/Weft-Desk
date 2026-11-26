@@ -131,6 +131,18 @@ Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 而我们按 gtk3 构建，为了装个打包工具去拉 GTK4 头文件没道理。关掉 CGO 后
 `generate syso` / `generate .desktop` / `tool package` 都正常。
 
+产物不看 Actions 的 artifact，而是每个 job 结束时推到一个独立分支，仓库页面直接下载：
+
+| 分支 | 内容 |
+|---|---|
+| `dist-windows` | `windows-amd64/`：zip + `BUILD.txt`（版本/commit/构建时间） |
+| `dist-linux` | `linux-amd64/`：deb、tar.gz + `BUILD.txt` |
+| `dist-installer` | `windows-installer/`：NSIS 安装包 + `BUILD.txt`（仅打 tag） |
+
+三个分支每次构建都用 `--orphan` 强制重建，历史不会随二进制膨胀。
+之所以不用 `actions/upload-artifact`：这台 Gitea 的 artifact 接口创建容器固定回
+429，v3/v4 都传不上去；走 git 通道不依赖 Gitea API，也不经过任何第三方。
+
 本机手动构建：
 
 ```bash
