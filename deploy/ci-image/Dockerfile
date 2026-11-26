@@ -1,10 +1,14 @@
 # CI 构建镜像：把 Go / Node / Wails / GTK 依赖一次性装好，
 # 之后每个 job 不用再下 Go tarball、不用 apt 装 gtk、不用 go install wails3。
 #
-# 构建（在 10.0.1.5 上）：
+# 构建（在 10.0.1.5 上，原生 amd64）：
 #   cd deploy/ci-image
 #   docker build -t weft-ci:1 .
 #   docker tag weft-ci:1 weft-ci:latest
+#
+# 非要在 Mac（arm64）上构建的话必须显式指定平台，否则产出的是 arm64 镜像，
+# 到 Ubuntu 上跑不了：
+#   docker build --platform linux/amd64 -t weft-ci:1 .
 #
 # 然后 runner 的 label 改成：
 #   GITEA_RUNNER_LABELS: "ubuntu-latest:docker://weft-ci:latest"
@@ -36,8 +40,10 @@ ENV GOPROXY=https://goproxy.cn,direct
 ENV GOSUMDB=sum.golang.google.cn
 
 # wails3：预先编译好，省掉每个 job 一次 go install
+# CGO_ENABLED=0 必须开：CLI 是纯 Go 工具，关掉 CGO 才不会在交叉/模拟环境下
+# 让 gcc 收到 -m64 这种只对某一架构有效的参数
 ARG WAILS_VERSION=v3.0.0
-RUN go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION} \
+RUN CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION} \
     && wails3 version
 
 # npm 走国内镜像
