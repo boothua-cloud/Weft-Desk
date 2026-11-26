@@ -14,8 +14,14 @@
     </asmv3:application>
     <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
         <security>
+            <!-- asInvoker：界面本身不需要管理员权限。
+                 提权只发生在真正要建 WinTun 网卡的那一刻（点「连接」时弹一次 UAC），
+                 或安装「登录自启任务」时弹一次；装好之后每次登录都由计划任务以
+                 最高权限拉起，不再弹窗。
+                 不用 requireAdministrator：那会让每次双击都弹 UAC，而且整个 WebView
+                 都跑在管理员上下文里，资源管理器拖放等功能会失效。 -->
             <requestedPrivileges>
-                <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+                <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
             </requestedPrivileges>
         </security>
     </trustInfo>

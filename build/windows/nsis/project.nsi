@@ -97,6 +97,12 @@ Section
     
     !insertmacro wails.files
 
+    # WinTun 运行库：云栈在 Windows 上建虚拟网卡依赖它，必须和 exe 同目录。
+    # 缺了的话连接时只会得到「Unable to load library: wintun.dll」。
+    !if /FileExists "..\..\..\bin\wintun.dll"
+        File "/oname=wintun.dll" "..\..\..\bin\wintun.dll"
+    !endif
+
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
 
