@@ -112,8 +112,15 @@ jobs:
 
       - name: 安装 GTK3 / WebKit2GTK 构建依赖
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
+          # archive.ubuntu.com 在这台 runner 上经常 502，换国内镜像（http 也行，
+          # apt 有签名校验），并加重试；镜像选哪个不影响产物。
+          for f in /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do
+            [ -f "$f" ] && sudo sed -i \
+              -e 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
+              -e 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' "$f"
+          done
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true update -qq
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true install -y -qq \
             build-essential pkg-config \
             libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
 
@@ -188,8 +195,15 @@ jobs:
           # internal/operatingsystem/webkit_linux.go，硬要 pkg-config gtk4 +
           # webkitgtk-6.0，而本项目按 gtk3 构建，装了 GTK4 纯属为装个打包工具
           CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq nsis
+          # archive.ubuntu.com 在这台 runner 上经常 502，换国内镜像（http 也行，
+          # apt 有签名校验），并加重试；镜像选哪个不影响产物。
+          for f in /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do
+            [ -f "$f" ] && sudo sed -i \
+              -e 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
+              -e 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' "$f"
+          done
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true update -qq
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::ForceIPv4=true install -y -qq nsis
 
       - name: 构建 Windows 可执行文件
         run: |
