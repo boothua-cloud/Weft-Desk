@@ -13,7 +13,6 @@
 #     node 镜像里有 git / curl / apt，Go 由 workflow 里的 actions/setup-go 装。
 #     服务器是 amd64 的话不用管平台参数，直接原生编译。
 #   - docker.sock 必须挂，act_runner 靠它创建 job 容器。
-#   - 并发默认 1，多个 job 会排队。够了就别动；要并行设 capacity 得写进 config.yml。
 
 services:
   act_runner:
@@ -21,16 +20,22 @@ services:
     container_name: act_runner
     restart: always
     environment:
-      GITEA_INSTANCE_URL: ${GITEA_URL:-https://git.boothua.cn}
+      # 和 Gitea 同机部署时走内网，别绕公网域名：
+      #   - 少一次 TLS 握手，也不受仓库前面 WAF 的限流影响
+      #   - actions/checkout 拼的 clone 地址取自这里，所以 CI 拉代码也走内网
+      # 二选一：
+      #   A. Gitea 端口映射到 0.0.0.0 或内网 IP → 直接用宿主内网地址（下面这行）
+      #   B. 两边在同一个 docker network     → 用服务名 http://gitea:3000（见文末）
+      GITEA_INSTANCE_URL: ${GITEA_URL:-http://10.0.1.5:3000}
       GITEA_RUNNER_REGISTRATION_TOKEN: ${RUNNER_TOKEN:?RUNNER_TOKEN 没填}
       GITEA_RUNNER_NAME: ${RUNNER_NAME:-weft-desktop}
       GITEA_RUNNER_LABELS: "ubuntu-latest:docker://node:20-bookworm"
 
-      # 出网代理：拉 action（github.com）和 Go 工具链要走代理，
-      # 但 git.boothua.cn 必须直连，否则出口 IP 被仓库前面的 WAF 限流。
+      # 出网代理：拉 action（github.com）和 Go 工具链要走代理。
+      # 走内网之后就不需要再为 git.boothua.cn 单独放行 NO_PROXY 了。
       # HTTPS_PROXY: http://10.0.1.2:7890
       # HTTP_PROXY: http://10.0.1.2:7890
-      # NO_PROXY: git.boothua.cn,localhost,127.0.0.1
+      # NO_PROXY: localhost,127.0.0.1,10.0.1.0/24
 
       # action 缓存和 Go 模块缓存落到卷上，重启不用重下
       HOME: /data
@@ -42,3 +47,17 @@ services:
       options:
         max-size: "20m"
         max-file: "3"
+
+# 方案 B 时把下面这段打开，让 runner 和 Gitea 共用一个网络，
+# GITEA_INSTANCE_URL 就可以写 http://gitea:3000（服务名，比 IP 稳）。
+#
+# 注意 job 容器是 act_runner 动态创建的，默认挂在 bridge 上，解析不了服务名。
+# 要让 job 容器也进这个网络，在 /data/config.yml 里加：
+#   container:
+#     network: "gitea_default"
+# 然后 docker compose restart。
+#
+# networks:
+#   default:
+#     name: gitea_default
+#     external: true
