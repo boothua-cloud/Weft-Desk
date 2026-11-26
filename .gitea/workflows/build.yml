@@ -71,7 +71,7 @@ jobs:
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
             -tags production -trimpath -buildvcs=false \
             -ldflags="-w -s -H windowsgui" \
-            -o bin/weft.exe .
+            -o bin/云栈.exe .
           rm -f wails_windows_amd64.syso
 
       - name: 取 WinTun 运行库
@@ -81,10 +81,10 @@ jobs:
         run: |
           mkdir -p release
           # wintun.dll 必须和 exe 同目录，只发 exe 是跑不起来的
-          cp bin/weft.exe bin/wintun.dll release/
+          cp bin/云栈.exe bin/wintun.dll release/
           cd release
           # -UN=UTF8：解压到中文 Windows 时文件名不乱码
-          zip -r -UN=UTF8 -q "weft-${APP_VERSION}-windows-amd64.zip" weft.exe wintun.dll
+          zip -r -UN=UTF8 -q "云栈-${APP_VERSION}-windows-amd64.zip" 云栈.exe wintun.dll
           ls -la
 
       - name: 产物入库（推 dist-windows 分支）
@@ -162,26 +162,26 @@ jobs:
         run: |
           go mod download
           CGO_ENABLED=1 go build -tags "production gtk3" \
-            -trimpath -buildvcs=false -ldflags="-w -s" -o bin/weft .
+            -trimpath -buildvcs=false -ldflags="-w -s" -o bin/云栈 .
 
       - name: 生成 .desktop
         run: |
           WAILS3="$(go env GOPATH)/bin/wails3"
           mkdir -p build/linux
-          "$WAILS3" generate .desktop -name "云栈" -exec weft -icon weft \
+          "$WAILS3" generate .desktop -name "云栈" -exec 云栈 -icon weft \
             -outputfile build/linux/weft.desktop -categories "Network;Utility;"
 
       - name: 打 deb
         run: |
           WAILS3="$(go env GOPATH)/bin/wails3"
           mkdir -p release
-          "$WAILS3" tool package -name weft -format deb \
+          "$WAILS3" tool package -name 云栈 -format deb \
             -config ./build/linux/nfpm/nfpm.yaml -out release
           # wails3 只按 <name>.deb 命名，版本与架构要自己补上，
           # 否则 next release 会和上一个同名覆盖
-          mv release/weft.deb "release/weft_${APP_VERSION}-1_amd64.deb"
+          mv release/云栈.deb "release/云栈_${APP_VERSION}-1_amd64.deb"
           # deb 之外再给一份裸二进制：装不上时解压即可运行
-          tar -C bin -czf "release/weft-${APP_VERSION}-linux-amd64.tar.gz" weft
+          tar -C bin -czf "release/云栈-${APP_VERSION}-linux-amd64.tar.gz" 云栈
           ls -la release/
 
       - name: 产物入库（推 dist-linux 分支）
@@ -253,7 +253,7 @@ jobs:
              -out ../wails_windows_amd64.syso)
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
             -tags production -trimpath -buildvcs=false \
-            -ldflags="-w -s -H windowsgui" -o bin/weft.exe .
+            -ldflags="-w -s -H windowsgui" -o bin/云栈.exe .
           rm -f wails_windows_amd64.syso
           bash scripts/fetch-wintun.sh amd64
 
@@ -267,7 +267,7 @@ jobs:
           # Linux 上 /FileExists 认不出来，会直接 !error 中断
           ROOT="$(cd ../../.. && pwd)"
           makensis -DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user \
-            -DARG_WAILS_AMD64_BINARY="$ROOT/bin/weft.exe" \
+            -DARG_WAILS_AMD64_BINARY="$ROOT/bin/云栈.exe" \
             -DWINTUN_DLL="$ROOT/bin/wintun.dll" project.nsi
           ls -la ../../../bin/
 
