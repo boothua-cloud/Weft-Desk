@@ -18,6 +18,8 @@ done
 
 # 先用当前的 bin/weft 重新生成 .app，否则会把上一次的旧二进制打进安装包
 ./scripts/make-app.sh
+# release/ 在干净检出里不存在，cp 会把目录复制成同名文件
+mkdir -p release
 cp -R "bin/${APP}.app" release/
 wails3 tool package --format dmg --name "$APP" --out release \
   --background build/darwin/dmg-background.png \
