@@ -1,0 +1,347 @@
+name: build
+
+# Gitea Actions 主流水线：一次跑出 Windows zip 与 Linux deb。
+#
+# 设计前提：自建 Gitea 一般只注册了 Linux 的 docker runner。所以
+#   - Windows 产物用「Linux 上交叉编译」（Wails 的 Windows 后端是纯 Go，CGO_ENABLED=0 可交叉）
+#   - Linux 产物必须原生编译（CGO 要链 gtk/webkit），正好也在同一个 runner 上
+#   - macOS 必须 macOS 主机（Cocoa + hdiutil），拆到 macos.yml，手动触发
+#
+# 为什么不直接 `wails3 build`：
+#   1. Windows 的 Taskfile 里有一句用系统 shell 删 syso 的步骤（platforms: [windows]），
+#      交叉编译时会被判成 windows 平台而在 Linux 上执行，必然失败；
+#   2. Linux 默认走 GTK4 + WebKitGTK 6.0，Debian 12 没有 webkitgtk-6.0，
+#      必须显式带 `gtk3` 标签，否则编译期 pkg-config 就找不到库。
+# 下面把步骤拆开手写，产物与本地 `wails3 build` 一致。
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  # 国内网络直连 proxy.golang.org 常超时
+  GOPROXY: https://goproxy.cn,direct
+  GOSUMDB: sum.golang.google.cn
+  # 与 build/config.yml、build/linux/nfpm/nfpm.yaml 的 version 保持一致
+  APP_VERSION: 0.1.0
+
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+          cache: true
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 wails3
+        # CGO_ENABLED=0：linux+cgo 的 CLI 会要 pkg-config gtk4 + webkitgtk-6.0，
+        # 本项目按 gtk3 构建，不该为装个打包工具去拉 GTK4 头文件
+        run: CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+
+      - name: 构建前端
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm run build
+
+      - name: 生成 Windows 资源（图标 + 清单）
+        run: |
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          cd build
+          "$WAILS3" generate syso -arch amd64 \
+            -icon windows/icon.ico \
+            -manifest windows/wails.exe.manifest \
+            -info windows/info.json \
+            -out ../wails_windows_amd64.syso
+
+      - name: 交叉编译 Windows 可执行文件
+        run: |
+          go mod download
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
+            -tags production -trimpath -buildvcs=false \
+            -ldflags="-w -s -H windowsgui" \
+            -o bin/weft.exe .
+          rm -f wails_windows_amd64.syso
+
+      - name: 取 WinTun 运行库
+        run: bash scripts/fetch-wintun.sh amd64
+
+      - name: 打包
+        run: |
+          mkdir -p release
+          # wintun.dll 必须和 exe 同目录，只发 exe 是跑不起来的
+          cp bin/weft.exe bin/wintun.dll release/
+          cd release
+          # -UN=UTF8：解压到中文 Windows 时文件名不乱码
+          zip -r -UN=UTF8 -q "weft-${APP_VERSION}-windows-amd64.zip" weft.exe wintun.dll
+          ls -la
+
+      - name: 产物入库（推 dist-windows 分支）
+        # 不用 actions/upload-artifact：这台 Gitea 的 artifact 接口创建容器时
+        # 一直回 429（试满 5 次），文件传不上去；v4 又直接不支持。
+        # 改走 git 通道推到独立分支，产物在仓库页面直接能下载，不依赖 Gitea API。
+        run: |
+          set -e
+          OUT=/tmp/artifacts && mkdir -p "$OUT"
+          cp release/*.zip "$OUT"/
+          git config user.name  "weft-ci"
+          git config user.email "ci@boothua.cn"
+          # 每次都从空分支重建：历史不会随二进制膨胀，也不会有上游冲突
+          git checkout --orphan dist-windows
+          git rm -rf . >/dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          mkdir -p windows-amd64
+          cp "$OUT"/*.zip windows-amd64/
+          printf 'version: %s\ncommit:  %s\nbuilt:   %s\n' \
+            "${APP_VERSION}" "${GITHUB_SHA}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > windows-amd64/BUILD.txt
+          git add -Af windows-amd64
+          git commit -q -m "windows-amd64 ${APP_VERSION} (${GITHUB_SHA:0:7})"
+          git push -f origin HEAD:dist-windows
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+          cache: true
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 GTK3 / WebKit2GTK 构建依赖
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          APT="-o Acquire::Retries=5 -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30"
+          # runner 镜像是 ubuntu-latest（当前 26.04 resolute）。别写死 suite，
+          # 也别一上来就改源：镜像源对个别组件/未压缩索引会 404，
+          # 反而把本来能用的默认源搞坏。先用发行版自带源，真不通再换镜像。
+          if ! sudo apt-get $APT update -qq; then
+            echo "::warning::默认 apt 源不可用，切换清华镜像重试"
+            for f in /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do
+              [ -f "$f" ] && sudo sed -i \
+                -e 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' \
+                -e 's|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' "$f"
+            done
+            sudo apt-get $APT update -qq || true
+          fi
+          sudo apt-get $APT install -y -qq \
+            build-essential pkg-config \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+
+      - name: 安装 wails3
+        # CGO_ENABLED=0：linux+cgo 的 CLI 会要 pkg-config gtk4 + webkitgtk-6.0，
+        # 本项目按 gtk3 构建，不该为装个打包工具去拉 GTK4 头文件
+        run: CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+
+      - name: 构建前端
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm run build
+
+      - name: 编译（CGO + gtk3）
+        run: |
+          go mod download
+          CGO_ENABLED=1 go build -tags "production gtk3" \
+            -trimpath -buildvcs=false -ldflags="-w -s" -o bin/weft .
+
+      - name: 生成 .desktop
+        run: |
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          mkdir -p build/linux
+          "$WAILS3" generate .desktop -name "云栈" -exec weft -icon weft \
+            -outputfile build/linux/weft.desktop -categories "Network;Utility;"
+
+      - name: 打 deb
+        run: |
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          mkdir -p release
+          "$WAILS3" tool package -name weft -format deb \
+            -config ./build/linux/nfpm/nfpm.yaml -out release
+          # wails3 只按 <name>.deb 命名，版本与架构要自己补上，
+          # 否则 next release 会和上一个同名覆盖
+          mv release/weft.deb "release/weft_${APP_VERSION}-1_amd64.deb"
+          # deb 之外再给一份裸二进制：装不上时解压即可运行
+          tar -C bin -czf "release/weft-${APP_VERSION}-linux-amd64.tar.gz" weft
+          ls -la release/
+
+      - name: 产物入库（推 dist-linux 分支）
+        # 同上：绕开 Gitea 的 artifact 接口，产物直接进仓库分支
+        run: |
+          set -e
+          OUT=/tmp/artifacts && mkdir -p "$OUT"
+          cp release/*.deb release/*.tar.gz "$OUT"/
+          git config user.name  "weft-ci"
+          git config user.email "ci@boothua.cn"
+          git checkout --orphan dist-linux
+          git rm -rf . >/dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          mkdir -p linux-amd64
+          cp "$OUT"/*.deb "$OUT"/*.tar.gz linux-amd64/
+          printf 'version: %s\ncommit:  %s\nbuilt:   %s\n' \
+            "${APP_VERSION}" "${GITHUB_SHA}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > linux-amd64/BUILD.txt
+          git add -Af linux-amd64
+          git commit -q -m "linux-amd64 ${APP_VERSION} (${GITHUB_SHA:0:7})"
+          git push -f origin HEAD:dist-linux
+
+  installer:
+    # 安装包依赖 makensis 和 WebView2 bootstrapper，只在打 tag 时做
+    needs: windows
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+          cache: true
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 wails3 与 NSIS
+        run: |
+          # 必须 CGO_ENABLED=0：wails3 CLI 在 linux+cgo 下会 import
+          # internal/operatingsystem/webkit_linux.go，硬要 pkg-config gtk4 +
+          # webkitgtk-6.0，而本项目按 gtk3 构建，装了 GTK4 纯属为装个打包工具
+          CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+          # 同 linux job：先用自带源，失败再换镜像，不写死 suite
+          export DEBIAN_FRONTEND=noninteractive
+          APT="-o Acquire::Retries=5 -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30"
+          if ! sudo apt-get $APT update -qq; then
+            echo "::warning::默认 apt 源不可用，切换清华镜像重试"
+            for f in /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do
+              [ -f "$f" ] && sudo sed -i \
+                -e 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' \
+                -e 's|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' "$f"
+            done
+            sudo apt-get $APT update -qq || true
+          fi
+          sudo apt-get $APT install -y -qq nsis zip
+
+      - name: 构建 Windows 可执行文件
+        run: |
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          (cd frontend && npm ci --include=dev && npm run build)
+          (cd build && "$WAILS3" generate syso -arch amd64 -icon windows/icon.ico \
+             -manifest windows/wails.exe.manifest -info windows/info.json \
+             -out ../wails_windows_amd64.syso)
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
+            -tags production -trimpath -buildvcs=false \
+            -ldflags="-w -s -H windowsgui" -o bin/weft.exe .
+          rm -f wails_windows_amd64.syso
+          bash scripts/fetch-wintun.sh amd64
+
+      - name: 生成 NSIS 安装包
+        run: |
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          cd build/windows/nsis
+          # project.nsi 会引用这个 bootstrapper，缺了打不出安装包
+          "$WAILS3" generate webview2bootstrapper -dir .
+          # WINTUN_DLL 走绝对路径：project.nsi 的默认值是 Windows 反斜杠相对路径，
+          # Linux 上 /FileExists 认不出来，会直接 !error 中断
+          ROOT="$(cd ../../.. && pwd)"
+          makensis -DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user \
+            -DARG_WAILS_AMD64_BINARY="$ROOT/bin/weft.exe" \
+            -DWINTUN_DLL="$ROOT/bin/wintun.dll" project.nsi
+          ls -la ../../../bin/
+
+      - name: 产物入库（推 dist-installer 分支）
+        run: |
+          set -e
+          OUT=/tmp/artifacts && mkdir -p "$OUT"
+          cp bin/*installer.exe "$OUT"/
+          git config user.name  "weft-ci"
+          git config user.email "ci@boothua.cn"
+          git checkout --orphan dist-installer
+          git rm -rf . >/dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          mkdir -p windows-installer
+          cp "$OUT"/*installer.exe windows-installer/
+          printf 'version: %s\ncommit:  %s\nbuilt:   %s\n' \
+            "${APP_VERSION}" "${GITHUB_SHA}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > windows-installer/BUILD.txt
+          git add -Af windows-installer
+          git commit -q -m "windows-installer ${APP_VERSION} (${GITHUB_SHA:0:7})"
+          git push -f origin HEAD:dist-installer
+
+  release:
+    # 打 tag 时把 dist-* 分支里的产物挂到「发布」页，效果等同 GitHub Releases。
+    # 不用 needs: installer —— 安装包那条链路可能因为 makensis 缺依赖失败，
+    # 不该连带把发布卡住；dist-installer 存在就一起发，不存在就跳过。
+    needs: [windows, linux]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 取回 dist 分支里的产物
+        run: |
+          set -e
+          mkdir -p out
+          for b in dist-windows dist-linux dist-installer; do
+            if git fetch --depth 1 origin "$b:refs/tmp/$b" 2>/dev/null; then
+              git archive "refs/tmp/$b" | tar -x -C out
+              echo "取到 $b"
+            else
+              echo "::warning::$b 分支不存在，跳过"
+            fi
+          done
+          find out -type f | sed 's/^/  /'
+
+      - name: 建 Release 并上传附件
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          TAG="${GITHUB_REF_NAME}"
+          AUTH="Authorization: token ${TOKEN}"
+
+          # 先在正式版发布页登记这个 tag，再逐个上传附件
+          RESP=$(curl -sS -X POST -H "$AUTH" -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"${TAG}\",\"name\":\"Weft ${TAG}\",\"draft\":false,\"prerelease\":false,\"body\":\"自动构建，commit ${GITHUB_SHA}\"}" \
+            "$API/releases")
+          ID=$(printf '%s' "$RESP" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("id","") if isinstance(d,dict) else "")' 2>/dev/null || true)
+          if [ -z "$ID" ]; then
+            # release 已存在时 POST 会失败，按 tag 查一次
+            RESP=$(curl -sS -H "$AUTH" "$API/releases/tags/${TAG}")
+            ID=$(printf '%s' "$RESP" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("id","") if isinstance(d,dict) else "")' 2>/dev/null || true)
+          fi
+          [ -n "$ID" ] || { echo "::error::建 Release 失败：$RESP"; exit 1; }
+          echo "release id=$ID"
+
+          for f in $(find out -type f ! -name BUILD.txt | sort); do
+            name=$(basename "$f")
+            echo "上传 $name ($(du -h "$f" | cut -f1))"
+            code=$(curl -sS -o /tmp/up.json -w '%{http_code}' -X POST -H "$AUTH" \
+              -F "attachment=@$f" "$API/releases/$ID/assets?name=$name")
+            echo "  → HTTP $code"
+            [ "$code" = "201" ] || { echo "::error::上传 $name 失败: $(cat /tmp/up.json)"; exit 1; }
+          done
