@@ -14,6 +14,10 @@ FROM node:20-bookworm
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
 
+# apt 换中科大源，deb.debian.org 国内拉包很慢
+RUN sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' \
+        /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+
 # Wails 的 Linux 后端要 gtk3 + webkit2gtk；nsis 给 installer job 用
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential pkg-config \
