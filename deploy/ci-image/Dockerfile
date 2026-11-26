@@ -13,7 +13,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8
 
 # 系统依赖：Wails 的 Linux 后端要 gtk3 + webkit2gtk，nsis 给 installer job 用
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# apt 走阿里云：这堆包一共 150MB+，走代理容易 fake-ip 解析到 198.18.x.x 然后 502
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' \
+        /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true \
+ && apt-get update && apt-get install -y --no-install-recommends \
         build-essential pkg-config \
         libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
         nsis zip unzip file \
