@@ -276,14 +276,24 @@ jobs:
 
   macos:
     # 跑在 macOS 上的原生 runner（host 模式，不是 Docker 容器）：
-    # 只有 Darwin 环境才有 hdiutil / codesign / Cocoa framework
+    # 只有 Darwin 环境才有 hdiutil / codesign / Cocoa framework。
+    #
+    # 这一步刻意不用 actions/checkout、setup-go 这些 action —— 它们都要从
+    # github.com 拉源码，这台 Mac 直连不通。host 模式下工具链本来就在宿主上，
+    # 代码直接从内网的 Gitea 拉，整条链路零外网依赖。
     runs-on: macos-latest
     steps:
       - name: 检出
-        uses: actions/checkout@v4
+        run: |
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git -c http.extraheader="Authorization: token ${GITHUB_TOKEN}" \
+            fetch --depth 1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
+          git log --oneline -1
 
       - name: 构建并打包
-        # wails3 build 会自己跑前端构建，这里不用单独 npm
+        # 宿主已有 go / node / wails3，不用 setup；wails3 build 自己会跑前端构建
         run: |
           wails3 build -tags devtools
           ./scripts/make-dmg.sh
