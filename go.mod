@@ -7,6 +7,8 @@ require (
 	github.com/wailsapp/wails/v3 v3.0.0
 	github.com/zalando/go-keyring v0.2.6
 	golang.org/x/sys v0.50.0
+	golang.org/x/text v0.44.0
+	golang.zx2c4.com/wireguard/windows v1.0.1
 	modernc.org/sqlite v1.44.3
 	tailscale.com v1.104.7
 )
@@ -58,10 +60,8 @@ require (
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/term v0.48.0 // indirect
-	golang.org/x/text v0.44.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
-	golang.zx2c4.com/wireguard/windows v1.0.1 // indirect
 	gvisor.dev/gvisor v0.0.0-20261117040555-0303b2605d5e // indirect
 	modernc.org/libc v1.67.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

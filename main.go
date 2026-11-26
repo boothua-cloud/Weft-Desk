@@ -31,9 +31,27 @@ func main() {
 	// 拖慢启动且对自用没有价值。
 	_ = os.Setenv("TS_NO_LOGS_NO_SUPPORT", "1")
 
-	// Windows 未提权且没有自启任务时，主动以管理员身份重启自己：
-	// WinTun 建卡必须管理员，否则第一次连接就会失败。
-	if maybeElevateOnStart() {
+	// 提权子进程只做一件事（装/卸登录自启任务），做完即退，不建界面。
+	// 这样「装系统助手」点一下就能完成，不需要用户自己去右键以管理员运行。
+	if handled, code := runPrivilegedAction(); handled {
+		os.Exit(code)
+	}
+
+	log.Printf("[boot] 平台=%s/%s 管理员=%v 数据目录=%s",
+		runtime.GOOS, runtime.GOARCH, isElevated(), dataDirDisplay())
+
+	// 单实例：登录自启任务与手动双击会撞在一起，两个进程抢同一张 WinTun 网卡、
+	// 同一个 SQLite 文件、同一个 tsnet 状态目录。
+	// 提权重启（--elevate-connect）是替换上一个进程：旧进程正在退出并已交锁，
+	// 这里短暂等待接管即可，不能直接判定「已有实例」。
+	if isReplaceLaunch() {
+		if !acquireSingleInstanceWait(6 * time.Second) {
+			log.Printf("[boot] 提权重启后仍没能接管单实例锁，退出")
+			return
+		}
+	} else if !acquireSingleInstance() {
+		log.Printf("[boot] 已有实例在运行，本次启动直接退出")
+		notifyAlreadyRunning()
 		return
 	}
 
@@ -201,6 +219,18 @@ func main() {
 	svc.mu.Unlock()
 	ui.bind()
 
+	// 连接时权限不足会以管理员身份重启自己并带上 --elevate-connect，
+	// 重启后把连接接上，用户不用再点一次「连接」。
+	if wantsAutoConnect() {
+		go func() {
+			time.Sleep(1200 * time.Millisecond)
+			log.Printf("[tunnel] 已以管理员身份重启，自动连接")
+			if _, err := svc.Connect(); err != nil {
+				log.Printf("[tunnel] 授权后自动连接失败: %v", err)
+			}
+		}()
+	}
+
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
@@ -226,6 +256,10 @@ func setupLogFile() {
 	if err != nil {
 		return
 	}
-	log.SetOutput(io.MultiWriter(os.Stderr, f))
+	// 顺序很关键：文件必须排在第一个。
+	// windowsgui 构建（双击启动）没有控制台，os.Stderr 是无效句柄，写它会返回错误；
+	// io.MultiWriter 碰到第一个写失败就直接返回，后面的 writer 不会再写——
+	// 之前把 stderr 放前面，结果「双击启动时日志一个字都没有」。
+	log.SetOutput(io.MultiWriter(f, os.Stderr))
 	log.SetFlags(log.LstdFlags)
 }
