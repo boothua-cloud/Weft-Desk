@@ -274,4 +274,27 @@ jobs:
           chmod +x scripts/gitea-release.sh
           ./scripts/gitea-release.sh release "$TAG"
 
+  macos:
+    # 跑在 macOS 上的原生 runner（host 模式，不是 Docker 容器）：
+    # 只有 Darwin 环境才有 hdiutil / codesign / Cocoa framework
+    runs-on: macos-latest
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
 
+      - name: 构建并打包
+        # wails3 build 会自己跑前端构建，这里不用单独 npm
+        run: |
+          wails3 build -tags devtools
+          ./scripts/make-dmg.sh
+
+      - name: 直接发到「发布」
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/*) TAG="${GITHUB_REF#refs/tags/}" ;;
+            *) TAG="build-${GITHUB_SHA:0:8}" ;;
+          esac
+          chmod +x scripts/gitea-release.sh
+          ./scripts/gitea-release.sh release "$TAG"
