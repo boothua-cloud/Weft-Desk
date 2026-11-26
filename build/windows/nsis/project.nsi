@@ -20,14 +20,14 @@ Unicode true
 ## The following information is taken from the wails_tools.nsh file, but they can be overwritten here.
 ####
 !define INFO_PROJECTNAME    "weft"
-!define INFO_PRODUCTNAME    "云栈"
+!define INFO_PRODUCTNAME    "Weft"
 !define INFO_COMPANYNAME    "Boothua"
 !define INFO_PRODUCTVERSION "0.1.0"
-!define INFO_COPYRIGHT      "© 2026 Boothua"
+!define INFO_COPYRIGHT      "(c) 2026 Boothua"
 ## !define INFO_COMPANYNAME    "My Company" # Default "My Company"
 ## !define INFO_PRODUCTNAME    "My Product Name" # Default "Weft"
 ## !define INFO_PRODUCTVERSION "1.0.0"     # Default "0.1.0"
-## !define INFO_COPYRIGHT      "(c) Now, My Company" # Default "© 2026, My Company"
+## !define INFO_COPYRIGHT      "(c) Now, My Company" # Default "(c) 2026, My Company"
 ###
 ## !define PRODUCT_EXECUTABLE  "Application.exe"      # Default "${INFO_PROJECTNAME}.exe"
 ## !define UNINST_KEY_NAME     "UninstKeyInRegistry"  # Default "${INFO_COMPANYNAME}${INFO_PRODUCTNAME}"
@@ -96,6 +96,22 @@ Section
     SetOutPath $INSTDIR
     
     !insertmacro wails.files
+
+    # NOTE: keep this script pure ASCII. makensis parses the script in the
+    # Windows ANSI codepage unless a BOM is present, so non-ASCII comments
+    # abort with "Bad text encoding".
+    # WinTun runtime: required to create the virtual adapter, must sit next
+    # to the exe, otherwise connecting fails with "Unable to load wintun.dll".
+    # Build fails loudly if it is missing, instead of shipping an installer
+    # that only breaks when the user clicks Connect.
+    !ifndef WINTUN_DLL
+        !define WINTUN_DLL "..\..\..\bin\wintun.dll"
+    !endif
+    !if /FileExists "${WINTUN_DLL}"
+        File "/oname=wintun.dll" "${WINTUN_DLL}"
+    !else
+        !error "wintun.dll not found: ${WINTUN_DLL} - run scripts/fetch-wintun.sh amd64 first"
+    !endif
 
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"

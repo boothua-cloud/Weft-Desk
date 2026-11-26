@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -20,9 +21,14 @@ import (
 
 const tunMTU = 1280
 
-// tailnetPrefix 覆盖全部 tailnet 地址，一条路由即可访问所有 peer，
+// tailnetPrefix 覆盖全部 tailnet 地址，一条路由即可接入所有 peer，
 // 不必逐台加 /32。子网路由（subnet router 通告的网段）另外叠加。
 const tailnetPrefix = "100.64.0.0/10"
+
+// errNeedElevation 表示「当前进程权限不够，必须以管理员身份重启」。
+// 只有 Windows 会返回它：WinTun 建卡与写入系统路由都要求进程本身提权。
+// 上层据此触发一次 UAC 并以管理员身份重启，而不是把这句话直接甩给用户。
+var errNeedElevation = errors.New("接管系统网络需要管理员权限")
 
 // osRouter 抽象「接管系统网络」的平台差异：创建 TUN、配接口地址、
 // 装路由、退出清理。macOS / Linux 需要 root，实现内部经提权助手完成；
@@ -228,6 +234,13 @@ func (e *systemTUNEngine) Up(c Config) error {
 	router := newOSRouter()
 	dev, err := router.Prepare()
 	if err != nil {
+		// 权限不足要让界面看得见：启动时自动连接失败不会有弹窗，
+		// 只在总览页留一句「未连接」用户根本不知道差什么。
+		if errors.Is(err, errNeedElevation) {
+			e.mu.Lock()
+			e.lastErr = "需要管理员授权才能创建虚拟网卡：点「连接」会请求一次系统授权，或在设置页安装系统助手"
+			e.mu.Unlock()
+		}
 		return err
 	}
 

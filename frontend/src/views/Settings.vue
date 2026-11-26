@@ -277,7 +277,7 @@ async function uninstallHelper() {
       </div>
       <pre v-if="helper?.logTail" class="mono" style="font-size:10px;line-height:1.5;background:var(--surface-2);padding:8px;border-radius:6px;margin:0 0 10px;white-space:pre-wrap;max-height:130px;overflow:auto">{{ helper.logTail }}</pre>
       <div class="row">
-        <button class="btn" :disabled="helperBusy" @click="installHelper">
+        <button id="btn-install-helper" class="btn" :disabled="helperBusy" @click="installHelper">
           {{ helper?.installed ? '重新安装（一次授权）' : '安装 · 一次授权后免密' }}
         </button>
         <button v-if="helper?.installed" class="btn danger" :disabled="helperBusy" @click="uninstallHelper">移除</button>

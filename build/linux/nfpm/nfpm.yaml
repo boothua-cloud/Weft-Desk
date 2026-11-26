@@ -1,80 +1,54 @@
-# Feel free to remove those if you don't want/need to use them.
-# Make sure to check the documentation at https://nfpm.goreleaser.com
+# nfpm 配置：打 .deb / .rpm / archlinux 包（`wails3 tool package`）
 #
-# The lines below are called `modelines`. See `:help modeline`
-
+# 与 Wails 模板默认值的差异，都是本项目实际情况决定的，不要照抄回模板：
+# - 包名用 ASCII 的 weft：deb 包名不允许中文；可执行文件也叫 weft，CLI 调用方便
+# - 依赖 GTK3 + WebKit2GTK 4.1：本项目按 `-tags gtk3` 构建（见 scripts/build-linux.sh），
+#   模板默认的 gtk4 / webkitgtk-6.0 与二进制实际链接的库不一致，装了也起不来
+# - 图标按真实尺寸落到 hicolor/1024x1024，塞进 128 目录会让图标缓存索引错乱
+# - arch 写死 amd64：Linux 侧必须原生 CGO 编译，交叉出来的 arm64 包没意义
 name: "weft"
-arch: ${GOARCH}
+arch: "amd64"
 platform: "linux"
 version: "0.1.0"
-section: "default"
-priority: "extra"
-maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "Weft - Tailscale / Headscale 桌面客户端"
-vendor: "My Company"
-homepage: "https://wails.io"
-license: "MIT"
+section: "net"
+priority: "optional"
+maintainer: "Boothua <boothua@boothua.cn>"
+description: |-
+  云栈 —— Tailscale / Headscale 桌面客户端。
+  节点跑在应用进程内，接管系统网络后 ssh / mysql / psql 等外部工具可直接访问 tailnet 与内网网段。
+vendor: "Boothua"
+homepage: "https://git.boothua.cn/boothua/WeftDesk"
 release: "1"
 
 contents:
   - src: "./bin/weft"
     dst: "/usr/local/bin/weft"
+    file_info:
+      mode: 0755
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/weft.png"
+    dst: "/usr/share/icons/hicolor/1024x1024/apps/weft.png"
+    file_info:
+      mode: 0644
   - src: "./build/linux/weft.desktop"
     dst: "/usr/share/applications/weft.desktop"
+    file_info:
+      # 默认会跟着源文件权限走，带执行位不合 Debian 规范（lintian 会报）
+      mode: 0644
 
-# Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
+# 与构建标签一致的运行时依赖
 depends:
-  - libgtk-4-1
-  - libwebkitgtk-6.0-4
+  - libgtk-3-0
+  - libwebkit2gtk-4.1-0
 
-# Distribution-specific overrides for different package formats
 overrides:
-  # RPM packages for Fedora / RHEL / AlmaLinux / Rocky Linux
   rpm:
     depends:
-      - gtk4
-      - webkitgtk6.0
-
-  # Arch Linux packages
+      - gtk3
+      - webkit2gtk4.1
   archlinux:
     depends:
-      - gtk4
-      - webkitgtk-6.0
+      - gtk3
+      - webkit2gtk-4.1
 
-# scripts section to ensure desktop database is updated after install
 scripts:
   postinstall: "./build/linux/nfpm/scripts/postinstall.sh"
-  # You can also add preremove, postremove if needed
-  # preremove: "./build/linux/nfpm/scripts/preremove.sh"
-  # postremove: "./build/linux/nfpm/scripts/postremove.sh"
-
-# If you build your app with -tags gtk3 (legacy WebKit2GTK 4.1 stack — supported through v3.0.x, removed in v3.1),
-# replace the depends/overrides above with these:
-#
-# depends:
-#   - libgtk-3-0
-#   - libwebkit2gtk-4.1-0
-# overrides:
-#   rpm:
-#     depends:
-#       - gtk3
-#       - webkit2gtk4.1
-#   archlinux:
-#     depends:
-#       - gtk3
-#       - webkit2gtk-4.1
-#
-# replaces:
-#   - foobar
-# provides:
-#   - bar
-# recommends:
-#   - whatever
-# suggests:
-#   - something-else
-# conflicts:
-#   - not-foo
-#   - not-bar
-# changelog: "changelog.yaml"

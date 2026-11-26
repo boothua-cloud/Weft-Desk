@@ -165,7 +165,7 @@ function copyLogin() {
           <template v-else>
             <button class="btn" @click="act('connect')">重连</button>
             <button v-if="state?.connected" class="btn danger" @click="act('disconnect')">断开连接</button>
-            <button v-else class="btn primary" @click="act('connect')">连接</button>
+            <button v-else id="btn-connect" class="btn primary" @click="act('connect')">连接</button>
           </template>
         </div>
       </div>
