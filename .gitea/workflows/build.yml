@@ -147,18 +147,28 @@ jobs:
         run: |
           export DEBIAN_FRONTEND=noninteractive
           APT="-o Acquire::Retries=5 -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30"
-          # runner 镜像是 ubuntu-latest（当前 26.04 resolute）。别写死 suite，
-          # 也别一上来就改源：镜像源对个别组件/未压缩索引会 404，
-          # 反而把本来能用的默认源搞坏。先用发行版自带源，真不通再换镜像。
+
+          # 直接用中科大源。只替换域名，路径保持不变，这样 Debian 的
+          # /debian 和 /debian-security、Ubuntu 的 /ubuntu 都能对上。
+          # 改之前先备份，万一镜像缺组件还能退回去。
+          for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
+            [ -f "$f" ] || continue
+            sudo cp -f "$f" "$f.orig"
+            sudo sed -i \
+              -e 's|deb.debian.org|mirrors.ustc.edu.cn|g' \
+              -e 's|security.debian.org|mirrors.ustc.edu.cn|g' \
+              -e 's|archive.ubuntu.com|mirrors.ustc.edu.cn|g' \
+              -e 's|security.ubuntu.com|mirrors.ustc.edu.cn|g' "$f"
+          done
+
           if ! sudo apt-get $APT update -qq; then
-            echo "::warning::默认 apt 源不可用，切换清华镜像重试"
-            for f in /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do
-              [ -f "$f" ] && sudo sed -i \
-                -e 's|http://archive.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' \
-                -e 's|http://security.ubuntu.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' "$f"
+            echo "::warning::中科大源不可用，回退发行版默认源"
+            for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
+              [ -f "$f.orig" ] && sudo cp -f "$f.orig" "$f"
             done
-            sudo apt-get $APT update -qq || true
+            sudo apt-get $APT update -qq
           fi
+
           sudo apt-get $APT install -y -qq \
             build-essential pkg-config \
             libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
@@ -251,6 +261,13 @@ jobs:
           if command -v makensis >/dev/null 2>&1; then
             echo "makensis 已预装，跳过"
           else
+            for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
+              [ -f "$f" ] || continue
+              sudo sed -i -e 's|deb.debian.org|mirrors.ustc.edu.cn|g' \
+                -e 's|security.debian.org|mirrors.ustc.edu.cn|g' \
+                -e 's|archive.ubuntu.com|mirrors.ustc.edu.cn|g' \
+                -e 's|security.ubuntu.com|mirrors.ustc.edu.cn|g' "$f"
+            done
             sudo apt-get update && sudo apt-get install -y --no-install-recommends nsis
           fi
           # 必须 CGO_ENABLED=0：wails3 CLI 在 linux+cgo 下会 import
