@@ -5,7 +5,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-APP="云栈"
+APP="Weft"
 VER="0.1.0"
 OUT="release/${APP}-${VER}-macos-arm64.dmg"
 RW="/tmp/weft-rw-$$.dmg"
@@ -16,7 +16,7 @@ for v in "/Volumes/${APP}" "/Volumes/${APP} 1" "/Volumes/${APP} 2"; do
   hdiutil detach "$v" -quiet 2>/dev/null || true
 done
 
-# 先用当前的 bin/云栈 重新生成 .app，否则会把上一次的旧二进制打进安装包
+# 先用当前的 bin/weft 重新生成 .app，否则会把上一次的旧二进制打进安装包
 ./scripts/make-app.sh
 cp -R "bin/${APP}.app" release/
 wails3 tool package --format dmg --name "$APP" --out release \

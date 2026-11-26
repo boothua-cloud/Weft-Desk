@@ -6,9 +6,9 @@ version: '3'
 # This information is used to generate the build assets.
 info:
   companyName: "Boothua" # The name of the company
-  productName: "云栈" # The name of the application
+  productName: "Weft" # The name of the application
   productIdentifier: "com.boothua.weftdesk" # The unique product identifier
-  description: "Tailscale / Headscale 桌面客户端" # The application description
+  description: "Weft - Tailscale / Headscale desktop client" # The application description
   copyright: "(c) 2026, Boothua" # Copyright text
   comments: "Weft" # Comments
   version: "0.1.0" # The application version

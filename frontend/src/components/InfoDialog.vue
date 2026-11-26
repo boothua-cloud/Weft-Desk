@@ -116,7 +116,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
             <li>总览页大卡片会显示「上次启动失败：…」，先看那句具体错误。</li>
             <li>「连接设置」里点「测试连接」，能确认地址和凭证是否有效。</li>
             <li>
-              看详细日志：<template v-if="isMac">终端里跑 <span class="mono">bin/云栈.app/Contents/MacOS/云栈</span></template><template v-else>在安装目录里用命令行启动 <span class="mono">云栈.exe</span></template>，<span class="mono">[system]</span> 开头的是节点日志，会打印每个对端的在线状态和 DERP。
+              看详细日志：<template v-if="isMac">终端里跑 <span class="mono">bin/Weft.app/Contents/MacOS/weft --diag</span></template><template v-else>在安装目录里用命令行启动 <span class="mono">weft.exe --diag</span></template>，<span class="mono">[system]</span> 开头的是节点日志，会打印每个对端的在线状态和 DERP。
             </li>
             <li>ACL 改完不生效：Headscale 的策略是整份替换，注意别把别人的规则覆盖掉，可以先点「校验」。</li>
           </ul>
