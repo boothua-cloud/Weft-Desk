@@ -62,18 +62,15 @@ for f in "$DIST"/*; do
     *) continue ;;
   esac
   echo "上传 $name"
+  # Gitea 不拦同名附件，直接传会留两份一样的文件。先查再删。
+  AID=$(curl -sS "$API/releases/$RID/assets" -H "Authorization: token $TOKEN" |
+    python3 -c "import json,sys,os;n=os.environ['N'];print(next((a['id'] for a in json.load(sys.stdin) if a['name']==n),''))" N="$name" 2>/dev/null)
+  if [ -n "${AID:-}" ]; then
+    curl -sS -X DELETE "$API/releases/$RID/assets/$AID" -H "Authorization: token $TOKEN" >/dev/null
+  fi
   curl -sS -f -X POST "$API/releases/$RID/assets?name=$name" \
     -H "Authorization: token $TOKEN" \
-    -F "attachment=@$f" >/dev/null || {
-      echo "  已存在，删除后重传"
-      AID=$(curl -sS "$API/releases/$RID/assets" -H "Authorization: token $TOKEN" |
-        python3 -c "import json,sys,os;n=os.environ['N'];print(next((a['id'] for a in json.load(sys.stdin) if a['name']==n),''))" N="$name" 2>/dev/null)
-      if [ -n "${AID:-}" ]; then
-        curl -sS -X DELETE "$API/releases/$RID/assets/$AID" -H "Authorization: token $TOKEN" >/dev/null
-        curl -sS -f -X POST "$API/releases/$RID/assets?name=$name" \
-          -H "Authorization: token $TOKEN" -F "attachment=@$f" >/dev/null
-      fi
-    }
+    -F "attachment=@$f" >/dev/null
 done
 
 echo "完成：$SERVER/$REPO/releases/tag/$TAG"
