@@ -65,8 +65,13 @@ jobs:
             "release/云栈-${APP_VERSION}-macos-${ARCH}.dmg"
           ls -la release/
 
-      - name: 上传产物
-        uses: actions/upload-artifact@v3
-        with:
-          name: macos
-          path: release/*.dmg
+      - name: 直接发到「发布」
+        env:
+          TOKEN: ${{ gitea.token }}
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/*) TAG="${GITHUB_REF#refs/tags/}" ;;
+            *) TAG="build-${GITHUB_SHA:0:8}" ;;
+          esac
+          chmod +x scripts/gitea-release.sh
+          ./scripts/gitea-release.sh release "$TAG"

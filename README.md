@@ -122,30 +122,22 @@ Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 | 目标 | 产出 | 构建机 |
 |---|---|---|
 | Windows | `weft-0.1.0-windows-amd64.zip`（`weft.exe` + `wintun.dll`） | Linux 交叉编译（`CGO_ENABLED=0`） |
-| Windows 安装包 | `weft-amd64-installer.exe`（NSIS，装到 `%LOCALAPPDATA%\Programs\Weft`） | Linux + `makensis`，仅打 tag 时 |
-| Linux | `weft_0.1.0-1_amd64.deb` + `weft-0.1.0-linux-amd64.tar.gz` | Linux 原生（`CGO_ENABLED=1 -tags gtk3`） |
-| macOS | `weft-0.1.0-macos-arm64.dmg` | 必须 macOS 主机，见 `.gitea/workflows/macos.yml`（手动触发） |
+| Windows 安装包 | `云栈-windows-amd64-setup.exe`（NSIS，装到 `%LOCALAPPDATA%\Programs\Weft`） | Linux + `makensis`，仅打 tag 时 |
+| Linux | `云栈_0.1.0-1_amd64.deb` + `云栈-0.1.0-linux-amd64.tar.gz` | Linux 原生（`CGO_ENABLED=1 -tags gtk3`） |
+| macOS | `云栈-0.1.0-macos-arm64.dmg` | 必须 macOS 主机，见 `.gitea/workflows/macos.yml`（手动触发） |
 
 流水线里 `wails3` 用 `CGO_ENABLED=0 go install` 安装：CLI 在 `linux+cgo` 下会编进
 `internal/operatingsystem/webkit_linux.go`，硬要 `pkg-config gtk4 webkitgtk-6.0`，
 而我们按 gtk3 构建，为了装个打包工具去拉 GTK4 头文件没道理。关掉 CGO 后
 `generate syso` / `generate .desktop` / `tool package` 都正常。
 
-产物不看 Actions 的 artifact，而是每个 job 结束时推到一个独立分支，仓库页面直接下载：
+产物不走 Actions 的 artifact（这台 Gitea 的 artifact 接口固定回 429，v3/v4 都传不上去），
+也不再用中间分支：每个 job 构建完，直接调 `scripts/gitea-release.sh` 把文件挂到同一个
+Release 上。三个 job 并发，脚本对「release 已存在」做了幂等处理（409 就按 tag 查回来）。
 
-| 分支 | 内容 |
-|---|---|
-| `dist-windows` | `windows-amd64/`：zip + `BUILD.txt`（版本/commit/构建时间） |
-| `dist-linux` | `linux-amd64/`：deb、tar.gz + `BUILD.txt` |
-| `dist-installer` | `windows-installer/`：NSIS 安装包 + `BUILD.txt`（仅打 tag） |
-
-三个分支每次构建都用 `--orphan` 强制重建，历史不会随二进制膨胀。
-之所以不用 `actions/upload-artifact`：这台 Gitea 的 artifact 接口创建容器固定回
-429，v3/v4 都传不上去；走 git 通道不依赖 Gitea API，也不经过任何第三方。
-
-**发版**：`git tag -a v0.1.1 -m "..." && git push origin v0.1.1`。tag 会额外触发
-`installer` 与 `release` 两个 job —— 前者打 NSIS 安装包，后者把三个 `dist-*` 分支里的
-产物建成 Release 挂到「发布」页（效果等同 GitHub Releases，附件直接下载）。
+**发版**：`git tag -a v0.1.1 -m "..." && git push origin v0.1.1`。
+tag 触发时附件挂到 `v0.1.1` 这个发布；手动触发时用 `build-<commit8>` 建一个临时发布。
+`installer` 打 NSIS 安装包，`macos` 在 `macos.yml` 里手动点（没注册 macOS runner）。
 
 > runner 侧的两个环境要求（本机 Docker runner 已配好）：容器要能访问 github.com 拉
 > action 源码（配置了走网关代理，`NO_PROXY` 放行 `git.boothua.cn`，避免出口 IP 被
@@ -154,7 +146,7 @@ Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 本机手动构建：
 
 ```bash
-# Windows（产物 bin/weft.exe，需 bin/wintun.dll 同目录）
+# Windows（产物 bin/云栈.exe，需 bin/wintun.dll 同目录）
 bash scripts/fetch-wintun.sh amd64
 wails3 build -tags devtools
 

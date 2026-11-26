@@ -87,28 +87,18 @@ jobs:
           zip -r -UN=UTF8 -q "云栈-${APP_VERSION}-windows-amd64.zip" 云栈.exe wintun.dll
           ls -la
 
-      - name: 产物入库（推 dist-windows 分支）
-        # 不用 actions/upload-artifact：这台 Gitea 的 artifact 接口创建容器时
-        # 一直回 429（试满 5 次），文件传不上去；v4 又直接不支持。
-        # 改走 git 通道推到独立分支，产物在仓库页面直接能下载，不依赖 Gitea API。
+      - name: 直接发到「发布」
+        # 不再往 dist-* 分支塞产物：每个 job 构建完就把自己的文件挂到同一个 Release，
+        # 少一次孤儿分支提交，产物也不用再搬一次。
+        env:
+          TOKEN: ${{ gitea.token }}
         run: |
-          set -e
-          OUT=/tmp/artifacts && mkdir -p "$OUT"
-          cp release/*.zip "$OUT"/
-          git config user.name  "weft-ci"
-          git config user.email "ci@boothua.cn"
-          # 每次都从空分支重建：历史不会随二进制膨胀，也不会有上游冲突
-          git checkout --orphan dist-windows
-          git rm -rf . >/dev/null 2>&1 || true
-          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          mkdir -p windows-amd64
-          cp "$OUT"/*.zip windows-amd64/
-          printf 'version: %s\ncommit:  %s\nbuilt:   %s\n' \
-            "${APP_VERSION}" "${GITHUB_SHA}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            > windows-amd64/BUILD.txt
-          git add -Af windows-amd64
-          git commit -q -m "windows-amd64 ${APP_VERSION} (${GITHUB_SHA:0:7})"
-          git push -f origin HEAD:dist-windows
+          case "$GITHUB_REF" in
+            refs/tags/*) TAG="${GITHUB_REF#refs/tags/}" ;;
+            *) TAG="build-${GITHUB_SHA:0:8}" ;;
+          esac
+          chmod +x scripts/gitea-release.sh
+          ./scripts/gitea-release.sh release "$TAG"
 
   linux:
     runs-on: ubuntu-latest
@@ -184,25 +174,18 @@ jobs:
           tar -C bin -czf "release/云栈-${APP_VERSION}-linux-amd64.tar.gz" 云栈
           ls -la release/
 
-      - name: 产物入库（推 dist-linux 分支）
-        # 同上：绕开 Gitea 的 artifact 接口，产物直接进仓库分支
+      - name: 直接发到「发布」
+        # 不再往 dist-* 分支塞产物：每个 job 构建完就把自己的文件挂到同一个 Release，
+        # 少一次孤儿分支提交，产物也不用再搬一次。
+        env:
+          TOKEN: ${{ gitea.token }}
         run: |
-          set -e
-          OUT=/tmp/artifacts && mkdir -p "$OUT"
-          cp release/*.deb release/*.tar.gz "$OUT"/
-          git config user.name  "weft-ci"
-          git config user.email "ci@boothua.cn"
-          git checkout --orphan dist-linux
-          git rm -rf . >/dev/null 2>&1 || true
-          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          mkdir -p linux-amd64
-          cp "$OUT"/*.deb "$OUT"/*.tar.gz linux-amd64/
-          printf 'version: %s\ncommit:  %s\nbuilt:   %s\n' \
-            "${APP_VERSION}" "${GITHUB_SHA}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            > linux-amd64/BUILD.txt
-          git add -Af linux-amd64
-          git commit -q -m "linux-amd64 ${APP_VERSION} (${GITHUB_SHA:0:7})"
-          git push -f origin HEAD:dist-linux
+          case "$GITHUB_REF" in
+            refs/tags/*) TAG="${GITHUB_REF#refs/tags/}" ;;
+            *) TAG="build-${GITHUB_SHA:0:8}" ;;
+          esac
+          chmod +x scripts/gitea-release.sh
+          ./scripts/gitea-release.sh release "$TAG"
 
   installer:
     # 安装包依赖 makensis 和 WebView2 bootstrapper，只在打 tag 时做
@@ -270,78 +253,23 @@ jobs:
             -DARG_WAILS_AMD64_BINARY="$ROOT/bin/云栈.exe" \
             -DWINTUN_DLL="$ROOT/bin/wintun.dll" project.nsi
           ls -la ../../../bin/
-
-      - name: 产物入库（推 dist-installer 分支）
-        run: |
-          set -e
-          OUT=/tmp/artifacts && mkdir -p "$OUT"
-          cp bin/*installer.exe "$OUT"/
-          git config user.name  "weft-ci"
-          git config user.email "ci@boothua.cn"
-          git checkout --orphan dist-installer
-          git rm -rf . >/dev/null 2>&1 || true
-          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          mkdir -p windows-installer
-          cp "$OUT"/*installer.exe windows-installer/
-          printf 'version: %s\ncommit:  %s\nbuilt:   %s\n' \
-            "${APP_VERSION}" "${GITHUB_SHA}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            > windows-installer/BUILD.txt
-          git add -Af windows-installer
-          git commit -q -m "windows-installer ${APP_VERSION} (${GITHUB_SHA:0:7})"
-          git push -f origin HEAD:dist-installer
-
-  release:
-    # 打 tag 时把 dist-* 分支里的产物挂到「发布」页，效果等同 GitHub Releases。
-    # 不用 needs: installer —— 安装包那条链路可能因为 makensis 缺依赖失败，
-    # 不该连带把发布卡住；dist-installer 存在就一起发，不存在就跳过。
-    needs: [windows, linux]
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    steps:
-      - name: 检出
-        uses: actions/checkout@v4
-
-      - name: 取回 dist 分支里的产物
-        run: |
-          set -e
-          mkdir -p out
-          for b in dist-windows dist-linux dist-installer; do
-            if git fetch --depth 1 origin "$b:refs/tmp/$b" 2>/dev/null; then
-              git archive "refs/tmp/$b" | tar -x -C out
-              echo "取到 $b"
-            else
-              echo "::warning::$b 分支不存在，跳过"
-            fi
+          # 归到 release/ 供上传步骤，命名和本地打包保持一致
+          cd "$ROOT"
+          mkdir -p release
+          for f in bin/*installer.exe; do
+            mv "$f" "release/云栈-${APP_VERSION}-windows-amd64-setup.exe"
           done
-          find out -type f | sed 's/^/  /'
 
-      - name: 建 Release 并上传附件
+      - name: 直接发到「发布」
+        # 不再往 dist-* 分支塞产物：每个 job 构建完就把自己的文件挂到同一个 Release，
+        # 少一次孤儿分支提交，产物也不用再搬一次。
         env:
-          TOKEN: ${{ github.token }}
+          TOKEN: ${{ gitea.token }}
         run: |
-          set -e
-          API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
-          TAG="${GITHUB_REF_NAME}"
-          AUTH="Authorization: token ${TOKEN}"
+          case "$GITHUB_REF" in
+            refs/tags/*) TAG="${GITHUB_REF#refs/tags/}" ;;
+            *) TAG="build-${GITHUB_SHA:0:8}" ;;
+          esac
+          chmod +x scripts/gitea-release.sh
+          ./scripts/gitea-release.sh release "$TAG"
 
-          # 先在正式版发布页登记这个 tag，再逐个上传附件
-          RESP=$(curl -sS -X POST -H "$AUTH" -H "Content-Type: application/json" \
-            -d "{\"tag_name\":\"${TAG}\",\"name\":\"Weft ${TAG}\",\"draft\":false,\"prerelease\":false,\"body\":\"自动构建，commit ${GITHUB_SHA}\"}" \
-            "$API/releases")
-          ID=$(printf '%s' "$RESP" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("id","") if isinstance(d,dict) else "")' 2>/dev/null || true)
-          if [ -z "$ID" ]; then
-            # release 已存在时 POST 会失败，按 tag 查一次
-            RESP=$(curl -sS -H "$AUTH" "$API/releases/tags/${TAG}")
-            ID=$(printf '%s' "$RESP" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("id","") if isinstance(d,dict) else "")' 2>/dev/null || true)
-          fi
-          [ -n "$ID" ] || { echo "::error::建 Release 失败：$RESP"; exit 1; }
-          echo "release id=$ID"
-
-          for f in $(find out -type f ! -name BUILD.txt | sort); do
-            name=$(basename "$f")
-            echo "上传 $name ($(du -h "$f" | cut -f1))"
-            code=$(curl -sS -o /tmp/up.json -w '%{http_code}' -X POST -H "$AUTH" \
-              -F "attachment=@$f" "$API/releases/$ID/assets?name=$name")
-            echo "  → HTTP $code"
-            [ "$code" = "201" ] || { echo "::error::上传 $name 失败: $(cat /tmp/up.json)"; exit 1; }
-          done
