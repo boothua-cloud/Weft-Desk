@@ -64,7 +64,7 @@ for f in "$DIST"/*; do
   echo "上传 $name"
   # Gitea 不拦同名附件，直接传会留两份一样的文件。先查再删。
   AID=$(curl -sS "$API/releases/$RID/assets" -H "Authorization: token $TOKEN" |
-    python3 -c "import json,sys,os;n=os.environ['N'];print(next((a['id'] for a in json.load(sys.stdin) if a['name']==n),''))" N="$name" 2>/dev/null)
+    python3 -c "import json,sys;n=sys.argv[1];print(next((a['id'] for a in json.load(sys.stdin) if a['name']==n),''))" "$name" 2>/dev/null || true)
   if [ -n "${AID:-}" ]; then
     curl -sS -X DELETE "$API/releases/$RID/assets/$AID" -H "Authorization: token $TOKEN" >/dev/null
   fi
