@@ -50,6 +50,8 @@ ENV GOPROXY=https://goproxy.cn,https://mirrors.aliyun.com/goproxy/,direct \
 # ── 3. wails3（预编译，省掉每个 job 一次 go install）────────────
 # CGO_ENABLED=0：纯 Go 工具，开了 CGO 反而会在交叉环境下让 gcc 收到 -m64 报错
 ARG WAILS_VERSION=v3.0.0
+# 先把生效的代理打出来，构建日志里能确认没在直连 github
+RUN go env GOPROXY GOTOOLCHAIN GOSUMDB
 RUN CGO_ENABLED=0 go install -trimpath -ldflags="-s -w" \
         github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION} \
  && wails3 version \
