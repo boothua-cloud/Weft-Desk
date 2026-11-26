@@ -2,7 +2,7 @@
 
 云栈是 Headscale 的桌面客户端。不安装 Tailscale，节点跑在应用进程内；接管系统网络后，`ssh`、`mysql`、`psql`、`redis-cli` 等外部工具可直接访问 tailnet 与内网网段。
 
-名字取自李白《蜀道难》「天梯石栈相钩连」：在没有路的地方凿出一条通路。工程目录 `WeftDesk`、数据目录 `Weft`、helper 通道 `weft.sock` 是历史命名，保留不动；构建产物已改名为 `云栈`。
+名字取自李白《蜀道难》「天梯石栈相钩连」：在没有路的地方凿出一条通路。可执行文件、安装目录、包名统一用 `weft`（Windows 为 `weft.exe`，macOS 为 `Weft.app`，Linux 为 `/usr/local/bin/weft`）；`云栈` 只作为界面里的显示名，不出现在任何文件路径上。
 
 ## 功能
 
@@ -121,8 +121,8 @@ Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 
 | 目标 | 产出 | 构建机 |
 |---|---|---|
-| Windows | `云栈-0.1.0-windows-amd64.zip`（exe + `wintun.dll`） | Linux 交叉编译（`CGO_ENABLED=0`） |
-| Windows 安装包 | `weft-amd64-installer.exe`（NSIS） | Linux + `makensis`，仅打 tag 时 |
+| Windows | `weft-0.1.0-windows-amd64.zip`（`weft.exe` + `wintun.dll`） | Linux 交叉编译（`CGO_ENABLED=0`） |
+| Windows 安装包 | `weft-amd64-installer.exe`（NSIS，装到 `%LOCALAPPDATA%\Programs\Weft`） | Linux + `makensis`，仅打 tag 时 |
 | Linux | `weft_0.1.0-1_amd64.deb` + `weft-0.1.0-linux-amd64.tar.gz` | Linux 原生（`CGO_ENABLED=1 -tags gtk3`） |
 | macOS | `weft-0.1.0-macos-arm64.dmg` | 必须 macOS 主机，见 `.gitea/workflows/macos.yml`（手动触发） |
 
@@ -134,7 +134,7 @@ Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 本机手动构建：
 
 ```bash
-# Windows（产物 bin/云栈.exe，需 bin/wintun.dll 同目录）
+# Windows（产物 bin/weft.exe，需 bin/wintun.dll 同目录）
 bash scripts/fetch-wintun.sh amd64
 wails3 build -tags devtools
 
@@ -154,7 +154,7 @@ wails3 build -tags devtools && ./scripts/make-app.sh
   取运行库用 `scripts/fetch-wintun.sh`，发布包要随 exe 一起分发。`project.nsi` 里已经把它
   改成硬依赖：找不到就直接 `!error` 中断，不会静默出一个装了也连不上的安装包。
 - **在 Linux 上跑 makensis，`File` 必须给绝对路径**。POSIX 版 makensis 传相对路径
-  （`../../../bin/云栈.exe`）会直接段错误，且不给任何提示；`OutFile` 的相对路径反而是正常的。
+  （`../../../bin/weft.exe`）会直接段错误，且不给任何提示；`OutFile` 的相对路径反而是正常的。
   所以 CI 里把 `ARG_WAILS_AMD64_BINARY` 与 `WINTUN_DLL` 都算成绝对路径再传进去。
 
 界面按 `design/weft-ui-design.html` 自绘，无第三方组件库依赖。
@@ -169,7 +169,7 @@ wails3 build -tags devtools && ./scripts/make-app.sh
 ### 连通性诊断
 
 ```bash
-./bin/云栈 --diag 100.64.0.3:22 10.0.1.1:443
+./bin/weft --diag 100.64.0.3:22 10.0.1.1:443
 ```
 
 不进 GUI，输出每个对端的 `relay / 直连 / 握手 / 收发字节 / 能力位 / 版本`，以及 TUN 与 netstack 两条通道的 TCP 结果。

@@ -71,7 +71,7 @@ jobs:
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
             -tags production -trimpath -buildvcs=false \
             -ldflags="-w -s -H windowsgui" \
-            -o "bin/云栈.exe" .
+            -o bin/weft.exe .
           rm -f wails_windows_amd64.syso
 
       - name: 取 WinTun 运行库
@@ -81,10 +81,10 @@ jobs:
         run: |
           mkdir -p release
           # wintun.dll 必须和 exe 同目录，只发 exe 是跑不起来的
-          cp "bin/云栈.exe" bin/wintun.dll release/
+          cp bin/weft.exe bin/wintun.dll release/
           cd release
           # -UN=UTF8：解压到中文 Windows 时文件名不乱码
-          zip -r -UN=UTF8 -q "云栈-${APP_VERSION}-windows-amd64.zip" "云栈.exe" wintun.dll
+          zip -r -UN=UTF8 -q "weft-${APP_VERSION}-windows-amd64.zip" weft.exe wintun.dll
           ls -la
 
       - name: 上传产物
@@ -200,16 +200,13 @@ jobs:
              -out ../wails_windows_amd64.syso)
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
             -tags production -trimpath -buildvcs=false \
-            -ldflags="-w -s -H windowsgui" -o "bin/云栈.exe" .
+            -ldflags="-w -s -H windowsgui" -o bin/weft.exe .
           rm -f wails_windows_amd64.syso
           bash scripts/fetch-wintun.sh amd64
 
       - name: 生成 NSIS 安装包
         run: |
           WAILS3="$(go env GOPATH)/bin/wails3"
-          # makensis 按 ANSI 解析脚本，-D 传中文路径直接报错（"Bad text encoding"），
-          # 所以把 exe 再拷一份 ASCII 名字，project.nsi 的 File 指令吃这个变量
-          cp "bin/云栈.exe" bin/weft.exe
           cd build/windows/nsis
           # project.nsi 会引用这个 bootstrapper，缺了打不出安装包
           "$WAILS3" generate webview2bootstrapper -dir .

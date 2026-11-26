@@ -49,15 +49,15 @@ jobs:
             -out ../wails_windows_amd64.syso)
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
             -tags production -trimpath -buildvcs=false \
-            -ldflags="-w -s -H windowsgui" -o "bin/云栈.exe" .
+            -ldflags="-w -s -H windowsgui" -o bin/weft.exe .
           rm -f wails_windows_amd64.syso
           bash scripts/fetch-wintun.sh amd64
 
       - name: 打包
         run: |
           mkdir -p release
-          cp "bin/云栈.exe" bin/wintun.dll release/
-          (cd release && zip -r -UN=UTF8 -q "云栈-${APP_VERSION}-windows-amd64.zip" "云栈.exe" wintun.dll)
+          cp bin/weft.exe bin/wintun.dll release/
+          (cd release && zip -r -UN=UTF8 -q "weft-${APP_VERSION}-windows-amd64.zip" weft.exe wintun.dll)
 
       - uses: actions/upload-artifact@v4
         with:
@@ -135,13 +135,13 @@ jobs:
           CGO_LDFLAGS="-mmacosx-version-min=12.0" \
           MACOSX_DEPLOYMENT_TARGET=12.0 \
           go build -tags production -trimpath -buildvcs=false \
-            -ldflags="-w -s" -o "bin/云栈" .
+            -ldflags="-w -s" -o bin/weft .
 
       - name: 打包 .app 与 dmg
         run: |
           ./scripts/make-app.sh
           mkdir -p release
-          hdiutil create -volname "云栈" -srcfolder "bin/云栈.app" -ov -format UDZO \
+          hdiutil create -volname "Weft" -srcfolder "bin/Weft.app" -ov -format UDZO \
             "release/weft-${APP_VERSION}-macos-arm64.dmg"
 
       - uses: actions/upload-artifact@v4
@@ -181,11 +181,9 @@ jobs:
             -out ../wails_windows_amd64.syso)
           GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
             -tags production -trimpath -buildvcs=false \
-            -ldflags="-w -s -H windowsgui" -o "bin/云栈.exe" .
+            -ldflags="-w -s -H windowsgui" -o bin/weft.exe .
           rm -f wails_windows_amd64.syso
           bash scripts/fetch-wintun.sh amd64
-          # makensis 按 ANSI 解析脚本，-D 传中文路径会报 "Bad text encoding"
-          cp "bin/云栈.exe" bin/weft.exe
           cd build/windows/nsis
           "$WAILS3" generate webview2bootstrapper -dir .
           # WINTUN_DLL 走绝对路径：project.nsi 的默认值是 Windows 反斜杠相对路径，

@@ -4,11 +4,11 @@
         <key>CFBundlePackageType</key>
             <string>APPL</string>
         <key>CFBundleName</key>
-            <string>云栈</string>
+            <string>Weft</string>
         <key>CFBundleDisplayName</key>
-            <string>云栈</string>
+            <string>Weft</string>
         <key>CFBundleExecutable</key>
-            <string>云栈</string>
+            <string>weft</string>
         <key>CFBundleIdentifier</key>
             <string>com.boothua.yunzhan</string>
         <key>CFBundleVersion</key>
