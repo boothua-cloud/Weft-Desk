@@ -14,3 +14,5 @@ build/android/gen/
 .idea
 release
 .DS_Store
+# Linux 打包时生成的桌面项（CI / scripts/build-linux.sh 会现生成）
+build/linux/*.desktop

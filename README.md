@@ -117,22 +117,45 @@ Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 
 ## 构建与运行
 
-macOS / Linux：
+流水线（`.gitea/workflows/`）一次产出三个包，都是「先构建前端再编译」的同一套流程：
+
+| 目标 | 产出 | 构建机 |
+|---|---|---|
+| Windows | `云栈-0.1.0-windows-amd64.zip`（exe + `wintun.dll`） | Linux 交叉编译（`CGO_ENABLED=0`） |
+| Windows 安装包 | `weft-amd64-installer.exe`（NSIS） | Linux + `makensis`，仅打 tag 时 |
+| Linux | `weft_0.1.0-1_amd64.deb` + `weft-0.1.0-linux-amd64.tar.gz` | Linux 原生（`CGO_ENABLED=1 -tags gtk3`） |
+| macOS | `weft-0.1.0-macos-arm64.dmg` | 必须 macOS 主机，见 `.gitea/workflows/macos.yml`（手动触发） |
+
+流水线里 `wails3` 用 `CGO_ENABLED=0 go install` 安装：CLI 在 `linux+cgo` 下会编进
+`internal/operatingsystem/webkit_linux.go`，硬要 `pkg-config gtk4 webkitgtk-6.0`，
+而我们按 gtk3 构建，为了装个打包工具去拉 GTK4 头文件没道理。关掉 CGO 后
+`generate syso` / `generate .desktop` / `tool package` 都正常。
+
+本机手动构建：
 
 ```bash
-npm --prefix frontend install
-GOPROXY=https://goproxy.cn,direct GOSUMDB=off wails3 build -tags devtools
-./bin/云栈
-```
-
-Windows：**必须**把 `wintun.dll`（amd64）放在 exe 同目录，否则点「连接」只会得到
-`Unable to load library: wintun.dll`。取运行库用脚本，或打包时自己带上：
-
-```bash
-bash scripts/fetch-wintun.sh amd64   # 放到 bin/wintun.dll
+# Windows（产物 bin/云栈.exe，需 bin/wintun.dll 同目录）
+bash scripts/fetch-wintun.sh amd64
 wails3 build -tags devtools
-./bin/云栈.exe
+
+# Linux（原生，CGO + gtk3；直接出 deb 与 tar.gz）
+bash scripts/build-linux.sh
+
+# macOS
+wails3 build -tags devtools && ./scripts/make-app.sh
 ```
+
+三个必须注意的点：
+
+- **Linux 一定要带 `gtk3` 标签**。Wails v3.0 默认是 GTK4 + WebKitGTK 6.0，Debian 12 上
+  没有 `webkitgtk-6.0`，编译期 `pkg-config` 就找不到库；`-tags gtk3` 后链的是
+  `gtk+-3.0` + `webkit2gtk-4.1`，deb 的 `Depends` 也必须是 `libgtk-3-0` / `libwebkit2gtk-4.1-0`。
+- **Windows 必须带 `wintun.dll`**。缺失时点「连接」只会得到 `Unable to load library: wintun.dll`；
+  取运行库用 `scripts/fetch-wintun.sh`，发布包要随 exe 一起分发。`project.nsi` 里已经把它
+  改成硬依赖：找不到就直接 `!error` 中断，不会静默出一个装了也连不上的安装包。
+- **在 Linux 上跑 makensis，`File` 必须给绝对路径**。POSIX 版 makensis 传相对路径
+  （`../../../bin/云栈.exe`）会直接段错误，且不给任何提示；`OutFile` 的相对路径反而是正常的。
+  所以 CI 里把 `ARG_WAILS_AMD64_BINARY` 与 `WINTUN_DLL` 都算成绝对路径再传进去。
 
 界面按 `design/weft-ui-design.html` 自绘，无第三方组件库依赖。
 

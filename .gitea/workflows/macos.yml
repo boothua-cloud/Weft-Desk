@@ -1,0 +1,72 @@
+name: macos
+
+# macOS 产物必须 macOS 主机编译（cocoa/cgo 与 hdiutil 都无法交叉），
+# 而自建 Gitea 往往没有注册 macOS runner —— 那种情况下这个任务会一直排队。
+# 所以它**只在手动触发时运行**，不影响主流水线（build.yml）变绿。
+#
+# 有了 macOS runner 之后，想让它跟着 tag 自动跑，把下面 push 段取消注释即可；
+# runner 标签不是 macos-latest 的话，同时改 runs-on。
+on:
+  workflow_dispatch:
+  # push:
+  #   tags: ["v*"]
+
+env:
+  GOPROXY: https://goproxy.cn,direct
+  GOSUMDB: sum.golang.google.cn
+  APP_VERSION: 0.1.0
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+          cache: true
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 wails3
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+
+      - name: 构建前端
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm run build
+
+      - name: 编译（CGO + 最低部署版本 12.0）
+        run: |
+          go mod download
+          CGO_ENABLED=1 \
+          CGO_CFLAGS="-mmacosx-version-min=12.0" \
+          CGO_LDFLAGS="-mmacosx-version-min=12.0" \
+          MACOSX_DEPLOYMENT_TARGET=12.0 \
+          go build -tags production -trimpath -buildvcs=false \
+            -ldflags="-w -s" -o "bin/云栈" .
+
+      - name: 打成 .app（含 ad-hoc 签名）
+        run: ./scripts/make-app.sh
+
+      - name: 生成 dmg
+        run: |
+          ARCH="$(uname -m)"
+          [ "$ARCH" = "arm64" ] || ARCH="amd64"
+          mkdir -p release
+          hdiutil create -volname "云栈" -srcfolder "bin/云栈.app" -ov -format UDZO \
+            "release/weft-${APP_VERSION}-macos-${ARCH}.dmg"
+          ls -la release/
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v3
+        with:
+          name: macos
+          path: release/*.dmg

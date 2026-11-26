@@ -102,8 +102,15 @@ Section
     # abort with "Bad text encoding".
     # WinTun runtime: required to create the virtual adapter, must sit next
     # to the exe, otherwise connecting fails with "Unable to load wintun.dll".
-    !if /FileExists "..\..\..\bin\wintun.dll"
-        File "/oname=wintun.dll" "..\..\..\bin\wintun.dll"
+    # Build fails loudly if it is missing, instead of shipping an installer
+    # that only breaks when the user clicks Connect.
+    !ifndef WINTUN_DLL
+        !define WINTUN_DLL "..\..\..\bin\wintun.dll"
+    !endif
+    !if /FileExists "${WINTUN_DLL}"
+        File "/oname=wintun.dll" "${WINTUN_DLL}"
+    !else
+        !error "wintun.dll not found: ${WINTUN_DLL} - run scripts/fetch-wintun.sh amd64 first"
     !endif
 
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
