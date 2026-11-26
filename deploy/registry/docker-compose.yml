@@ -1,0 +1,33 @@
+# 极空间 / 任意 NAS 上的轻量镜像仓库（registry:2）
+#
+# 和 Harbor 的区别：这个只有一个容器，200MB 内存，没有 UI、没有权限体系、
+# 没有漏洞扫描。够 CI 用 —— act_runner 只需要能 pull 到一个镜像。
+#
+# 部署（极空间 Docker → 项目 → 新建，粘贴本文件）：
+#   端口 5000 → 宿主 5000
+#   数据目录挂到下面对应的位置
+#
+# 用完在 runner 那边手动清：docker rmi <镜像>; 定期进容器跑 gc:
+#   docker exec registry bin/registry garbage-collect /etc/docker/registry/config.yml
+
+services:
+  registry:
+    image: registry:2.8
+    container_name: registry
+    restart: always
+    ports:
+      # 只绑内网；极空间若走桥接网络，改成 "0.0.0.0:5000:5000" 再用防火墙限制
+      - "5000:5000"
+    environment:
+      # 允许 DELETE 接口，方便清理旧 tag
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+      TZ: Asia/Shanghai
+    volumes:
+      # 极空间上换成实际存储池路径，例如 /mnt/sata1/registry
+      - ./data:/var/lib/registry
+      - ./config.yml:/etc/docker/registry/config.yml:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
