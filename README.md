@@ -143,6 +143,14 @@ Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 之所以不用 `actions/upload-artifact`：这台 Gitea 的 artifact 接口创建容器固定回
 429，v3/v4 都传不上去；走 git 通道不依赖 Gitea API，也不经过任何第三方。
 
+**发版**：`git tag -a v0.1.1 -m "..." && git push origin v0.1.1`。tag 会额外触发
+`installer` 与 `release` 两个 job —— 前者打 NSIS 安装包，后者把三个 `dist-*` 分支里的
+产物建成 Release 挂到「发布」页（效果等同 GitHub Releases，附件直接下载）。
+
+> runner 侧的两个环境要求（本机 Docker runner 已配好）：容器要能访问 github.com 拉
+> action 源码（配置了走网关代理，`NO_PROXY` 放行 `git.boothua.cn`，避免出口 IP 被
+> 仓库前面的 WAF 限流）；`HOME=/data` 让 action 缓存落在挂载卷上，重启不用重拉。
+
 本机手动构建：
 
 ```bash
