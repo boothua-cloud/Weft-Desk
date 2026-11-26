@@ -91,7 +91,7 @@ jobs:
         # 不再往 dist-* 分支塞产物：每个 job 构建完就把自己的文件挂到同一个 Release，
         # 少一次孤儿分支提交，产物也不用再搬一次。
         env:
-          TOKEN: ${{ gitea.token }}
+          TOKEN: ${{ github.token }}
         run: |
           case "$GITHUB_REF" in
             refs/tags/*) TAG="${GITHUB_REF#refs/tags/}" ;;
@@ -178,7 +178,7 @@ jobs:
         # 不再往 dist-* 分支塞产物：每个 job 构建完就把自己的文件挂到同一个 Release，
         # 少一次孤儿分支提交，产物也不用再搬一次。
         env:
-          TOKEN: ${{ gitea.token }}
+          TOKEN: ${{ github.token }}
         run: |
           case "$GITHUB_REF" in
             refs/tags/*) TAG="${GITHUB_REF#refs/tags/}" ;;
@@ -264,7 +264,7 @@ jobs:
         # 不再往 dist-* 分支塞产物：每个 job 构建完就把自己的文件挂到同一个 Release，
         # 少一次孤儿分支提交，产物也不用再搬一次。
         env:
-          TOKEN: ${{ gitea.token }}
+          TOKEN: ${{ github.token }}
         run: |
           case "$GITHUB_REF" in
             refs/tags/*) TAG="${GITHUB_REF#refs/tags/}" ;;
