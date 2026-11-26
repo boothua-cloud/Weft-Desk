@@ -87,13 +87,28 @@ jobs:
           zip -r -UN=UTF8 -q "weft-${APP_VERSION}-windows-amd64.zip" weft.exe wintun.dll
           ls -la
 
-      - name: 上传产物
-        # 只能用 v3：这台 Gitea 的 artifact 服务实现的是 v3 协议，
-        # v4 会直接报 "not currently supported on GHES"
-        uses: actions/upload-artifact@v3
-        with:
-          name: windows-amd64
-          path: release/*.zip
+      - name: 产物入库（推 dist-windows 分支）
+        # 不用 actions/upload-artifact：这台 Gitea 的 artifact 接口创建容器时
+        # 一直回 429（试满 5 次），文件传不上去；v4 又直接不支持。
+        # 改走 git 通道推到独立分支，产物在仓库页面直接能下载，不依赖 Gitea API。
+        run: |
+          set -e
+          OUT=/tmp/artifacts && mkdir -p "$OUT"
+          cp release/*.zip "$OUT"/
+          git config user.name  "weft-ci"
+          git config user.email "ci@boothua.cn"
+          # 每次都从空分支重建：历史不会随二进制膨胀，也不会有上游冲突
+          git checkout --orphan dist-windows
+          git rm -rf . >/dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          mkdir -p windows-amd64
+          cp "$OUT"/*.zip windows-amd64/
+          printf 'version: %s\ncommit:  %s\nbuilt:   %s\n' \
+            "${APP_VERSION}" "${GITHUB_SHA}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > windows-amd64/BUILD.txt
+          git add -Af windows-amd64
+          git commit -q -m "windows-amd64 ${APP_VERSION} (${GITHUB_SHA:0:7})"
+          git push -f origin HEAD:dist-windows
 
   linux:
     runs-on: ubuntu-latest
@@ -169,15 +184,25 @@ jobs:
           tar -C bin -czf "release/weft-${APP_VERSION}-linux-amd64.tar.gz" weft
           ls -la release/
 
-      - name: 上传产物
-        # 只能用 v3：这台 Gitea 的 artifact 服务实现的是 v3 协议，
-        # v4 会直接报 "not currently supported on GHES"
-        uses: actions/upload-artifact@v3
-        with:
-          name: linux-amd64
-          path: |
-            release/*.deb
-            release/*.tar.gz
+      - name: 产物入库（推 dist-linux 分支）
+        # 同上：绕开 Gitea 的 artifact 接口，产物直接进仓库分支
+        run: |
+          set -e
+          OUT=/tmp/artifacts && mkdir -p "$OUT"
+          cp release/*.deb release/*.tar.gz "$OUT"/
+          git config user.name  "weft-ci"
+          git config user.email "ci@boothua.cn"
+          git checkout --orphan dist-linux
+          git rm -rf . >/dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          mkdir -p linux-amd64
+          cp "$OUT"/*.deb "$OUT"/*.tar.gz linux-amd64/
+          printf 'version: %s\ncommit:  %s\nbuilt:   %s\n' \
+            "${APP_VERSION}" "${GITHUB_SHA}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > linux-amd64/BUILD.txt
+          git add -Af linux-amd64
+          git commit -q -m "linux-amd64 ${APP_VERSION} (${GITHUB_SHA:0:7})"
+          git push -f origin HEAD:dist-linux
 
   installer:
     # 安装包依赖 makensis 和 WebView2 bootstrapper，只在打 tag 时做
@@ -246,10 +271,21 @@ jobs:
             -DWINTUN_DLL="$ROOT/bin/wintun.dll" project.nsi
           ls -la ../../../bin/
 
-      - name: 上传安装包
-        # 只能用 v3：这台 Gitea 的 artifact 服务实现的是 v3 协议，
-        # v4 会直接报 "not currently supported on GHES"
-        uses: actions/upload-artifact@v3
-        with:
-          name: windows-installer
-          path: bin/*installer.exe
+      - name: 产物入库（推 dist-installer 分支）
+        run: |
+          set -e
+          OUT=/tmp/artifacts && mkdir -p "$OUT"
+          cp bin/*installer.exe "$OUT"/
+          git config user.name  "weft-ci"
+          git config user.email "ci@boothua.cn"
+          git checkout --orphan dist-installer
+          git rm -rf . >/dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          mkdir -p windows-installer
+          cp "$OUT"/*installer.exe windows-installer/
+          printf 'version: %s\ncommit:  %s\nbuilt:   %s\n' \
+            "${APP_VERSION}" "${GITHUB_SHA}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > windows-installer/BUILD.txt
+          git add -Af windows-installer
+          git commit -q -m "windows-installer ${APP_VERSION} (${GITHUB_SHA:0:7})"
+          git push -f origin HEAD:dist-installer
