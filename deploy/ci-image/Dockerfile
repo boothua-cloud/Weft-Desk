@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-#
 # CI 构建镜像：把 Go / Node / Wails / GTK 依赖一次性装好。
 #
 # 构建（amd64 机器上，比如 10.0.1.5）：
