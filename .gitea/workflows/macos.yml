@@ -67,7 +67,7 @@ jobs:
 
       - name: 直接发到「发布」
         env:
-          TOKEN: ${{ gitea.token }}
+          TOKEN: ${{ github.token }}
         run: |
           case "$GITHUB_REF" in
             refs/tags/*) TAG="${GITHUB_REF#refs/tags/}" ;;
