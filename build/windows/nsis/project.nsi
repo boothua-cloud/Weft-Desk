@@ -97,8 +97,11 @@ Section
     
     !insertmacro wails.files
 
-    # WinTun 运行库：云栈在 Windows 上建虚拟网卡依赖它，必须和 exe 同目录。
-    # 缺了的话连接时只会得到「Unable to load library: wintun.dll」。
+    # NOTE: keep this script pure ASCII. makensis parses the script in the
+    # Windows ANSI codepage unless a BOM is present, so non-ASCII comments
+    # abort with "Bad text encoding".
+    # WinTun runtime: required to create the virtual adapter, must sit next
+    # to the exe, otherwise connecting fails with "Unable to load wintun.dll".
     !if /FileExists "..\..\..\bin\wintun.dll"
         File "/oname=wintun.dll" "..\..\..\bin\wintun.dll"
     !endif

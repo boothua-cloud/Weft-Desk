@@ -1,0 +1,148 @@
+name: build
+
+# Gitea Actions 主流水线。
+#
+# 为什么不在「三平台各自原生构建」：自建 Gitea 通常只注册了 Linux 的 docker
+# runner，`runs-on: windows-latest / macos-latest` 的任务会永远排队，既不失败
+# 也不通过——看起来就是「流水线没法打包」。这里改成在 Linux 上交叉编译
+# Windows 产物（Wails 的 Windows 后端是纯 Go，CGO_ENABLED=0 可以交叉）。
+#
+# 为什么不直接 `wails3 build`：Windows 的 Taskfile 里有一步
+# `powershell Remove-item *.syso`（platforms: [windows]），交叉编译时它会被
+# 判定成 windows 平台而在 Linux 上调用 powershell，必然失败。下面把同样的
+# 步骤拆开手写，产物与本地 `wails3 build` 一致。
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  # 国内网络直连 proxy.golang.org 常超时
+  GOPROXY: https://goproxy.cn,direct
+  GOSUMDB: sum.golang.google.cn
+  # 与 build/config.yml 的 version 保持一致
+  APP_VERSION: 0.1.0
+
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+          cache: true
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 wails3
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+
+      - name: 构建前端
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm run build
+
+      - name: 生成 Windows 资源（图标 + 清单）
+        run: |
+          # 显式取路径，不依赖 $GITHUB_PATH 是否被 runner 正确注入
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          cd build
+          "$WAILS3" generate syso -arch amd64 \
+            -icon windows/icon.ico \
+            -manifest windows/wails.exe.manifest \
+            -info windows/info.json \
+            -out ../wails_windows_amd64.syso
+
+      - name: 交叉编译 Windows 可执行文件
+        run: |
+          go mod download
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
+            -tags production -trimpath -buildvcs=false \
+            -ldflags="-w -s -H windowsgui" \
+            -o "bin/云栈.exe" .
+          rm -f wails_windows_amd64.syso
+
+      - name: 取 WinTun 运行库
+        run: bash scripts/fetch-wintun.sh amd64
+
+      - name: 打包
+        run: |
+          mkdir -p release
+          # wintun.dll 必须和 exe 同目录，只发 exe 是跑不起来的
+          cp "bin/云栈.exe" bin/wintun.dll release/
+          cd release
+          # -UN=UTF8：解压到中文 Windows 时文件名不乱码
+          zip -r -UN=UTF8 -q "云栈-${APP_VERSION}-windows-amd64.zip" "云栈.exe" wintun.dll
+          ls -la
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-amd64
+          path: release/*.zip
+
+  installer:
+    # 安装包要 makensis 和 WebView2 bootstrapper，只在打 tag 时做
+    needs: windows
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.4"
+          cache: true
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 wails3 与 NSIS
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nsis
+
+      - name: 构建 Windows 可执行文件
+        run: |
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          (cd frontend && npm ci --include=dev && npm run build)
+          (cd build && "$WAILS3" generate syso -arch amd64 -icon windows/icon.ico \
+             -manifest windows/wails.exe.manifest -info windows/info.json \
+             -out ../wails_windows_amd64.syso)
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
+            -tags production -trimpath -buildvcs=false \
+            -ldflags="-w -s -H windowsgui" -o bin/weft.exe .
+          rm -f wails_windows_amd64.syso
+          bash scripts/fetch-wintun.sh amd64
+
+      - name: 生成 NSIS 安装包
+        run: |
+          WAILS3="$(go env GOPATH)/bin/wails3"
+          cd build/windows/nsis
+          # project.nsi 会 File 这个 bootstrapper，缺了打不出安装包
+          "$WAILS3" generate webview2bootstrapper -dir .
+          # ARG 走仓库内相对路径：makensis 按 ANSI 解析脚本，中文文件名会出错，
+          # 所以这里用 ASCII 的 weft.exe（内容就是刚编译的 云栈.exe）
+          makensis -DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user \
+            -DARG_WAILS_AMD64_BINARY=../../../bin/weft.exe project.nsi
+          ls -la ../../../bin/
+
+      - name: 上传安装包
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-installer
+          path: bin/*installer.exe

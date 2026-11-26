@@ -9,6 +9,11 @@ on:
 
 jobs:
   build:
+    # 这个文件是给 GitHub 用的三平台原生构建；Gitea 的点在
+    # .gitea/workflows/build.yml（Linux 交叉编译 Windows 产物）。
+    # Gitea 也会扫描 .github/workflows，这里加一道判断，避免在自建实例上
+    # 把 windows-latest / macos-latest 的任务排进一个永远没人接的队列。
+    if: github.server_url == 'https://github.com'
     strategy:
       fail-fast: false
       matrix:
