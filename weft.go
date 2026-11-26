@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"log"
@@ -731,6 +732,35 @@ func (s *WeftService) GetState() (string, error) {
 
 func (s *WeftService) Connect() (string, error) {
 	if err := s.engine.Up(s.cfg); err != nil {
+		// Windows 权限不够不是错误终点：拉起一次 UAC，以管理员身份重启自己，
+		// 重启后自动连接。用户只需要在系统弹窗里点一次「是」。
+		if errors.Is(err, errNeedElevation) {
+			// 诊断模式（--diag）没有界面可重启，也不能替用户弹窗：
+			// 直接把话说清楚，让他在管理员终端里跑。
+			s.mu.Lock()
+			hasApp := s.app != nil
+			s.mu.Unlock()
+			if !hasApp {
+				return "", fmt.Errorf("%w：请以管理员身份打开终端后再执行，例如右键「以管理员身份运行」PowerShell", err)
+			}
+			// 先把单实例锁交出去，提权后的新进程才能接管；
+			// 否则新进程会判定「已有实例」而直接退出，用户看到窗口一闪就没。
+			releaseSingleInstance()
+			if e := relaunchElevatedConnect(); e != nil {
+				return "", fmt.Errorf("%s（%v）。也可以先在设置页点「安装」配置登录自启，之后不再需要授权", err, e)
+			}
+			log.Printf("[tunnel] 已请求管理员授权，授权后将以管理员身份重启并自动连接")
+			go func() {
+				time.Sleep(1200 * time.Millisecond)
+				s.mu.Lock()
+				app := s.app
+				s.mu.Unlock()
+				if app != nil {
+					app.Quit()
+				}
+			}()
+			return "", fmt.Errorf("需要管理员授权才能创建虚拟网卡：已在系统弹窗中请求，点「是」后云栈会以管理员身份重启并自动连接")
+		}
 		return "", err
 	}
 	s.mu.Lock()
