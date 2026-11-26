@@ -21,10 +21,7 @@ on:
   workflow_dispatch:
 
 env:
-  # 国内网络直连 proxy.golang.org 常超时
-  GOPROXY: https://goproxy.cn,https://mirrors.aliyun.com/goproxy/,direct
-  GOSUMDB: sum.golang.google.cn
-  # 别让 Go 因为 go.mod 版本号去下载别的工具链（国内必超时）
+  # 别让 Go 因为 go.mod 版本号去下载别的工具链
   GOTOOLCHAIN: local
   # 与 build/config.yml、build/linux/nfpm/nfpm.yaml 的 version 保持一致
   APP_VERSION: 0.1.0
@@ -53,7 +50,7 @@ jobs:
             echo "已预装 $(go version)，跳过"
             exit 0
           fi
-          curl -fsSL "https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
+          curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
           rm -rf /usr/local/go
           tar -C /usr/local -xzf /tmp/go.tgz
           /usr/local/go/bin/go version
@@ -69,7 +66,6 @@ jobs:
       - name: 构建前端
         working-directory: frontend
         run: |
-          npm config set registry https://mirrors.cloud.tencent.com/npm/
           npm ci --include=dev
           npm run build
 
@@ -139,7 +135,7 @@ jobs:
             echo "已预装 $(go version)，跳过"
             exit 0
           fi
-          curl -fsSL "https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
+          curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
           rm -rf /usr/local/go
           tar -C /usr/local -xzf /tmp/go.tgz
           /usr/local/go/bin/go version
@@ -149,28 +145,7 @@ jobs:
         run: |
           export DEBIAN_FRONTEND=noninteractive
           APT="-o Acquire::Retries=5 -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=30"
-
-          # 直接用中科大源。只替换域名，路径保持不变，这样 Debian 的
-          # /debian 和 /debian-security、Ubuntu 的 /ubuntu 都能对上。
-          # 改之前先备份，万一镜像缺组件还能退回去。
-          for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
-            [ -f "$f" ] || continue
-            sudo cp -f "$f" "$f.orig"
-            sudo sed -i \
-              -e 's|deb.debian.org|mirrors.ustc.edu.cn|g' \
-              -e 's|security.debian.org|mirrors.ustc.edu.cn|g' \
-              -e 's|archive.ubuntu.com|mirrors.ustc.edu.cn|g' \
-              -e 's|security.ubuntu.com|mirrors.ustc.edu.cn|g' "$f"
-          done
-
-          if ! sudo apt-get $APT update -qq; then
-            echo "::warning::中科大源不可用，回退发行版默认源"
-            for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
-              [ -f "$f.orig" ] && sudo cp -f "$f.orig" "$f"
-            done
-            sudo apt-get $APT update -qq
-          fi
-
+          sudo apt-get $APT update -qq
           sudo apt-get $APT install -y -qq \
             build-essential pkg-config \
             libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
@@ -185,7 +160,6 @@ jobs:
       - name: 构建前端
         working-directory: frontend
         run: |
-          npm config set registry https://mirrors.cloud.tencent.com/npm/
           npm ci --include=dev
           npm run build
 
@@ -252,7 +226,7 @@ jobs:
             echo "已预装 $(go version)，跳过"
             exit 0
           fi
-          curl -fsSL "https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
+          curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
           rm -rf /usr/local/go
           tar -C /usr/local -xzf /tmp/go.tgz
           /usr/local/go/bin/go version
@@ -263,13 +237,6 @@ jobs:
           if command -v makensis >/dev/null 2>&1; then
             echo "makensis 已预装，跳过"
           else
-            for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources; do
-              [ -f "$f" ] || continue
-              sudo sed -i -e 's|deb.debian.org|mirrors.ustc.edu.cn|g' \
-                -e 's|security.debian.org|mirrors.ustc.edu.cn|g' \
-                -e 's|archive.ubuntu.com|mirrors.ustc.edu.cn|g' \
-                -e 's|security.ubuntu.com|mirrors.ustc.edu.cn|g' "$f"
-            done
             sudo apt-get update && sudo apt-get install -y --no-install-recommends nsis
           fi
           # 必须 CGO_ENABLED=0：wails3 CLI 在 linux+cgo 下会 import
@@ -293,8 +260,7 @@ jobs:
       - name: 构建 Windows 可执行文件
         run: |
           WAILS3="$(go env GOPATH)/bin/wails3"
-          (cd frontend && npm config set registry https://mirrors.cloud.tencent.com/npm/ \
-            && npm ci --include=dev && npm run build)
+          (cd frontend && npm ci --include=dev && npm run build)
           (cd build && "$WAILS3" generate syso -arch amd64 -icon windows/icon.ico \
              -manifest windows/wails.exe.manifest -info windows/info.json \
              -out ../wails_windows_amd64.syso)
