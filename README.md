@@ -45,9 +45,27 @@
 |---|---|---|
 | macOS | LaunchDaemon + `/Library/PrivilegedHelperTools` | `/var/run/weft.sock` |
 | Linux | systemd unit `weft-helper` + `/usr/local/lib/weft/weft` | `/var/run/weft.sock` |
-| Windows | 登录任务（最高权限）启动本体，进程自身提权 | 无（进程内建卡） |
+| Windows | 登录任务（最高权限）启动本体，进程内建卡 | 无 |
 
-设置页「系统助手」可安装/移除；未安装时 macOS/Linux 回退到一次性授权，Windows 每次启动弹一次 UAC。
+设置页「系统助手」可安装/移除；未安装时 macOS/Linux 回退到一次性授权。
+
+### Windows 的权限模型
+
+界面本身**不提权**（清单是 `asInvoker`）：双击打开不弹 UAC，WebView 也不在管理员上下文里跑。
+提权只发生在两个时刻，都是点一下按钮触发的，用户不需要自己去右键「以管理员身份运行」：
+
+| 动作 | 发生什么 | 之后 |
+|---|---|---|
+| 点「连接」 | 弹一次系统授权（`ShellExecute runas`），授权后以管理员身份重启并自动连接 | 未装任务时每次点连接都要授权一次 |
+| 点「安装」系统助手 | 弹一次授权，由提权后的自己创建计划任务 `Weft`（登录时 · 最高权限） | 每次登录都由任务以管理员拉起，不再弹 UAC |
+
+几点实现约束，改动前请先看：
+
+- 建卡与写路由都走 Windows IP Helper API（`winipcfg`），不用 `netsh`：`netsh` 在中文系统上输出无法解析，重复添加还会直接报「对象已存在」。
+- 适配器 GUID 必须显式指定。`tailscale.com/net/tstun` 的 `init()` 会把 `tun.WintunStaticRequestedGUID` 改成 Tailscale for Windows 的 `{37217669-…}`，本项目 import 了 tsnet 就继承了它 —— 结果建卡时在创建「和已安装的 Tailscale 同一个 GUID 的适配器」，SetupDi 直接 `ERROR_ALREADY_EXISTS`（0x800700B7）。详见 `systun_windows.go` 里的 `weftAdapterGUID`。
+- 控制台子进程（`schtasks`）带 `CreateNoWindow`，否则界面每 5 秒轮询助手状态会不停闪黑框。
+- 同一时刻只允许一个实例（`Local\WeftDesk.SingleInstance` 命名互斥）：登录任务与手动双击会撞在一起，两个进程抢同一张网卡和同一个 SQLite。
+- 任务里记的 exe 路径会写在数据目录的 `helper-target.txt`；程序换过目录时设置页会提示「登录自启指向旧位置，请重新安装」。
 
 ## 配置
 
@@ -90,18 +108,30 @@ Windows / Linux 因为只有托盘能找回窗口，关掉托盘时关闭窗口�
 
 | | macOS | Linux | Windows |
 |---|---|---|---|
-| TUN | `utunN` | `weft0`（`/dev/net/tun`） | `Weft`（需 `wintun.dll`） |
-| 提权 | `osascript` | `pkexec` / `sudo -n` | UAC（`ShellExecute runas`） |
-| 路由 | `route` | `ip route` | `netsh` |
+| TUN | `utunN` | `weft0`（`/dev/net/tun`） | `Weft`（需 `wintun.dll` 同目录） |
+| 提权 | `osascript` | `pkexec` / `sudo -n` | UAC（`ShellExecute runas`，按需） |
+| 路由 | `route` | `ip route` | IP Helper API（`winipcfg`） |
 
-macOS 已真机验证。Windows / Linux 通过交叉编译与类型检查，提权弹窗与路由清理需真机确认。
+macOS 与 Windows 已真机验证（Windows：建卡、地址、路由、ping 内网与 tailnet 节点、退出清理）。
+Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 
 ## 构建与运行
+
+macOS / Linux：
 
 ```bash
 npm --prefix frontend install
 GOPROXY=https://goproxy.cn,direct GOSUMDB=off wails3 build -tags devtools
 ./bin/云栈
+```
+
+Windows：**必须**把 `wintun.dll`（amd64）放在 exe 同目录，否则点「连接」只会得到
+`Unable to load library: wintun.dll`。取运行库用脚本，或打包时自己带上：
+
+```bash
+bash scripts/fetch-wintun.sh amd64   # 放到 bin/wintun.dll
+wails3 build -tags devtools
+./bin/云栈.exe
 ```
 
 界面按 `design/weft-ui-design.html` 自绘，无第三方组件库依赖。
@@ -127,5 +157,6 @@ GOPROXY=https://goproxy.cn,direct GOSUMDB=off wails3 build -tags devtools
 - 不做 MagicDNS（一律用 IP）、不做 Exit Node、不做 Taildrop / Taildrive
 - 子网路由需服务端已批准；本机已占用同一前缀时该段跳过
 - **`tailscale.com` 固定 v1.104.7，不要升级**：1.106+ 的 hybrid 后量子握手与 1.104 以下对端不兼容
-- Windows 需随程序分发 `wintun.dll`
+- Windows 需随程序分发 `wintun.dll`（与 exe 同目录；缺失时启动即有明确提示，不会等到点连接才报一句英文）
+- Windows 的提权粒度是整个进程：WinTun 没有「传句柄给非提权进程」的路径，所以提权后 GUI 也在管理员上下文里（代价是资源管理器拖放不可用）
 - 应用内窗口是系统 WebView，**不支持加载浏览器扩展**（Bitwarden 等）；需要扩展时用「浏览器打开」，或在书签里勾选「用系统浏览器打开」
