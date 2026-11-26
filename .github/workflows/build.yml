@@ -27,7 +27,8 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          # 必须与 go.mod 的 go 指令一致：低于它的工具链会让 go 去下载整包 toolchain
+          go-version: "1.27.4"
 
       - uses: actions/setup-node@v4
         with:
@@ -41,6 +42,11 @@ jobs:
 
       - name: 安装 wails3
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+
+      - name: 准备 WinTun 运行库
+        if: runner.os == 'Windows'
+        shell: bash
+        run: bash scripts/fetch-wintun.sh amd64
 
       - name: 构建
         shell: bash
@@ -57,9 +63,13 @@ jobs:
           if [ "${{ runner.os }}" = "macOS" ]; then
             hdiutil create -volname "云栈" -srcfolder "bin/云栈.app" -ov -format UDZO "release/云栈-macos-arm64.dmg"
           elif [ "${{ runner.os }}" = "Windows" ]; then
-            cp bin/weft.exe "release/云栈-windows-amd64.exe"
+            # wintun.dll 必须和 exe 同目录，单独塞进压缩包，别只发一个 exe
+            cp bin/云栈.exe release/
+            cp bin/wintun.dll release/
+            powershell -Command "Compress-Archive -Path release/云栈.exe,release/wintun.dll -DestinationPath release/云栈-windows-amd64.zip -Force"
+            rm -f release/云栈.exe release/wintun.dll
           else
-            cp bin/weft "release/云栈-linux-amd64"
+            cp bin/云栈 "release/云栈-linux-amd64"
           fi
 
       - uses: actions/upload-artifact@v4
