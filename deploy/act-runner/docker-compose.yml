@@ -1,63 +1,77 @@
-# act_runner —— 给 git.boothua.cn 跑 build.yml
+# act_runner —— 部署在 10.0.1.5（与 Gitea 同机）
 #
-# 用法：
-#   1. cp .env.example .env  然后填 RUNNER_TOKEN
-#   2. docker compose up -d
-#   3. docker compose logs -f 看到 "declare successfully" 就成了
+# 部署：
+#   mkdir -p /opt/act-runner && cd /opt/act-runner
+#   放入本文件与 .env（.env 里填 RUNNER_TOKEN），然后：
+#   docker compose up -d
+#   docker compose logs -f      # 看到 "declare successfully" 就成了
 #
-# 说明：
-#   - 这个 compose 靠环境变量注册，不挂 config.yml。act_runner 首次启动会自己在
-#     /data/config.yml 生成默认配置；一旦挂了一个格式对不上的 config.yml，
-#     启动会直接报 "open config file: no such file or directory" 然后无限重试。
-#   - label 决定了 job 跑在什么容器里：ubuntu-latest:docker://node:20-bookworm
-#     node 镜像里有 git / curl / apt，Go 由 workflow 里的 actions/setup-go 装。
-#     服务器是 amd64 的话不用管平台参数，直接原生编译。
-#   - docker.sock 必须挂，act_runner 靠它创建 job 容器。
+# 关键点：
+#   1. GITEA_INSTANCE_URL 用内网地址。它同时决定 act_runner 拉任务的地址和 job 里的
+#      GITHUB_SERVER_URL，所以 actions/checkout 拉代码也走内网，不绕 git.boothua.cn，
+#      避开仓库前面 WAF 的限流。
+#   2. 前提：Gitea 的 3000 端口映射到 0.0.0.0 或 10.0.1.5，不能只绑 127.0.0.1。
+#      用 `docker ps | grep gitea` 看 PORTS 列确认；只有 127.0.0.1 时看文末方案 B。
+#   3. docker.sock 必须挂，act_runner 靠它创建 job 容器。
+#   4. 不挂 config.yml：首次启动会自己在 /data/config.yml 生成默认配置。
+#      挂一个不存在的路径会让它报 "open config file: no such file or directory" 无限重试。
 
 services:
   act_runner:
     image: gitea/act_runner:latest
     container_name: act_runner
     restart: always
+
     environment:
-      # 和 Gitea 同机部署时走内网，别绕公网域名：
-      #   - 少一次 TLS 握手，也不受仓库前面 WAF 的限流影响
-      #   - actions/checkout 拼的 clone 地址取自这里，所以 CI 拉代码也走内网
-      # 二选一：
-      #   A. Gitea 端口映射到 0.0.0.0 或内网 IP → 直接用宿主内网地址（下面这行）
-      #   B. 两边在同一个 docker network     → 用服务名 http://gitea:3000（见文末）
-      GITEA_INSTANCE_URL: ${GITEA_URL:-http://10.0.1.5:3000}
-      GITEA_RUNNER_REGISTRATION_TOKEN: ${RUNNER_TOKEN:?RUNNER_TOKEN 没填}
-      GITEA_RUNNER_NAME: ${RUNNER_NAME:-weft-desktop}
+      TZ: Asia/Shanghai
+      # Gitea 端口若不是 3000，改成实际映射的端口
+      GITEA_INSTANCE_URL: "http://10.0.1.5:3000"
+      GITEA_RUNNER_REGISTRATION_TOKEN: "${RUNNER_TOKEN}"
+      GITEA_RUNNER_NAME: "weft-desktop"
+      # 冒号前要和 workflow 的 runs-on 一致；冒号后是 job 容器镜像。
+      # node:20-bookworm 自带 git/curl/apt，Go 由 actions/setup-go 装。
       GITEA_RUNNER_LABELS: "ubuntu-latest:docker://node:20-bookworm"
 
-      # 出网代理：拉 action（github.com）和 Go 工具链要走代理。
-      # 走内网之后就不需要再为 git.boothua.cn 单独放行 NO_PROXY 了。
-      # HTTPS_PROXY: http://10.0.1.2:7890
-      # HTTP_PROXY: http://10.0.1.2:7890
-      # NO_PROXY: localhost,127.0.0.1,10.0.1.0/24
-
-      # action 缓存和 Go 模块缓存落到卷上，重启不用重下
+      # action 缓存与 Go 模块缓存落卷，重启不用重下
       HOME: /data
+
+      # 拉 action（github.com）和 Go 工具链要走代理时打开下面几行。
+      # NO_PROXY 必须包含内网段，否则访问 Gitea 也绕代理。
+      # HTTPS_PROXY: "http://10.0.1.2:7890"
+      # HTTP_PROXY: "http://10.0.1.2:7890"
+      # NO_PROXY: "localhost,127.0.0.1,10.0.1.0/24"
+
     volumes:
       - ./data:/data
       - /var/run/docker.sock:/var/run/docker.sock
+
     logging:
       driver: json-file
       options:
         max-size: "20m"
         max-file: "3"
 
-# 方案 B 时把下面这段打开，让 runner 和 Gitea 共用一个网络，
-# GITEA_INSTANCE_URL 就可以写 http://gitea:3000（服务名，比 IP 稳）。
+# ─────────────────────────────────────────────────────────────
+# 方案 B：Gitea 端口只绑了 127.0.0.1，job 容器访问不到宿主端口
+# 那就让 runner 和 job 容器都进 Gitea 的网络，用服务名访问。
 #
-# 注意 job 容器是 act_runner 动态创建的，默认挂在 bridge 上，解析不了服务名。
-# 要让 job 容器也进这个网络，在 /data/config.yml 里加：
-#   container:
-#     network: "gitea_default"
-# 然后 docker compose restart。
+# 1) 查 Gitea 的网络名和服务名：
+#      docker inspect <gitea容器名> --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+#      docker inspect <gitea容器名> --format '{{.Config.Hostname}}'
 #
-# networks:
-#   default:
-#     name: gitea_default
-#     external: true
+# 2) 改 compose：
+#      environment:
+#        GITEA_INSTANCE_URL: "http://<gitea服务名>:3000"
+#      networks: [gitea]
+#      ...
+#      networks:
+#        gitea:
+#          name: <上面查到的网络名>
+#          external: true
+#
+# 3) job 容器是 act_runner 动态创建的，默认在 bridge 上，解析不了服务名。
+#    在 /data/config.yml 里补：
+#      container:
+#        network: "<上面查到的网络名>"
+#    然后 docker compose restart
+# ─────────────────────────────────────────────────────────────
