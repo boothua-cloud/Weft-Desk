@@ -26,6 +26,8 @@ env:
   GOSUMDB: sum.golang.google.cn
   # 与 build/config.yml、build/linux/nfpm/nfpm.yaml 的 version 保持一致
   APP_VERSION: 0.1.0
+  # 与 go.mod 保持同步
+  GO_VERSION: 1.27.4
 
 jobs:
   windows:
@@ -41,15 +43,14 @@ jobs:
           git checkout -q FETCH_HEAD
 
       - name: 安装 Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.27.4"
-          cache: true
-
-      - name: 安装 Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+        # 不用 actions/setup-go：它要从 github.com 拉源码，容器出网超时。
+        # 阿里云镜像有官方 tarball，国内直连。Node 由基础镜像提供，不用另装。
+        run: |
+          curl -fsSL "https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
+          rm -rf /usr/local/go
+          tar -C /usr/local -xzf /tmp/go.tgz
+          /usr/local/go/bin/go version
+          echo "/usr/local/go/bin" >> $GITHUB_PATH
 
       - name: 安装 wails3
         # CGO_ENABLED=0：linux+cgo 的 CLI 会要 pkg-config gtk4 + webkitgtk-6.0，
@@ -59,6 +60,7 @@ jobs:
       - name: 构建前端
         working-directory: frontend
         run: |
+          npm config set registry https://registry.npmmirror.com
           npm ci --include=dev
           npm run build
 
@@ -120,15 +122,14 @@ jobs:
           git checkout -q FETCH_HEAD
 
       - name: 安装 Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.27.4"
-          cache: true
-
-      - name: 安装 Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+        # 不用 actions/setup-go：它要从 github.com 拉源码，容器出网超时。
+        # 阿里云镜像有官方 tarball，国内直连。Node 由基础镜像提供，不用另装。
+        run: |
+          curl -fsSL "https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
+          rm -rf /usr/local/go
+          tar -C /usr/local -xzf /tmp/go.tgz
+          /usr/local/go/bin/go version
+          echo "/usr/local/go/bin" >> $GITHUB_PATH
 
       - name: 安装 GTK3 / WebKit2GTK 构建依赖
         run: |
@@ -158,6 +159,7 @@ jobs:
       - name: 构建前端
         working-directory: frontend
         run: |
+          npm config set registry https://registry.npmmirror.com
           npm ci --include=dev
           npm run build
 
@@ -216,15 +218,14 @@ jobs:
           git checkout -q FETCH_HEAD
 
       - name: 安装 Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.27.4"
-          cache: true
-
-      - name: 安装 Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+        # 不用 actions/setup-go：它要从 github.com 拉源码，容器出网超时。
+        # 阿里云镜像有官方 tarball，国内直连。Node 由基础镜像提供，不用另装。
+        run: |
+          curl -fsSL "https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
+          rm -rf /usr/local/go
+          tar -C /usr/local -xzf /tmp/go.tgz
+          /usr/local/go/bin/go version
+          echo "/usr/local/go/bin" >> $GITHUB_PATH
 
       - name: 安装 wails3 与 NSIS
         run: |
@@ -249,7 +250,8 @@ jobs:
       - name: 构建 Windows 可执行文件
         run: |
           WAILS3="$(go env GOPATH)/bin/wails3"
-          (cd frontend && npm ci --include=dev && npm run build)
+          (cd frontend && npm config set registry https://registry.npmmirror.com \
+            && npm ci --include=dev && npm run build)
           (cd build && "$WAILS3" generate syso -arch amd64 -icon windows/icon.ico \
              -manifest windows/wails.exe.manifest -info windows/info.json \
              -out ../wails_windows_amd64.syso)
