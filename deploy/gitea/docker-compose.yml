@@ -1,0 +1,74 @@
+# Gitea + act_runner —— 只在内网提供服务
+#
+# 关键：ports 只绑定 10.0.1.5，不绑 0.0.0.0。
+# 这样即使路由器上做了端口转发，外网也连不进来。
+#
+# 文件布局（在 /opt/gitea 下）：
+#   docker-compose.yml
+#   app.ini              ← 放 data/gitea/conf/app.ini
+#   data/                ← 挂 /var/lib/gitea
+
+services:
+  gitea:
+    # 你的 RUN_USER=git、WORK_PATH=/var/lib/gitea 对应官方 rootless 镜像
+    image: gitea/gitea:1.22-rootless
+    container_name: gitea
+    restart: always
+
+    ports:
+      # 只监听内网网卡：外网连不到
+      - "10.0.1.5:3000:3000"    # HTTP（app.ini 里 ROOT_URL 用的就是这个）
+      - "10.0.1.5:2222:2222"    # 内置 SSH
+
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      TZ: Asia/Shanghai
+
+    volumes:
+      - ./data:/var/lib/gitea
+      # app.ini 放在 data/gitea/conf/ 下；如果想单独管理也可以映射到这里
+      # - ./app.ini:/etc/gitea/app.ini:ro
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  act_runner:
+    image: gitea/act_runner:latest
+    container_name: act_runner
+    restart: always
+    depends_on:
+      - gitea
+    environment:
+      TZ: Asia/Shanghai
+      # 直连容器端口，不用域名（同 compose 网络里用服务名即可）
+      GITEA_INSTANCE_URL: "http://gitea:3000"
+      GITEA_RUNNER_REGISTRATION_TOKEN: "${RUNNER_TOKEN}"
+      GITEA_RUNNER_NAME: "weft-desktop"
+      GITEA_RUNNER_LABELS: "ubuntu-latest:docker://node:20-bookworm"
+      HOME: /data
+      # 拉 action（github.com）和 Go 工具链要走代理时打开
+      # HTTPS_PROXY: "http://10.0.1.2:7890"
+      # HTTP_PROXY: "http://10.0.1.2:7890"
+      # NO_PROXY: "localhost,127.0.0.1,10.0.1.0/24,gitea"
+    volumes:
+      - ./runner-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+# 注意：act_runner 的 job 容器是动态创建的，默认挂在 bridge 上，
+# 解析不了 gitea 这个服务名。如果 windows/linux job 在 checkout 阶段失败，
+# 在 ./runner-data/config.yml 里补：
+#   container:
+#     network: "gitea_default"     # 用 docker network ls 确认实际名字
+# 然后 docker compose restart act_runner。
+#
+# 另一种更省事的做法：GITEA_INSTANCE_URL 用 http://10.0.1.5:3000（宿主端口），
+# 只要 Gitea 的 3000 映射到了 10.0.1.5 就行 —— 本文件已经是这种绑定方式。
