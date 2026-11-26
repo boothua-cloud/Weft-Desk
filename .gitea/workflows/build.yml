@@ -32,7 +32,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 检出
-        uses: actions/checkout@v4
+        # 不走 actions/checkout：那个 action 要从 github.com 拉源码，容器出网会超时
+        run: |
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git -c http.extraheader="Authorization: token ${GITHUB_TOKEN}" \
+            fetch --depth 1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
 
       - name: 安装 Go
         uses: actions/setup-go@v5
@@ -105,7 +111,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 检出
-        uses: actions/checkout@v4
+        # 不走 actions/checkout：那个 action 要从 github.com 拉源码，容器出网会超时
+        run: |
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git -c http.extraheader="Authorization: token ${GITHUB_TOKEN}" \
+            fetch --depth 1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
 
       - name: 安装 Go
         uses: actions/setup-go@v5
@@ -195,7 +207,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 检出
-        uses: actions/checkout@v4
+        # 不走 actions/checkout：那个 action 要从 github.com 拉源码，容器出网会超时
+        run: |
+          git init -q .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git -c http.extraheader="Authorization: token ${GITHUB_TOKEN}" \
+            fetch --depth 1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
 
       - name: 安装 Go
         uses: actions/setup-go@v5
