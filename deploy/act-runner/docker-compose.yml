@@ -1,0 +1,44 @@
+# act_runner —— 给 git.boothua.cn 跑 build.yml
+#
+# 用法：
+#   1. cp .env.example .env  然后填 RUNNER_TOKEN
+#   2. docker compose up -d
+#   3. docker compose logs -f 看到 "declare successfully" 就成了
+#
+# 说明：
+#   - 这个 compose 靠环境变量注册，不挂 config.yml。act_runner 首次启动会自己在
+#     /data/config.yml 生成默认配置；一旦挂了一个格式对不上的 config.yml，
+#     启动会直接报 "open config file: no such file or directory" 然后无限重试。
+#   - label 决定了 job 跑在什么容器里：ubuntu-latest:docker://node:20-bookworm
+#     node 镜像里有 git / curl / apt，Go 由 workflow 里的 actions/setup-go 装。
+#     服务器是 amd64 的话不用管平台参数，直接原生编译。
+#   - docker.sock 必须挂，act_runner 靠它创建 job 容器。
+#   - 并发默认 1，多个 job 会排队。够了就别动；要并行设 capacity 得写进 config.yml。
+
+services:
+  act_runner:
+    image: gitea/act_runner:latest
+    container_name: act_runner
+    restart: always
+    environment:
+      GITEA_INSTANCE_URL: ${GITEA_URL:-https://git.boothua.cn}
+      GITEA_RUNNER_REGISTRATION_TOKEN: ${RUNNER_TOKEN:?RUNNER_TOKEN 没填}
+      GITEA_RUNNER_NAME: ${RUNNER_NAME:-weft-desktop}
+      GITEA_RUNNER_LABELS: "ubuntu-latest:docker://node:20-bookworm"
+
+      # 出网代理：拉 action（github.com）和 Go 工具链要走代理，
+      # 但 git.boothua.cn 必须直连，否则出口 IP 被仓库前面的 WAF 限流。
+      # HTTPS_PROXY: http://10.0.1.2:7890
+      # HTTP_PROXY: http://10.0.1.2:7890
+      # NO_PROXY: git.boothua.cn,localhost,127.0.0.1
+
+      # action 缓存和 Go 模块缓存落到卷上，重启不用重下
+      HOME: /data
+    volumes:
+      - ./data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
