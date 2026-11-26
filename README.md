@@ -124,7 +124,7 @@ Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 | Windows | `weft-0.1.0-windows-amd64.zip`（`weft.exe` + `wintun.dll`） | Linux 交叉编译（`CGO_ENABLED=0`） |
 | Windows 安装包 | `云栈-windows-amd64-setup.exe`（NSIS，装到 `%LOCALAPPDATA%\Programs\Weft`） | Linux + `makensis`，仅打 tag 时 |
 | Linux | `云栈_0.1.0-1_amd64.deb` + `云栈-0.1.0-linux-amd64.tar.gz` | Linux 原生（`CGO_ENABLED=1 -tags gtk3`） |
-| macOS | `云栈-0.1.0-macos-arm64.dmg` | 必须 macOS 主机，见 `.gitea/workflows/macos.yml`（手动触发） |
+| macOS | `云栈-0.1.0-macos-arm64.dmg` | 必须 macOS 主机，手动触发时勾上 `with_macos` 才会跑 |
 
 流水线里 `wails3` 用 `CGO_ENABLED=0 go install` 安装：CLI 在 `linux+cgo` 下会编进
 `internal/operatingsystem/webkit_linux.go`，硬要 `pkg-config gtk4 webkitgtk-6.0`，
@@ -137,7 +137,7 @@ Release 上。三个 job 并发，脚本对「release 已存在」做了幂等�
 
 **发版**：`git tag -a v0.1.1 -m "..." && git push origin v0.1.1`。
 tag 触发时附件挂到 `v0.1.1` 这个发布；手动触发时用 `build-<commit8>` 建一个临时发布。
-`installer` 打 NSIS 安装包，`macos` 在 `macos.yml` 里手动点（没注册 macOS runner）。
+`installer` 打 NSIS 安装包（仅 tag）；`macos` 需要 macOS runner，手动触发时勾 `with_macos` 才构建。
 
 > runner 侧的两个环境要求（本机 Docker runner 已配好）：容器要能访问 github.com 拉
 > action 源码（配置了走网关代理，`NO_PROXY` 放行 `git.boothua.cn`，避免出口 IP 被
