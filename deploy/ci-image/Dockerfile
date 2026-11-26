@@ -29,9 +29,10 @@ RUN sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' \
  && rm -rf /var/lib/apt/lists/* /tmp/*
 
 # ── 2. Go 工具链 ──────────────────────────────────────────────
-# 中科大镜像，和 apt 用同一家；阿里云也验证过能下
+# 用阿里云：中科大对部分来源的请求会回 403（容器里踩过），阿里云稳定
 ARG GO_VERSION=1.27.4
-RUN curl -fsSL "https://mirrors.ustc.edu.cn/golang/go${GO_VERSION}.linux-amd64.tar.gz" \
+RUN curl -fsSL --retry 3 --retry-delay 2 \
+        "https://mirrors.aliyun.com/golang/go${GO_VERSION}.linux-amd64.tar.gz" \
         -o /tmp/go.tgz \
  && tar -C /usr/local -xzf /tmp/go.tgz \
  && rm -f /tmp/go.tgz \
