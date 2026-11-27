@@ -58,8 +58,11 @@ type systemTUNEngine struct {
 	skipped  []string
 	lastErr  string
 	starting bool
-	cfg      Config
-	proxy    *proxyHub
+	// since 是节点真正上线（拿到地址并装好路由）的时刻。
+	// 运行时长以它为准：连接可能是自动拉起的，服务层不一定知道什么时候开始。
+	since time.Time
+	cfg   Config
+	proxy *proxyHub
 }
 
 func newSystemTUNEngine() *systemTUNEngine {
@@ -99,6 +102,13 @@ func (e *systemTUNEngine) Starting() bool {
 
 func (e *systemTUNEngine) Name() string    { return "system" }
 func (e *systemTUNEngine) Available() bool { return true }
+
+// Since 返回本次上线时刻；没在运行时是零值。
+func (e *systemTUNEngine) Since() time.Time {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.since
+}
 
 func (e *systemTUNEngine) Status() (bool, string, string) {
 	e.mu.Lock()
@@ -291,6 +301,7 @@ func (e *systemTUNEngine) Up(c Config) error {
 	}
 	e.srv, e.dev, e.router, e.cancel = srv, dev, router, cancel
 	e.hostname, e.running, e.loginURL, e.lastErr = host, false, "", ""
+	e.since = time.Time{}
 	e.mu.Unlock()
 
 	go e.waitUp(ctx, srv, dev, router)
@@ -344,6 +355,7 @@ func (e *systemTUNEngine) waitUp(ctx context.Context, srv *tsnet.Server, dev wgt
 		e.mu.Lock()
 		if e.srv == srv {
 			e.running = true
+			e.since = time.Now()
 			e.selfIP = ip.String()
 			e.loginURL = ""
 			e.routes = prefixStrings(routes.keep)
@@ -533,7 +545,7 @@ func (e *systemTUNEngine) Down() error {
 	srv, router, cancel := e.srv, e.router, e.cancel
 	e.srv, e.dev, e.router, e.cancel = nil, nil, nil, nil
 	e.running, e.selfIP, e.loginURL = false, "", ""
-	e.routes, e.skipped = nil, nil
+	e.routes, e.skipped, e.since = nil, nil, time.Time{}
 	proxy := e.proxy
 	e.mu.Unlock()
 

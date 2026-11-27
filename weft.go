@@ -129,6 +129,10 @@ func (s *WeftService) autoConnect() {
 			log.Printf("自动连接失败: %v", err)
 			return
 		}
+		s.mu.Lock()
+		s.connected = true
+		s.started = time.Now()
+		s.mu.Unlock()
 		if err := s.startForwards(); err != nil {
 			log.Printf("自动拉起端口转发失败: %v", err)
 		}
@@ -906,14 +910,53 @@ func (s *WeftService) GetState() (string, error) {
 	st.Connected = running
 	st.SelfIP = ip
 	st.Hostname = host
-	if running && !started.IsZero() {
-		st.Uptime = time.Since(started).Truncate(time.Second).String()
+	// 运行时长以引擎自己的上线时刻为准：自动连接的路径不经过 Connect，
+	// 只记 s.started 会永远是零值（界面上就是一直显示「—」）。
+	since := started
+	if sr, ok := s.engine.(interface{ Since() time.Time }); ok {
+		if t := sr.Since(); !t.IsZero() {
+			since = t
+		}
+	}
+	if running && !since.IsZero() {
+		st.Uptime = formatUptime(time.Since(since))
 	}
 	st.Message = cfg.ControlPlane + " · " + cfg.BaseURL
 	if st.SelfIP == "" {
 		st.SelfIP = "—"
 	}
 	return toJSON(st)
+}
+
+// formatUptime 把时长写成「2 天 3 小时」这种能直接读的形式。
+// time.Duration.String() 给的是 50h3m2s，超过一天就没法读。
+func formatUptime(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	d = d.Truncate(time.Second)
+	days := int(d / (24 * time.Hour))
+	d -= time.Duration(days) * 24 * time.Hour
+	hours := int(d / time.Hour)
+	d -= time.Duration(hours) * time.Hour
+	mins := int(d / time.Minute)
+	secs := int(d/time.Second) - mins*60
+	switch {
+	case days > 0:
+		if hours > 0 {
+			return fmt.Sprintf("%d 天 %d 小时", days, hours)
+		}
+		return fmt.Sprintf("%d 天", days)
+	case hours > 0:
+		if mins > 0 {
+			return fmt.Sprintf("%d 小时 %d 分", hours, mins)
+		}
+		return fmt.Sprintf("%d 小时", hours)
+	case mins > 0:
+		return fmt.Sprintf("%d 分 %d 秒", mins, secs)
+	default:
+		return fmt.Sprintf("%d 秒", secs)
+	}
 }
 
 func (s *WeftService) Connect() (string, error) {
