@@ -140,23 +140,51 @@ jobs:
             -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o bin/weft.exe .
 
       - name: 取 WinTun 运行库
+        # 缺了 wintun.dll 的包点「连接」只会报 Unable to load library，
+        # 与其发一个装好也连不上的包，不如这一步直接失败
         shell: bash
-        run: bash scripts/fetch-wintun.sh amd64 || echo "wintun 获取跳过"
+        run: bash scripts/fetch-wintun.sh amd64
 
-      - name: 打包 zip
+      - name: 打包 zip（便携版）
         # Windows runner 上没有 zip 命令，用 PowerShell 自带的 Compress-Archive
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path out | Out-Null
           Copy-Item bin\weft.exe out\
-          if (Test-Path bin\wintun.dll) { Copy-Item bin\wintun.dll out\ }
+          Copy-Item bin\wintun.dll out\
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path out\* -DestinationPath "dist\weft-$env:VER-windows-amd64.zip" -Force
+
+      - name: 安装 NSIS
+        shell: pwsh
+        run: |
+          choco install nsis --no-progress -y
+          "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: 打 NSIS 安装包
+        # 装到 %LOCALAPPDATA%\Programs\Weft，per-user 免 UAC；
+        # NSIS 的 VIProductVersion 只认 x.y.z 四段数字，预览版 tag（v0.1.2-rc1）
+        # 带连字符就不注入版本，用 project.nsi 里的默认值
+        shell: pwsh
+        run: |
+          $defines = @(
+            "/DARG_WAILS_AMD64_BINARY=$PWD\bin\weft.exe",
+            "/DWINTUN_DLL=$PWD\bin\wintun.dll",
+            "/DWAILS_INSTALL_SCOPE=user",
+            "/DREQUEST_EXECUTION_LEVEL=user"
+          )
+          if ($env:VER -match '^\d+\.\d+\.\d+$') { $defines += "/DINFO_PRODUCTVERSION=$env:VER" }
+          Push-Location build\windows\nsis
+          & makensis @defines project.nsi
+          $code = $LASTEXITCODE
+          Pop-Location
+          if ($code -ne 0) { throw "makensis 退出码 $code" }
+          Copy-Item bin\weft-amd64-installer.exe "dist\weft-$env:VER-windows-amd64-setup.exe"
 
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: dist/*.zip
+          path: dist/*
           if-no-files-found: error
 
   macos:
@@ -248,7 +276,7 @@ jobs:
           | 平台 | 文件 |
           |---|---|
           | macOS (Apple Silicon) | `weft-*-macos-arm64.dmg` |
-          | Windows x64 | `weft-*-windows-amd64.zip`（内含 `wintun.dll`） |
+          | Windows x64 | `weft-*-windows-amd64-setup.exe`（安装版，免管理员）<br>`weft-*-windows-amd64.zip`（便携版，解压即用） |
           | Linux x64 | `weft-*-linux-amd64.tar.gz` / `weft_*_amd64.deb` |
 
           Windows 首次连接会弹一次 UAC（创建虚拟网卡），装好「系统助手」之后不再提示。

@@ -22,7 +22,9 @@ Unicode true
 !define INFO_PROJECTNAME    "weft"
 !define INFO_PRODUCTNAME    "Weft"
 !define INFO_COMPANYNAME    "Boothua"
+!ifndef INFO_PRODUCTVERSION
 !define INFO_PRODUCTVERSION "0.1.2"
+!endif
 !define INFO_COPYRIGHT      "(c) 2026 Boothua"
 ## !define INFO_COMPANYNAME    "My Company" # Default "My Company"
 ## !define INFO_PRODUCTNAME    "My Product Name" # Default "Weft"
