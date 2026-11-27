@@ -158,8 +158,9 @@ jobs:
 
   release:
     needs: [linux, windows, macos]
-    # 只有正式 tag（v1.0.0）发 Release；v0.1.0-test 这类只构建不发
-    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-test')
+    # 打 v* 的 tag 就发版；tag 里带连字符的当预览版（v0.2.0-beta.1），
+    # 不带的是正式版（v0.2.0）—— 跟语义化版本的约定一致
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -169,7 +170,28 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: 判断是正式还是预览
+        id: kind
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+            echo "title=${GITHUB_REF_NAME}（预览版）" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "title=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          fi
+
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          name: ${{ steps.kind.outputs.title }}
+          prerelease: ${{ steps.kind.outputs.prerelease == 'true' }}
           generate_release_notes: true
+          body: |
+            三平台构建产物：
+
+            | 平台 | 文件 |
+            |---|---|
+            | macOS (Apple Silicon) | `weft-*-macos-arm64.dmg` |
+            | Windows x64 | `weft-*-windows-amd64.zip` |
+            | Linux x64 | `weft-*-linux-amd64.tar.gz` |
