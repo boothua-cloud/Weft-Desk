@@ -27,12 +27,12 @@
 !define INFO_DISPLAYNAME    "云栈"
 !define INFO_COMPANYNAME    "Boothua"
 !ifndef INFO_PRODUCTVERSION
-!define INFO_PRODUCTVERSION "0.1.2"
+!define INFO_PRODUCTVERSION "0.1.3"
 !endif
 !define INFO_COPYRIGHT      "(c) 2026 Boothua"
 ## !define INFO_COMPANYNAME    "My Company" # Default "My Company"
 ## !define INFO_PRODUCTNAME    "My Product Name" # Default "Weft"
-## !define INFO_PRODUCTVERSION "1.0.0"     # Default "0.1.2"
+## !define INFO_PRODUCTVERSION "1.0.0"     # Default "0.1.3"
 ## !define INFO_COPYRIGHT      "(c) Now, My Company" # Default "(c) 2026, My Company"
 ###
 ## !define PRODUCT_EXECUTABLE  "Application.exe"      # Default "${INFO_PROJECTNAME}.exe"

@@ -196,7 +196,7 @@ onUnmounted(() => {
     <aside class="side">
       <div class="brand">
         <img class="logo" src="/appicon.png" alt="云栈" draggable="false" />
-        <div><b>云栈</b><small>Headscale 桌面端 v0.1.2</small></div>
+        <div><b>云栈</b><small>Headscale 桌面端 v0.1.3</small></div>
       </div>
       <template v-for="g in nav" :key="g.label">
         <span class="nav-label">{{ g.label }}</span>
@@ -282,7 +282,7 @@ onUnmounted(() => {
                   <span>帮助手册</span>
                 </button>
                 <button class="menu-item" @click="menuOpen = false; info = 'about'">
-                  <span>关于云栈</span><small>v0.1.2</small>
+                  <span>关于云栈</span><small>v0.1.3</small>
                 </button>
               </div>
             </template>

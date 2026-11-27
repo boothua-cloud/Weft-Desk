@@ -57,9 +57,11 @@ func helperStatus() HelperStatus {
 	case st.Installed && st.Running:
 		st.Note = "已以管理员运行，连接无需再授权"
 	case st.Running:
-		st.Note = "当前已以管理员运行；安装后登录即自动提权，不必每次确认"
+		st.Note = "当前已以管理员运行；装好登录自启后开机自动接管，不用每次确认 UAC"
 	default:
-		st.Note = "未配置登录自启：可以正常打开界面，点「连接」时才请求一次管理员授权"
+		// exe 清单是 requireAdministrator，正常启动到这里 Running 都是 true，
+		// 只剩「被别的方式以普通权限拉起」这种异常情况。
+		st.Note = "当前不是管理员：每次打开都会请求一次 UAC，建议安装登录自启"
 	}
 	return st
 }
