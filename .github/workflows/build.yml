@@ -36,6 +36,13 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: 解析版本号
+        # tag 触发取 tag（v0.1.1 → 0.1.1），手动触发用 APP_VERSION
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then V="${GITHUB_REF_NAME#v}"; else V="${APP_VERSION}"; fi
+          echo "VER=$V" >> $GITHUB_ENV
+          echo "版本号: $V"
+
       - name: 系统依赖
         run: |
           sudo apt-get update
@@ -69,14 +76,10 @@ jobs:
       - name: 打包 tar.gz 与 deb
         run: |
           mkdir -p dist
-          tar -C bin -czf "dist/weft-${APP_VERSION}-linux-amd64.tar.gz" weft
+          tar -C bin -czf "dist/weft-${VER}-linux-amd64.tar.gz" weft
 
           # deb 用 nfpm 打，配置在 build/linux/nfpm/nfpm.yaml
-          case "$GITHUB_REF" in
-            refs/tags/v*) VERSION="${GITHUB_REF_NAME#v}" ;;
-            *)            VERSION="${APP_VERSION}" ;;
-          esac
-          export VERSION
+          export VERSION="$VER"
           echo "deb 版本号: $VERSION"
 
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
@@ -104,6 +107,13 @@ jobs:
           node-version: "20"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      - name: 解析版本号
+        # tag 触发取 tag（v0.1.1 → 0.1.1），手动触发用 APP_VERSION
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then V="${GITHUB_REF_NAME#v}"; else V="${APP_VERSION}"; fi
+          echo "VER=$V" >> $GITHUB_ENV
+          echo "版本号: $V"
 
       - name: 安装 wails3
         shell: bash
@@ -137,7 +147,7 @@ jobs:
           Copy-Item bin\weft.exe out\
           if (Test-Path bin\wintun.dll) { Copy-Item bin\wintun.dll out\ }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Compress-Archive -Path out\* -DestinationPath "dist\weft-$env:APP_VERSION-windows-amd64.zip" -Force
+          Compress-Archive -Path out\* -DestinationPath "dist\weft-$env:VER-windows-amd64.zip" -Force
 
       - uses: actions/upload-artifact@v4
         with:
@@ -161,12 +171,19 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: 解析版本号
+        # tag 触发取 tag（v0.1.1 → 0.1.1），手动触发用 APP_VERSION
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then V="${GITHUB_REF_NAME#v}"; else V="${APP_VERSION}"; fi
+          echo "VER=$V" >> $GITHUB_ENV
+          echo "版本号: $V"
+
       - name: 构建并打包
         run: |
           go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
           export PATH="$(go env GOPATH)/bin:$PATH"
           wails3 build -tags devtools
-          ./scripts/make-dmg.sh
+          VERSION="$VER" ./scripts/make-dmg.sh
 
       - uses: actions/upload-artifact@v4
         with:
