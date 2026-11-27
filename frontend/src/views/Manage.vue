@@ -28,7 +28,7 @@ const userForm = ref({ name: '', displayName: '', email: '', pictureUrl: '' })
 const form = ref({ user: '', reusable: true, ephemeral: false, days: 90, tags: '' })
 
 const sel = ref<Device | null>(null)
-const edit = ref({ name: '', tags: '', routes: '', expiry: '', confirmDelete: false })
+const edit = ref({ name: '', tags: '', routes: '', expiry: '' })
 const reg = ref({ user: '', key: '' })
 const auth = ref({ user: '', authID: '' })
 const debugForm = ref({ user: '', key: '', name: '', routes: '' })
@@ -163,7 +163,6 @@ function close() {
   drawer.value = ''
   generated.value = ''
   sel.value = null
-  edit.value.confirmDelete = false
 }
 
 // ---------- 设备 ----------
@@ -175,7 +174,6 @@ function openDevice(d: Device) {
     tags: d.tags,
     routes: d.advertisedRoutes || d.approvedRoutes || '',
     expiry: d.expiry,
-    confirmDelete: false,
   }
   checkedRoutes.value = new Set(splitList(d.approvedRoutes || ''))
   drawer.value = 'device'
@@ -233,13 +231,20 @@ async function cancelExpiry() {
     await refreshSel()
   })
 }
-async function removeDev() {
+function removeDev() {
   if (!sel.value) return
-  if (!edit.value.confirmDelete) { edit.value.confirmDelete = true; return }
-  await run('删除设备', async () => {
-    await api.deleteDevice(sel.value!.id)
-    close()
-    await load()
+  const d = sel.value
+  askConfirm({
+    title: '删除这台设备？',
+    desc: `${d.givenName || d.name || d.id}\n删除后该节点需要重新注册才能接入网络，已批准的路由也会失效。`,
+    ok: '删除',
+    run: async () => {
+      await run('删除设备', async () => {
+        await api.deleteDevice(d.id)
+        close()
+        await load()
+      })
+    },
   })
 }
 
@@ -340,18 +345,60 @@ async function createKey() {
   } catch (err: any) { emit('notify', '生成失败：' + (err?.message ?? err)) }
   finally { busy.value = false }
 }
-async function expireKey(k: AuthKey) {
-  try {
-    await api.expireAuthKey(k.id)
-    emit('notify', 'Key 已吊销')
-    await new Promise((r) => setTimeout(r, 600))
-    await load()
-  }
-  catch (err: any) { emit('notify', '操作失败：' + (err?.message ?? err)) }
+// 吊销和删除都不可逆，先弹确认再执行
+const confirmBox = ref<null | { title: string; desc: string; ok: string; run: () => Promise<void> }>(null)
+const confirmBusy = ref(false)
+
+function askConfirm(box: { title: string; desc: string; ok: string; run: () => Promise<void> }) {
+  confirmBox.value = box
 }
-async function deleteKey(k: AuthKey) {
-  try { await api.deleteAuthKey(k.id); emit('notify', 'Key 已删除'); await new Promise((r) => setTimeout(r, 400)); await load() }
-  catch (err: any) { emit('notify', '删除失败：' + (err?.message ?? err)) }
+function cancelConfirm() {
+  if (!confirmBusy.value) confirmBox.value = null
+}
+async function runConfirm() {
+  if (!confirmBox.value) return
+  const box = confirmBox.value
+  confirmBusy.value = true
+  try {
+    await box.run()
+  } finally {
+    confirmBusy.value = false
+    // 操作失败时也关掉，原因已经通过 notify 提示过
+    confirmBox.value = null
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+function expireKey(k: AuthKey) {
+  askConfirm({
+    title: '吊销这把授权 Key？',
+    desc: `${k.key}\n吊销后立即失效，且无法恢复。已经用它注册过的节点不受影响。`,
+    ok: '吊销',
+    run: async () => {
+      try {
+        await api.expireAuthKey(k.id)
+        emit('notify', 'Key 已吊销')
+        await sleep(600)
+        await load()
+      } catch (err: any) { emit('notify', '吊销失败：' + (err?.message ?? err)) }
+    },
+  })
+}
+function deleteKey(k: AuthKey) {
+  askConfirm({
+    title: '删除这把授权 Key？',
+    desc: `${k.key}\n删除后记录彻底消失，无法恢复。已经用它注册过的节点不受影响。`,
+    ok: '删除',
+    run: async () => {
+      try {
+        await api.deleteAuthKey(k.id)
+        emit('notify', 'Key 已删除')
+        await sleep(400)
+        await load()
+      } catch (err: any) { emit('notify', '删除失败：' + (err?.message ?? err)) }
+    },
+  })
 }
 
 // ---------- API Key ----------
@@ -370,18 +417,35 @@ async function createApiKey() {
   } catch (err: any) { emit('notify', '生成失败：' + (err?.message ?? err)) }
   finally { busy.value = false }
 }
-async function expireApiKey(k: APIKey) {
-  try {
-    await api.expireAPIKey(k.prefix, k.id)
-    emit('notify', '已吊销')
-    await new Promise((r) => setTimeout(r, 600))
-    await load()
-  }
-  catch (err: any) { emit('notify', '操作失败：' + (err?.message ?? err)) }
+function expireApiKey(k: APIKey) {
+  askConfirm({
+    title: '吊销这个 API Key？',
+    desc: `${k.prefix}\n吊销后立即失效，正用它调用管理接口的客户端会立刻失去权限，且无法恢复。`,
+    ok: '吊销',
+    run: async () => {
+      try {
+        await api.expireAPIKey(k.prefix, k.id)
+        emit('notify', '已吊销')
+        await sleep(600)
+        await load()
+      } catch (err: any) { emit('notify', '吊销失败：' + (err?.message ?? err)) }
+    },
+  })
 }
-async function deleteApiKey(k: APIKey) {
-  try { await api.deleteAPIKey(k.prefix, k.id); emit('notify', '已删除'); await new Promise((r) => setTimeout(r, 400)); await load() }
-  catch (err: any) { emit('notify', '删除失败：' + (err?.message ?? err)) }
+function deleteApiKey(k: APIKey) {
+  askConfirm({
+    title: '删除这个 API Key？',
+    desc: `${k.prefix}\n删除后记录彻底消失，无法恢复。如果还想留痕，建议用「吊销」。`,
+    ok: '删除',
+    run: async () => {
+      try {
+        await api.deleteAPIKey(k.prefix, '')
+        emit('notify', '已删除')
+        await sleep(400)
+        await load()
+      } catch (err: any) { emit('notify', '删除失败：' + (err?.message ?? err)) }
+    },
+  })
 }
 
 // ---------- 成员 ----------
@@ -460,9 +524,20 @@ async function commitRename(u: User) {
   try { await api.renameUser(u.id, v); await load(); emit('notify', '已重命名') }
   catch (err: any) { emit('notify', '重命名失败：' + (err?.message ?? err)) }
 }
-async function deleteUser(u: User) {
-  try { await api.deleteUser(u.id); await load(); emit('notify', '已删除 ' + u.name) }
-  catch (err: any) { emit('notify', '删除失败：' + (err?.message ?? err)) }
+function deleteUser(u: User) {
+  const who = u.rawName || u.name || '该成员'
+  askConfirm({
+    title: '删除这个成员？',
+    desc: `${who}\n删除后该成员名下的设备、授权 Key 会一并失去归属，正在使用它登录的客户端会断开，且无法恢复。`,
+    ok: '删除',
+    run: async () => {
+      try {
+        await api.deleteUser(u.id)
+        await load()
+        emit('notify', '已删除 ' + who)
+      } catch (err: any) { emit('notify', '删除失败：' + (err?.message ?? err)) }
+    },
+  })
 }
 
 // ---------- 通用 ----------
@@ -758,7 +833,7 @@ function splitList(v: string) {
           </div>
           <button class="btn sm danger" style="width:100%;margin-top:10px"
                   :disabled="busy" @click="removeDev">
-            {{ edit.confirmDelete ? '确认删除？再点一次' : '删除设备' }}
+            删除设备
           </button>
         </template>
 
@@ -925,6 +1000,21 @@ function splitList(v: string) {
             <button class="btn primary" style="width:100%;margin-top:10px;height:38px" @click="close">我已保存，关闭</button>
           </template>
         </template>
+      </div>
+    </template>
+
+    <!-- 通用确认框：吊销 / 删除都要过这一步 -->
+    <template v-if="confirmBox">
+      <div class="mask" style="z-index:30" @click="cancelConfirm"></div>
+      <div class="dialog" role="dialog" aria-modal="true">
+        <b class="dialog-title">{{ confirmBox.title }}</b>
+        <p class="dialog-desc">{{ confirmBox.desc }}</p>
+        <div class="row" style="justify-content:flex-end;gap:8px;margin-top:18px">
+          <button class="btn" :disabled="confirmBusy" @click="cancelConfirm">取消</button>
+          <button class="btn danger" :disabled="confirmBusy" @click="runConfirm">
+            <span v-if="confirmBusy" class="spinner" style="margin-right:6px"></span>{{ confirmBox.ok }}
+          </button>
+        </div>
       </div>
     </template>
   </div>

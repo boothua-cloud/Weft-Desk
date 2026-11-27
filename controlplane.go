@@ -692,13 +692,10 @@ func (c *headscaleCP) ExpireAPIKey(prefix, id string) error {
 }
 
 func (c *headscaleCP) DeleteAPIKey(prefix, id string) error {
-	// 同样的约束：id 和 prefix 只能给一个。路径里用 id 优先。
-	var p string
-	if id != "" {
-		p = "/api/v1/apikey/" + url.PathEscape(id)
-	} else {
-		p = "/api/v1/apikey/" + url.PathEscape(strings.TrimSuffix(prefix, "***"))
-	}
+	// 路由是 /api/v1/apikey/{prefix}，路径段必须是前缀；
+	// id 只能作为 ?id= 查询参数，而且和前缀二选一，否则会报 not both。
+	// 之前把 id 塞进路径，服务端拿 37 当初缀查，直接 500 record not found。
+	p := "/api/v1/apikey/" + url.PathEscape(strings.TrimSuffix(prefix, "***"))
 	_, err := doJSON("DELETE", c.url(p), c.bearer(), nil, nil)
 	return err
 }

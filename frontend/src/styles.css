@@ -429,6 +429,19 @@ table.tbl tr:last-child td { border-bottom: 0; }
 @keyframes weft-slide { from { transform: translateX(18px); opacity: .4; } }
 .mask { position: absolute; inset: 0; background: rgba(8, 12, 18, .32); backdrop-filter: blur(2px); z-index: 2; }
 
+/* 居中的确认框：吊销 / 删除这类不可逆操作先用它挡一下 */
+.dialog {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 380px; max-width: calc(100% - 40px);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 14px; padding: 22px; z-index: 31;
+  box-shadow: var(--shadow-pop);
+  animation: weft-pop .16s ease-out;
+}
+@keyframes weft-pop { from { transform: translate(-50%, -48%); opacity: 0; } }
+.dialog-title { display: block; font-size: 13.5px; }
+.dialog-desc { margin: 10px 0 0; font-size: 11.5px; line-height: 1.75; color: var(--muted); white-space: pre-line; word-break: break-all; }
+
 .toast {
   position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
   background: var(--toast-bg); color: var(--toast-fg);
