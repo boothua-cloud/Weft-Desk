@@ -633,7 +633,7 @@ function splitList(v: string) {
             <td>
               <div class="cell-main mono">{{ k.key }}</div>
               <div class="cell-sub">
-                {{ k.used ? (k.reusable ? '已被使用过' : '已用掉') : '未使用' }}
+                {{ k.reusable ? '可复用' : (k.used ? '已用掉' : '未使用') }}
                 <template v-if="k.aclTags"> · {{ k.aclTags }}</template>
               </div>
             </td>
