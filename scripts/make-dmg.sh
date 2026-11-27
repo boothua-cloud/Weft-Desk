@@ -28,7 +28,11 @@ cp -R "bin/${APP}.app" release/
 # dmg 是给用户手动拖的安装盘，框架不会去挂载它。
 ZIP="release/${PKG}-${VER}-macos-arm64.zip"
 rm -f "$ZIP"
-( cd release && ditto -c -k --sequesterRsrc --keepParent "${APP}.app" "../${ZIP}" )
+# ZIP 是相对仓库根的路径；进了 release/ 之后只留文件名，
+# 否则 ../${ZIP} 会落到仓库根，产物凭空多出一份在错误的位置。
+# --norsrc 不能省：--sequesterRsrc 会额外塞一个 __MACOSX 顶层目录，
+# 而自动更新要求压缩包里恰好一个顶层条目，多一个就整包被拒。
+( cd release && ditto -c -k --norsrc --keepParent "${APP}.app" "$(basename "$ZIP")" )
 echo "已生成 $ZIP"
 
 wails3 tool package --format dmg --name "$APP" --out release \
