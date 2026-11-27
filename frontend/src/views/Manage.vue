@@ -39,7 +39,7 @@ const statusOptions = computed(() => {
   const base = [{ value: '', label: '全部状态' }]
   const items = props.tab === 'devices'
     ? ['在线', '离线', '已过期']
-    : ['有效', '已过期', '已吊销']
+    : ['有效', '已使用', '已过期']
   return base.concat(items.map(v => ({ value: v, label: v })))
 })
 const shownApiKeys = computed(() => {
@@ -340,7 +340,7 @@ async function createKey() {
   finally { busy.value = false }
 }
 async function expireKey(k: AuthKey) {
-  try { await api.expireAuthKey(k.id); await load(); emit('notify', 'Key 已失效') }
+  try { await api.expireAuthKey(k.id); await load(); emit('notify', 'Key 已吊销') }
   catch (err: any) { emit('notify', '操作失败：' + (err?.message ?? err)) }
 }
 async function deleteKey(k: AuthKey) {
@@ -365,7 +365,7 @@ async function createApiKey() {
   finally { busy.value = false }
 }
 async function expireApiKey(k: APIKey) {
-  try { await api.expireAPIKey(k.prefix, k.id); await load(); emit('notify', '已失效') }
+  try { await api.expireAPIKey(k.prefix, k.id); await load(); emit('notify', '已吊销') }
   catch (err: any) { emit('notify', '操作失败：' + (err?.message ?? err)) }
 }
 async function deleteApiKey(k: APIKey) {
@@ -630,13 +630,21 @@ function splitList(v: string) {
         <thead><tr><th>Key</th><th>成员</th><th>类型</th><th>到期</th><th>创建时间</th><th>状态</th><th style="width:120px"></th></tr></thead>
         <tbody>
           <tr v-for="k in shownKeys" :key="k.id">
-            <td><div class="cell-main mono">{{ k.key }}</div><div class="cell-sub">已使用 {{ k.used }} 次</div></td>
+            <td>
+              <div class="cell-main mono">{{ k.key }}</div>
+              <div class="cell-sub">
+                {{ k.used ? (k.reusable ? '已被使用过' : '已用掉') : '未使用' }}
+                <template v-if="k.aclTags"> · {{ k.aclTags }}</template>
+              </div>
+            </td>
             <td>{{ k.user || '—' }}</td>
             <td>{{ k.reusable ? '可复用' : '一次性' }}<span v-if="k.ephemeral" class="tag amber" style="margin-left:5px">临时节点</span></td>
             <td>{{ k.expires || '—' }}</td><td>{{ k.created || '—' }}</td>
             <td><span class="tag" :class="statusTag(k.status)">{{ k.status }}</span></td>
             <td class="row" style="justify-content:flex-end">
-              <button class="btn ghost sm" @click="expireKey(k)">失效</button>
+              <button class="btn ghost sm" :disabled="k.status !== '有效' && k.status !== '已使用'"
+                      title="立即作废，无法恢复；已注册的节点不受影响"
+                      @click="expireKey(k)">吊销</button>
               <button class="btn ghost sm" @click="deleteKey(k)">删除</button>
             </td>
           </tr>
@@ -662,7 +670,8 @@ function splitList(v: string) {
             <td>{{ k.expires || '—' }}</td><td>{{ k.created || '—' }}</td><td>{{ k.lastSeen || '—' }}</td>
             <td><span class="tag" :class="statusTag(k.status)">{{ k.status }}</span></td>
             <td class="row" style="justify-content:flex-end">
-              <button class="btn ghost sm" @click="expireApiKey(k)">失效</button>
+              <button class="btn ghost sm" :disabled="k.status !== '有效'" title="立即作废，正在使用该 Key 的客户端会失去管理权限"
+                      @click="expireApiKey(k)">吊销</button>
               <button class="btn ghost sm" @click="deleteApiKey(k)">删除</button>
             </td>
           </tr>
