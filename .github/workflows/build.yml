@@ -131,6 +131,21 @@ jobs:
           npm ci --include=dev
           npm run build
 
+      - name: 生成 Windows 资源
+        # 裸 go build 不会往 exe 里塞任何 PE 资源。缺了 .syso 的后果：
+        # 没有 ICON/GROUP_ICON（桌面和任务栏显示空白图标）、
+        # 没有 MANIFEST（DPI 缩放、Common Controls v6、asInvoker 声明全丢）、
+        # 没有 VERSION（文件属性里看不到版本和公司名）。
+        # wails3 的平台流程会先 generate syso，CI 走裸 go build 绕过了它。
+        shell: bash
+        run: |
+          wails3 generate syso -arch amd64 \
+            -icon build/windows/icon.ico \
+            -manifest build/windows/wails.exe.manifest \
+            -info build/windows/info.json \
+            -out wails_windows_amd64.syso
+          ls -l wails_windows_amd64.syso
+
       - name: 编译
         shell: bash
         run: |
@@ -138,6 +153,7 @@ jobs:
           go generate ./... 2>/dev/null || true
           CGO_ENABLED=0 go build -tags production \
             -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o bin/weft.exe .
+          rm -f wails_windows_amd64.syso
 
       - name: 取 WinTun 运行库
         # 缺了 wintun.dll 的包点「连接」只会报 Unable to load library，
