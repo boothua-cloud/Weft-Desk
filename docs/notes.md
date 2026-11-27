@@ -121,12 +121,12 @@ Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 
 | 目标 | 产出 | 构建机 |
 |---|---|---|
-| Windows 便携版 | `weft-0.1.4-windows-amd64.zip`（`weft.exe` + `wintun.dll`） | windows-latest，`CGO_ENABLED=0` |
-| Windows 安装包 | `weft-0.1.4-windows-amd64-setup.exe`（NSIS，装到 `%LOCALAPPDATA%\Programs\Weft`，per-user 免 UAC） | windows-latest，`choco install nsis` 后直接跑 `makensis` |
-| Windows 自动更新包 | `weft-0.1.4-windows-amd64-update.zip`（只含 `weft.exe`） | 同一份 exe 再压一次 |
-| Linux | `weft_0.1.4-1_amd64.deb` + `weft-0.1.4-linux-amd64.tar.gz` | Linux 原生（`CGO_ENABLED=1 -tags gtk3`） |
-| macOS | `weft-0.1.4-macos-arm64.dmg` | 必须 macOS 主机，需要 `macos-latest` runner |
-| macOS 自动更新包 | `weft-0.1.4-macos-arm64.zip`（内含单个 `云栈.app`） | `ditto -c -k --keepParent`，在 `make-dmg.sh` 里顺带生成 |
+| Windows 便携版 | `weft-0.1.5-windows-amd64.zip`（`weft.exe` + `wintun.dll`） | windows-latest，`CGO_ENABLED=0` |
+| Windows 安装包 | `weft-0.1.5-windows-amd64-setup.exe`（NSIS，装到 `%LOCALAPPDATA%\Programs\Weft`，per-user 免 UAC） | windows-latest，`choco install nsis` 后直接跑 `makensis` |
+| Windows 自动更新包 | `weft-0.1.5-windows-amd64-update.zip`（只含 `weft.exe`） | 同一份 exe 再压一次 |
+| Linux | `weft_0.1.5-1_amd64.deb` + `weft-0.1.5-linux-amd64.tar.gz` | Linux 原生（`CGO_ENABLED=1 -tags gtk3`） |
+| macOS | `weft-0.1.5-macos-arm64.dmg` | 必须 macOS 主机，需要 `macos-latest` runner |
+| macOS 自动更新包 | `weft-0.1.5-macos-arm64.zip`（内含单个 `云栈.app`） | `ditto -c -k --keepParent`，在 `make-dmg.sh` 里顺带生成 |
 
 > 两个 `*-update.zip` / `-macos-arm64.zip` 是给自动更新用的，别删：
 > 更新流程是「替换文件」而不是「跑安装器」，框架要求压缩包里**恰好一个顶层条目**。

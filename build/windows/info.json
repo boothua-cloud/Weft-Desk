@@ -1,10 +1,10 @@
 {
 	"fixed": {
-		"file_version": "0.1.4"
+		"file_version": "0.1.5"
 	},
 	"info": {
 		"0409": {
-			"ProductVersion": "0.1.4",
+			"ProductVersion": "0.1.5",
 			"CompanyName": "Boothua",
 			"FileDescription": "云栈 - Tailscale / Headscale 桌面客户端",
 			"LegalCopyright": "(c) 2026 Boothua",
