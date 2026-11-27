@@ -121,10 +121,17 @@ Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 
 | 目标 | 产出 | 构建机 |
 |---|---|---|
-| Windows 便携版 | `weft-0.1.3-windows-amd64.zip`（`weft.exe` + `wintun.dll`） | windows-latest，`CGO_ENABLED=0` |
-| Windows 安装包 | `weft-0.1.3-windows-amd64-setup.exe`（NSIS，装到 `%LOCALAPPDATA%\Programs\Weft`，per-user 免 UAC） | windows-latest，`choco install nsis` 后直接跑 `makensis` |
-| Linux | `云栈_0.1.0-1_amd64.deb` + `云栈-0.1.0-linux-amd64.tar.gz` | Linux 原生（`CGO_ENABLED=1 -tags gtk3`） |
-| macOS | `云栈-0.1.0-macos-arm64.dmg` | 必须 macOS 主机，需要 `macos-latest` runner |
+| Windows 便携版 | `weft-0.1.4-windows-amd64.zip`（`weft.exe` + `wintun.dll`） | windows-latest，`CGO_ENABLED=0` |
+| Windows 安装包 | `weft-0.1.4-windows-amd64-setup.exe`（NSIS，装到 `%LOCALAPPDATA%\Programs\Weft`，per-user 免 UAC） | windows-latest，`choco install nsis` 后直接跑 `makensis` |
+| Windows 自动更新包 | `weft-0.1.4-windows-amd64-update.zip`（只含 `weft.exe`） | 同一份 exe 再压一次 |
+| Linux | `weft_0.1.4-1_amd64.deb` + `weft-0.1.4-linux-amd64.tar.gz` | Linux 原生（`CGO_ENABLED=1 -tags gtk3`） |
+| macOS | `weft-0.1.4-macos-arm64.dmg` | 必须 macOS 主机，需要 `macos-latest` runner |
+| macOS 自动更新包 | `weft-0.1.4-macos-arm64.zip`（内含单个 `云栈.app`） | `ditto -c -k --keepParent`，在 `make-dmg.sh` 里顺带生成 |
+
+> 两个 `*-update.zip` / `-macos-arm64.zip` 是给自动更新用的，别删：
+> 更新流程是「替换文件」而不是「跑安装器」，框架要求压缩包里**恰好一个顶层条目**。
+> Windows 所以只放 `weft.exe`（`wintun.dll` 首次安装已落盘），macOS 必须放整个 `.app`，
+> dmg 不会被挂载。文件名是 `update.go` 里 `pickUpdateAsset` 写死的匹配规则，改名会断更新。
 
 流水线里 `wails3` 用 `CGO_ENABLED=0 go install` 安装：CLI 在 `linux+cgo` 下会编进
 `internal/operatingsystem/webkit_linux.go`，硬要 `pkg-config gtk4 webkitgtk-6.0`，

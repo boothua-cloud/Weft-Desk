@@ -622,6 +622,41 @@ html[data-theme="dark"] .modal::-webkit-scrollbar-thumb {
 .about-desc { font-size: 12px; line-height: 1.85; color: var(--muted); margin: 0 0 14px; }
 .about-foot { margin-top: 16px; font-size: 10.5px; text-align: center; }
 
+/* 菜单项上的小红点：后台查到新版本但用户还没点开 */
+.menu-dot {
+  display: inline-block; width: 6px; height: 6px; margin-left: 6px;
+  border-radius: 50%; background: var(--danger); vertical-align: 1px;
+}
+.upd-entry { width: 100%; margin-top: 14px; }
+
+/* ---------------- 检查更新 ---------------- */
+.modal.modal-update { width: min(440px, 100%); padding: 24px; }
+.upd-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.upd-logo { width: 42px; height: 42px; border-radius: 11px; object-fit: contain; }
+.upd-title { font-size: 14.5px; font-weight: 650; }
+.upd-body { min-height: 44px; }
+.upd-center { display: flex; align-items: center; gap: 12px; }
+.upd-ok {
+  width: 30px; height: 30px; flex: none; border-radius: 50%;
+  display: grid; place-items: center; font-size: 15px;
+  background: var(--ok-soft); color: var(--ok);
+}
+.upd-ver { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; }
+.upd-ver .faint { font-size: 10.5px; }
+.upd-notes {
+  margin-top: 12px; max-height: 210px; overflow-y: auto;
+  padding: 12px 14px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--line-soft);
+  font-size: 11.5px; line-height: 1.85; color: var(--muted);
+  white-space: pre-wrap; word-break: break-word;
+}
+.upd-hint { margin-top: 12px; font-size: 11px; line-height: 1.8; color: var(--faint); }
+.upd-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.upd-bar { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.upd-bar i { display: block; height: 100%; border-radius: 999px; background: var(--brand); transition: width .25s ease-out; }
+.upd-progress-line { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; }
+.upd-err { margin: 8px 0 0; font-size: 11.5px; line-height: 1.75; color: var(--muted); word-break: break-word; }
+
 .help-title { margin: 0 0 18px; font-size: 18px; font-weight: 650; }
 .help-sec { margin-bottom: 18px; }
 .help-sec h4 { margin: 0 0 8px; font-size: 12.5px; font-weight: 600; color: var(--brand); }

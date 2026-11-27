@@ -68,6 +68,7 @@ type State struct {
 	LoginURL     string       `json:"loginURL"`   // 首次交互式注册时由 tsnet 给出
 	LastError    string       `json:"lastError"`  // 最近一次启动/配置路由失败的原因
 	Platform     string       `json:"platform"`   // darwin / windows / linux，界面按它选文案
+	AppVersion   string       `json:"appVersion"` // 客户端版本，界面不再硬编码
 	DataDir      string       `json:"dataDir"`    // 配置与数据库实际所在目录
 	Routes       []string     `json:"routes"`     // 已安装的系统路由（system 模式）
 	Peers        []PeerInfo   `json:"peers"`      // 来自本地 netmap，无需 API Key

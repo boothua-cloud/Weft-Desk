@@ -11,6 +11,7 @@ import Apps from './views/Apps.vue'
 import Forwards from './views/Forwards.vue'
 import Settings from './views/Settings.vue'
 import InfoDialog from './components/InfoDialog.vue'
+import UpdateDialog from './components/UpdateDialog.vue'
 
 const page = ref('overview')
 function toggleTheme() {
@@ -19,6 +20,16 @@ function toggleTheme() {
 
 // 关于 / 帮助 弹窗，托盘菜单和右上角「更多」都能唤起
 const info = ref<'' | 'about' | 'help'>('')
+
+// 检查更新弹窗；updateHint 表示后台已经发现新版但用户还没点开看过
+const updateOpen = ref(false)
+const updateHint = ref(false)
+function openUpdate() {
+  menuOpen.value = false
+  info.value = ''
+  updateHint.value = false
+  updateOpen.value = true
+}
 
 // 右上角「更多」菜单：把不常用的操作收进来，不占地方
 const menuOpen = ref(false)
@@ -131,6 +142,7 @@ async function refreshAll() {
 // tsnet 节点异步上线（首次授权可能要几分钟），定时刷新状态与登录链接。
 let pollTimer: number | undefined
 let offNavigate: (() => void) | undefined
+let offUpdate: (() => void) | undefined
 // 启动遮罩写在 index.html 里，这里等界面首帧真正绘制完再淡出，
 // 否则会出现「遮罩撤了、页面还没画」的一瞬间空白。
 function dismissBoot() {
@@ -145,12 +157,23 @@ onMounted(async () => {
     offNavigate = Events.On('weft:navigate', (ev) => {
       const target = String(ev.data ?? '')
       if (target === 'about' || target === 'help') info.value = target
+      else if (target === 'update') openUpdate()
       else if (target === 'profile-new') {
         page.value = 'settings'
         window.setTimeout(() => window.dispatchEvent(new CustomEvent('weft:open-profile')), 900)
       } else if (['overview', 'apps', 'forwards', 'acl', 'devices', 'users', 'keys', 'api', 'settings'].includes(target)) {
         page.value = target
       }
+    })
+  } catch { /* 忽略 */ }
+
+  // 后台查到的更新：给个轻提示，并在「更多」上加一个小红点，
+  // 不主动弹窗打断正在做的事。
+  try {
+    offUpdate = Events.On('weft:update-available', (ev) => {
+      const v = (ev?.data as any)?.latestVersion
+      updateHint.value = true
+      notify(v ? `发现新版本 v${v}，可在「更多 → 检查更新」里查看` : '发现新版本，可在「更多 → 检查更新」里查看')
     })
   } catch { /* 忽略 */ }
 
@@ -185,6 +208,7 @@ onMounted(async () => {
   window.setTimeout(fallback, 160)
 })
 onUnmounted(() => {
+  try { offUpdate?.() } catch { /* 忽略 */ }
   window.clearInterval(pollTimer)
   offNavigate?.()
   window.clearInterval(pollTimer)
@@ -196,7 +220,7 @@ onUnmounted(() => {
     <aside class="side">
       <div class="brand">
         <img class="logo" src="/appicon.png" alt="云栈" draggable="false" />
-        <div><b>云栈</b><small>Headscale 桌面端 v0.1.3</small></div>
+        <div><b>云栈</b><small>Headscale 桌面端 v{{ state?.appVersion || '' }}</small></div>
       </div>
       <template v-for="g in nav" :key="g.label">
         <span class="nav-label">{{ g.label }}</span>
@@ -281,8 +305,12 @@ onUnmounted(() => {
                 <button class="menu-item" @click="menuOpen = false; info = 'help'">
                   <span>帮助手册</span>
                 </button>
+                <button class="menu-item" @click="openUpdate">
+                  <span>检查更新<i v-if="updateHint" class="menu-dot"></i></span>
+                  <small>v{{ state?.appVersion || '' }}</small>
+                </button>
                 <button class="menu-item" @click="menuOpen = false; info = 'about'">
-                  <span>关于云栈</span><small>v0.1.3</small>
+                  <span>关于云栈</span><small>v{{ state?.appVersion || '' }}</small>
                 </button>
               </div>
             </template>
@@ -302,7 +330,9 @@ onUnmounted(() => {
       </div>
     </main>
 
-    <InfoDialog v-if="info" :kind="info" :state="state" @close="info = ''" />
+    <InfoDialog v-if="info" :kind="info" :state="state" @close="info = ''"
+                @check-update="openUpdate" />
+    <UpdateDialog v-if="updateOpen" :state="state" @close="updateOpen = false" @notify="notify" />
     <div v-if="toast" class="toast">{{ toast }}</div>
   </div>
 </template>

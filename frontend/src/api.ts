@@ -34,6 +34,7 @@ export interface State {
   loginURL: string
   lastError: string
   platform: string
+  appVersion: string
   dataDir: string
   routes: string[]
   peers: PeerInfo[]
@@ -43,6 +44,34 @@ export interface State {
   message: string
   capabilities: Capabilities
 }
+// UpdateStatus 是「检查更新」的返回，和 Go 侧的 updater.UpdateStatus 对应。
+export interface UpdateStatus {
+  currentVersion: string
+  latestVersion: string
+  hasUpdate: boolean
+  notes: string
+  publishedAt: string
+  releaseURL: string
+  assetName: string
+  assetSize: number
+  // 安装位置不可写（mac 的 /Applications、deb 的 /usr/bin）时为 false，
+  // 只能下载安装包让用户手动装。
+  canAutoUpdate: boolean
+  // "permission" 表示安装位置没写权限；空串表示别的降级原因（缺更新包）。
+  manualReason: 'permission' | ''
+  readyToRestart: boolean
+  state: 'idle' | 'latest' | 'available' | 'ready' | 'error'
+  error: string
+}
+
+// 下载进度，来自 weft:update-progress 事件。
+export interface UpdateProgress {
+  written: number
+  total: number
+  percent: number
+  rate: number
+}
+
 export interface Config {
   controlPlane: string
   baseURL: string
@@ -205,6 +234,14 @@ export const api = {
   deleteProfile: (id: string) => WeftService.DeleteProfile(id),
   renameProfile: (id: string, name: string) => WeftService.RenameProfile(id, name),
   saveProfileRaw: (raw: string) => WeftService.SaveProfileRaw(raw),
+
+  // 自动更新
+  checkUpdate: () => parse<UpdateStatus>(WeftService.CheckUpdate()),
+  downloadUpdate: () => parse<UpdateStatus>(WeftService.DownloadUpdate()),
+  applyUpdate: () => WeftService.ApplyUpdate(),
+  updateInfo: () => parse<UpdateStatus>(WeftService.UpdateInfo()),
+  downloadInstaller: () => WeftService.DownloadInstaller(),
+  openReleasePage: () => WeftService.OpenReleasePage(),
 
   // 助手
   helperStatus: () => parse<HelperStatus>(WeftService.GetHelperStatus()),

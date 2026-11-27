@@ -162,6 +162,7 @@ func main() {
 	}
 
 	svc.attach(app)
+	svc.initUpdater()
 
 	// 应用窗口调试：F12 / Cmd+Alt+I 打开 WebView 检查器，无条件下发。
 	// 必须用 `-tags devtools` 构建，否则 Wails 把 OpenDevTools 编译成空实现。
@@ -230,6 +231,17 @@ func main() {
 			}
 		}()
 	}
+
+	// 启动后静默检查一次更新：只在确实有新版本时提示，不拖慢启动。
+	// 12 秒是等启动动画走完、首次状态刷新落定，避免和连接流程抢带宽。
+	go func() {
+		time.Sleep(12 * time.Second)
+		st := svc.checkUpdate()
+		if st.HasUpdate {
+			log.Printf("[update] 发现新版本 v%s（当前 v%s）", st.LatestVersion, st.CurrentVersion)
+			app.Event.Emit(updateEventAvailable, st)
+		}
+	}()
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
