@@ -341,11 +341,16 @@ async function createKey() {
   finally { busy.value = false }
 }
 async function expireKey(k: AuthKey) {
-  try { await api.expireAuthKey(k.id); await load(); emit('notify', 'Key 已吊销') }
+  try {
+    await api.expireAuthKey(k.id)
+    emit('notify', 'Key 已吊销')
+    await new Promise((r) => setTimeout(r, 600))
+    await load()
+  }
   catch (err: any) { emit('notify', '操作失败：' + (err?.message ?? err)) }
 }
 async function deleteKey(k: AuthKey) {
-  try { await api.deleteAuthKey(k.id); await load(); emit('notify', 'Key 已删除') }
+  try { await api.deleteAuthKey(k.id); emit('notify', 'Key 已删除'); await new Promise((r) => setTimeout(r, 400)); await load() }
   catch (err: any) { emit('notify', '删除失败：' + (err?.message ?? err)) }
 }
 
@@ -366,11 +371,16 @@ async function createApiKey() {
   finally { busy.value = false }
 }
 async function expireApiKey(k: APIKey) {
-  try { await api.expireAPIKey(k.prefix, k.id); await load(); emit('notify', '已吊销') }
+  try {
+    await api.expireAPIKey(k.prefix, k.id)
+    emit('notify', '已吊销')
+    await new Promise((r) => setTimeout(r, 600))
+    await load()
+  }
   catch (err: any) { emit('notify', '操作失败：' + (err?.message ?? err)) }
 }
 async function deleteApiKey(k: APIKey) {
-  try { await api.deleteAPIKey(k.prefix, k.id); await load(); emit('notify', '已删除') }
+  try { await api.deleteAPIKey(k.prefix, k.id); emit('notify', '已删除'); await new Promise((r) => setTimeout(r, 400)); await load() }
   catch (err: any) { emit('notify', '删除失败：' + (err?.message ?? err)) }
 }
 

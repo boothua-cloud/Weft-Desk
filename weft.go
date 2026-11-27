@@ -722,6 +722,22 @@ func (s *WeftService) TestConnection() (string, error) {
 	return cap.ProbeMessage, nil
 }
 
+// parseExpires 兼容几种时间写法。
+// APIKey.Expires 是 fmtTS 出来的「2006-01-02 15:04」（空格分隔），
+// 直接按 RFC3339 解析会失败，之前自动续期就是卡在这里。
+func parseExpires(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, fmt.Errorf("没有到期时间")
+	}
+	for _, layout := range []string{time.RFC3339, "2006-01-02 15:04", "2006-01-02 15:04:05"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("无法解析到期时间 %q", s)
+}
+
 // EnsureAPIKeyFresh 在当前管理密钥快过期时自动换一把新的。
 //
 // headscale 没有「续期」接口，只能新建后替换。流程：
@@ -754,7 +770,7 @@ func (s *WeftService) EnsureAPIKeyFresh(window time.Duration) (bool, error) {
 	if self == nil || self.Expires == "" {
 		return false, nil // 认不出来或者永不过期，不动
 	}
-	exp, err := time.Parse(time.RFC3339, self.Expires)
+	exp, err := parseExpires(self.Expires)
 	if err != nil {
 		return false, err
 	}
@@ -814,8 +830,12 @@ func (s *WeftService) RenewAPIKey(days int) error {
 	if err := secretSet(secretMain, fresh); err != nil {
 		return fmt.Errorf("保存新密钥失败: %w", err)
 	}
-	if self != nil {
-		_ = cp.ExpireAPIKey(self.Prefix, self.ID)
+	if self == nil {
+		// 认不出来就没法吊销旧的，留着两把有效密钥容易搞混
+		return fmt.Errorf("已生成新密钥并写入钥匙串，但没能在服务端认出旧密钥，请到 API Key 页面手动吊销旧的")
+	}
+	if err := cp.ExpireAPIKey(self.Prefix, self.ID); err != nil {
+		log.Printf("[keys] 吊销旧密钥失败（新密钥已生效）: %v", err)
 	}
 	s.store.AddAudit("手动续期管理密钥", fmt.Sprintf("有效期重置为 %d 天", days))
 	return nil

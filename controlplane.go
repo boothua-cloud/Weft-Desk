@@ -678,18 +678,26 @@ func (c *headscaleCP) CreateAPIKey(days int) (string, error) {
 }
 
 func (c *headscaleCP) ExpireAPIKey(prefix, id string) error {
-	body := map[string]any{"prefix": prefix}
+	// headscale 只接受 id 和 prefix 中的一个，同时给会 400「provide either id or prefix, not both」。
+	// 有 id 就用 id（精确），没有才退回前缀。
+	body := map[string]any{}
 	if id != "" {
 		body["id"] = id
+	} else {
+		// 列表里的 prefix 带 *** 掩码，服务端按真实前缀查
+		body["prefix"] = strings.TrimSuffix(prefix, "***")
 	}
 	_, err := doJSON("POST", c.url("/api/v1/apikey/expire"), c.bearer(), body, nil)
 	return err
 }
 
 func (c *headscaleCP) DeleteAPIKey(prefix, id string) error {
-	p := "/api/v1/apikey/" + url.PathEscape(prefix)
+	// 同样的约束：id 和 prefix 只能给一个。路径里用 id 优先。
+	var p string
 	if id != "" {
-		p += "?id=" + url.QueryEscape(id)
+		p = "/api/v1/apikey/" + url.PathEscape(id)
+	} else {
+		p = "/api/v1/apikey/" + url.PathEscape(strings.TrimSuffix(prefix, "***"))
 	}
 	_, err := doJSON("DELETE", c.url(p), c.bearer(), nil, nil)
 	return err
