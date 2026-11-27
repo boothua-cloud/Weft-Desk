@@ -97,12 +97,17 @@ func (s *WeftService) autoConnect() {
 	s.mu.Unlock()
 	// 首次使用既没身份也没 Auth Key 时不自动连，否则一打开就弹管理员授权。
 	// 用户主动点「连接」时才走首次授权流程。
+	log.Printf("[boot] autoConnect 检查：autoConnect=%v engine=%v identity=%v authKey=%v baseURL=%s",
+		cfg.AutoConnect, eng != nil, hasNodeIdentity(cfg), secretGet(secretAuth) != "", cfg.BaseURL)
 	if !cfg.AutoConnect || eng == nil {
+		log.Printf("[boot] 跳过自动连接：开关已关或引擎为空")
 		return
 	}
 	if !hasNodeIdentity(cfg) && secretGet(secretAuth) == "" {
+		log.Printf("[boot] 跳过自动连接：没有节点身份也没有 Auth Key（首次使用）")
 		return
 	}
+	log.Printf("[boot] 开始自动连接")
 	// 启动即连接：这段时间界面要显示「正在连接」，而不是「未连接」
 	s.mu.Lock()
 	s.autoPending = true
@@ -114,6 +119,9 @@ func (s *WeftService) autoConnect() {
 			s.autoPending = false
 			s.mu.Unlock()
 		}()
+		// 等前端首帧画完再建卡。启动遮罩要盖 2.5 秒，这段时间界面是看不见的，
+		// Up() 只要四秒就完成了，等于用户从头到尾没见过「正在连接」。
+		time.Sleep(1500 * time.Millisecond)
 		if err := eng.Up(cfg); err != nil {
 			log.Printf("自动连接失败: %v", err)
 			return
