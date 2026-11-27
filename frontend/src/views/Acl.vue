@@ -12,9 +12,14 @@ const loading = ref(false)
 
 async function load() {
   loading.value = true
+  const t0 = Date.now()
   try { doc.value = await api.policy() }
   catch (err: any) { emit('notify', '读取 ACL 失败：' + (err?.message ?? err)) }
-  finally { loading.value = false }
+  finally {
+    const rest = 320 - (Date.now() - t0)
+    if (rest > 0) await new Promise((r) => setTimeout(r, rest))
+    loading.value = false
+  }
 }
 onMounted(load)
 watch(reloadTick, load)

@@ -106,6 +106,7 @@ const shownKeys = computed(() => keys.value.filter(k => {
 
 async function load() {
   loading.value = true
+  const t0 = Date.now()
   try {
     if (props.tab === 'devices') devices.value = (await api.devices()).items
     else if (props.tab === 'users') {
@@ -122,6 +123,10 @@ async function load() {
   } catch (err: any) {
     emit('notify', '加载失败：' + (err?.message ?? err))
   } finally {
+    // 服务端响应常在 100ms 内，遮罩一闪而过看着像没刷新。
+    // 至少露 320ms，用户才有明确的操作反馈。
+    const rest = 320 - (Date.now() - t0)
+    if (rest > 0) await new Promise((r) => setTimeout(r, rest))
     loading.value = false
   }
 }
@@ -571,7 +576,8 @@ function splitList(v: string) {
         <span class="faint" style="font-size:11px">共 {{ users.length }} 个成员</span>
         <button class="btn primary" :disabled="!canCreateUser" @click="openUserForm">＋ 新建成员</button>
       </div>
-      <div class="card table-scroll" style="padding:0">
+      <div class="card table-scroll" style="padding:0;position:relative">
+        <div v-if="loading" class="load-overlay"><span class="spinner"></span>加载中…</div>
         <table class="tbl">
           <thead><tr>
             <th style="width:24%">成员 / 命名空间</th><th>显示名称</th><th>邮箱</th>
