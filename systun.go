@@ -82,10 +82,19 @@ func (e *systemTUNEngine) LastError() string {
 }
 
 // Starting 表示正在建卡/等授权，界面据此显示「连接中」。
+// Starting 表示「还没出结果」：要么正在建卡，要么网卡建好了但节点还没上线。
+// 只看 starting 是不够的 —— Up() 在 srv.Start() 之后就返回了，而节点要再过几秒
+// 才切到 Running，这段空档如果返回 false，界面会先显示「未连接」再跳回「已连接」。
 func (e *systemTUNEngine) Starting() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.starting
+	if e.starting {
+		return true
+	}
+	if e.srv != nil && !e.running && e.lastErr == "" {
+		return true
+	}
+	return false
 }
 
 func (e *systemTUNEngine) Name() string    { return "system" }
