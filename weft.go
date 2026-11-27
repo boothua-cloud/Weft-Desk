@@ -74,7 +74,8 @@ func NewWeftService(store *Store) *WeftService {
 		cfg = Config{ControlPlane: "headscale", TunnelEngine: "system", Hostname: defaultHostname(),
 			SocksEnabled: true, SocksPort: 1080, AutoForward: true}
 	}
-	s := &WeftService{store: store, cfg: cfg}
+	// cap 必须给个初值：零值里 CanCreateUser=false，前端会把写操作按钮全禁掉
+	s := &WeftService{store: store, cfg: cfg, cap: defaultCapabilities()}
 	s.reload()
 	s.mu.Lock()
 	s.fw = newForwardHub(s.engine.Dialer())
