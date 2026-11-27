@@ -42,6 +42,8 @@ type WeftService struct {
 	devToolsHook func()
 	// autoPending 表示启动时的自动连接还没结束，界面据此显示加载态。
 	autoPending bool
+	// upd 是自动更新的运行态（框架的 Updater + 最近一次检查结果）。
+	upd *updateState
 }
 
 // OpenDevTools 供界面里的「更多」菜单调用。
@@ -75,7 +77,7 @@ func NewWeftService(store *Store) *WeftService {
 			SocksEnabled: true, SocksPort: 1080, AutoForward: true}
 	}
 	// cap 必须给个初值：零值里 CanCreateUser=false，前端会把写操作按钮全禁掉
-	s := &WeftService{store: store, cfg: cfg, cap: defaultCapabilities()}
+	s := &WeftService{store: store, cfg: cfg, cap: defaultCapabilities(), upd: &updateState{}}
 	s.reload()
 	s.mu.Lock()
 	s.fw = newForwardHub(s.engine.Dialer())
@@ -877,6 +879,7 @@ func (s *WeftService) GetState() (string, error) {
 		LoginURL: e.LoginURL(), Configured: hasCredential(cfg),
 		Capabilities: cap,
 		Platform:     runtime.GOOS,
+		AppVersion:   appVersion,
 		DataDir:      dataDirDisplay(),
 	}
 	if pr, ok := e.(interface{ Peers() []PeerInfo }); ok {

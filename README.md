@@ -42,9 +42,11 @@ macOS / Windows / Linux，安装即用，没有外部依赖。
 
 | 平台 | 文件 |
 |---|---|
-| macOS (Apple Silicon) | `weft-0.1.3-macos-arm64.dmg` |
-| Windows x64 | `weft-0.1.3-windows-amd64-setup.exe`（安装版，装到用户目录，安装本身不需要管理员权限）<br>`weft-0.1.3-windows-amd64.zip`（便携版，解压即用，内含 `wintun.dll`） |
-| Linux x64 | `weft_0.1.3_amd64.deb`（Ubuntu 24.04+）或 `weft-0.1.3-linux-amd64.tar.gz` |
+| macOS (Apple Silicon) | `weft-0.1.4-macos-arm64.dmg` |
+| Windows x64 | `weft-0.1.4-windows-amd64-setup.exe`（安装版，装到用户目录，安装本身不需要管理员权限）<br>`weft-0.1.4-windows-amd64.zip`（便携版，解压即用，内含 `wintun.dll`） |
+| Linux x64 | `weft_0.1.4-1_amd64.deb`（Ubuntu 24.04+）或 `weft-0.1.4-linux-amd64.tar.gz` |
+
+装好之后应用会自己检查更新，有新版在「更多 → 检查更新」里一键下载并重启即可。发布页里另有两份 `*-update.zip`，那是自动更新专用的中间产物，手动安装不需要下载它们。
 
 Windows 版启动时会请求一次 UAC——创建虚拟网卡必须进程本身具备管理员权限。在「连接设置」里装一次「登录自启」，之后开机由计划任务以最高权限拉起，日常不再弹窗。
 

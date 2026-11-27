@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import type { State } from '../api'
 
 const props = defineProps<{ kind: 'about' | 'help'; state?: State | null }>()
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'check-update'])
 
 const isMac = computed(() => (props.state?.platform ?? 'darwin') === 'darwin')
 const isWin = computed(() => props.state?.platform === 'windows')
@@ -28,7 +28,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
           <img src="/appicon.png" alt="云栈" class="about-logo" draggable="false" />
           <div>
             <div class="about-name">云栈</div>
-            <div class="faint" style="font-size:11.5px;margin-top:4px">Headscale 桌面客户端 · v0.1.3</div>
+            <div class="faint" style="font-size:11.5px;margin-top:4px">Headscale 桌面客户端 · v{{ state?.appVersion || '—' }}</div>
           </div>
         </div>
         <p class="about-desc">
@@ -41,6 +41,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
         <div class="kv"><span>数据目录</span><b class="mono" style="font-size:10px">{{ dataDir }}</b></div>
         <div class="kv"><span>收起窗口</span><b>{{ closeHint }}</b></div>
         <div class="kv"><span>退出应用</span><b>{{ quitHint }}</b></div>
+        <button class="btn ghost sm upd-entry" @click="emit('check-update')">检查更新</button>
         <div class="about-foot faint">© 2026 Boothua</div>
       </template>
 
