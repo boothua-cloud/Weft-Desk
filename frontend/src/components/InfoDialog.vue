@@ -27,7 +27,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
           <img src="/appicon.png" alt="云栈" class="about-logo" draggable="false" />
           <div>
             <div class="about-name">云栈</div>
-            <div class="faint" style="font-size:11.5px;margin-top:4px">Headscale 桌面客户端 · v0.1.0</div>
+            <div class="faint" style="font-size:11.5px;margin-top:4px">Headscale 桌面客户端 · v0.1.2</div>
           </div>
         </div>
         <p class="about-desc">

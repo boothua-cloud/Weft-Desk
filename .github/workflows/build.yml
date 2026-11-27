@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 env:
-  APP_VERSION: 0.1.0
+  APP_VERSION: 0.1.2
   WAILS_VERSION: v3.0.0
   GOTOOLCHAIN: local
 
@@ -222,17 +222,41 @@ jobs:
             echo "title=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
           fi
 
+      - name: 组装发布说明
+        # 更新记录以 CHANGELOG.md 为唯一来源：截出本版本那一节，
+        # 后面接上下载表格。找不到对应小节就退化成一句说明 + 自动提交列表。
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          : > release-body.md
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="$VER" '
+              index($0, "## [" v "]") == 1 { on = 1; next }
+              on && index($0, "## [") == 1 { exit }
+              on { print }
+            ' CHANGELOG.md > release-body.md
+          fi
+          if [ ! -s release-body.md ]; then
+            echo "本版本没有手写更新记录，变更列表见下方自动生成的提交记录。" > release-body.md
+          fi
+          cat >> release-body.md <<'EOF'
+
+          ## 下载
+
+          | 平台 | 文件 |
+          |---|---|
+          | macOS (Apple Silicon) | `weft-*-macos-arm64.dmg` |
+          | Windows x64 | `weft-*-windows-amd64.zip`（内含 `wintun.dll`） |
+          | Linux x64 | `weft-*-linux-amd64.tar.gz` / `weft_*_amd64.deb` |
+
+          Windows 首次连接会弹一次 UAC（创建虚拟网卡），装好「系统助手」之后不再提示。
+          EOF
+          echo "--- 发布说明 ---"
+          cat release-body.md
+
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           name: ${{ steps.kind.outputs.title }}
           prerelease: ${{ steps.kind.outputs.prerelease == 'true' }}
           generate_release_notes: true
-          body: |
-            三平台构建产物：
-
-            | 平台 | 文件 |
-            |---|---|
-            | macOS (Apple Silicon) | `weft-*-macos-arm64.dmg` |
-            | Windows x64 | `weft-*-windows-amd64.zip` |
-            | Linux x64 | `weft-*-linux-amd64.tar.gz` |
+          body_path: release-body.md

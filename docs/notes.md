@@ -135,7 +135,8 @@ Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 也不再用中间分支：每个 job 构建完，直接调 `scripts/gitea-release.sh` 把文件挂到同一个
 Release 上。三个 job 并发，脚本对「release 已存在」做了幂等处理（409 就按 tag 查回来）。
 
-**发版**：`git tag -a v0.1.1 -m "..." && git push origin v0.1.1`。
+**发版**：先在 `CHANGELOG.md` 写下本版本的 `## [x.y.z]` 小节（发版说明会从这里截取），
+再 `git tag -a v0.1.1 -m "..." && git push origin v0.1.1`。
 tag 触发时附件挂到 `v0.1.1` 这个发布；手动触发时用 `build-<commit8>` 建一个临时发布。
 `installer` 打 NSIS 安装包（仅 tag）；`macos` 需要 macOS runner。
 

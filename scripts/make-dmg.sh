@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 
 APP="Weft"
 # CI 打 tag 时由 VERSION 环境变量传进来，本地不传就用默认值
-VER="${VERSION:-0.1.0}"
+VER="${VERSION:-0.1.2}"
 OUT="release/${APP}-${VER}-macos-arm64.dmg"
 RW="/tmp/weft-rw-$$.dmg"
 SRC="/tmp/weft-src-$$.dmg"
