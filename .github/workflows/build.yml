@@ -298,7 +298,7 @@ jobs:
           | 平台 | 文件 |
           |---|---|
           | macOS (Apple Silicon) | `weft-*-macos-arm64.dmg` |
-          | Windows x64 | `weft-*-windows-amd64-setup.exe`（安装版，免管理员）<br>`weft-*-windows-amd64.zip`（便携版，解压即用） |
+          | Windows x64 | `weft-*-windows-amd64-setup.exe`（安装版，装到用户目录）<br>`weft-*-windows-amd64.zip`（便携版，解压即用） |
           | Linux x64 | `weft-*-linux-amd64.tar.gz` / `weft_*_amd64.deb` |
 
           Windows 版启动时会请求一次 UAC（创建虚拟网卡）；装一次「登录自启」后开机自动以管理员启动，日常不再弹窗。
