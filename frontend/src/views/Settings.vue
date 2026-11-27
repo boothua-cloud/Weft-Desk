@@ -268,11 +268,21 @@ async function uninstallHelper() {
       </div>
     </div>
 
-    <div class="card tight" style="margin-bottom:14px">
+    <!-- 助手在跑就只留一行状态；出问题（没装 / 装了没跑 / 指向旧路径）才展开整块 -->
+    <div v-if="helper?.running" class="card tight row" style="margin-bottom:14px">
+      <span style="font-size:11.5px">系统助手</span>
+      <span class="tag green">运行中</span>
+      <span class="faint" style="font-size:10.5px;margin-left:6px">网络接管已就绪，不需要再操作</span>
+      <button class="btn ghost sm" style="margin-left:auto" :disabled="helperBusy" @click="uninstallHelper">移除</button>
+    </div>
+    <div v-else class="card tight" style="margin-bottom:14px">
       <div class="spread" style="margin-bottom:10px">
-        <div><b style="font-size:12px">系统助手</b><div class="faint" style="font-size:10.5px;margin-top:3px">{{ helper?.note || '读取中…' }}</div></div>
-        <span class="tag" :class="helper?.running ? 'green' : helper?.installed ? 'amber' : ''" style="flex:none">
-          {{ helper?.running ? '运行中' : helper?.installed ? '未运行' : '未安装' }}
+        <div>
+          <b style="font-size:12px">系统助手</b>
+          <div class="faint" style="font-size:10.5px;margin-top:3px">{{ helper?.note || '读取中…' }}</div>
+        </div>
+        <span class="tag" :class="helper?.installed ? 'amber' : ''" style="flex:none">
+          {{ helper?.installed ? '未运行' : '未安装' }}
         </span>
       </div>
       <pre v-if="helper?.logTail" class="mono" style="font-size:10px;line-height:1.5;background:var(--surface-2);padding:8px;border-radius:6px;margin:0 0 10px;white-space:pre-wrap;max-height:130px;overflow:auto">{{ helper.logTail }}</pre>
@@ -280,7 +290,7 @@ async function uninstallHelper() {
         <button id="btn-install-helper" class="btn" :disabled="helperBusy" @click="installHelper">
           {{ helper?.installed ? '重新安装（一次授权）' : '安装 · 一次授权后免密' }}
         </button>
-        <button v-if="helper?.installed" class="btn danger" :disabled="helperBusy" @click="uninstallHelper">移除</button>
+        <span class="faint" style="font-size:10.5px">装好后每次开机自动接管网络，不再弹授权</span>
       </div>
     </div>
 

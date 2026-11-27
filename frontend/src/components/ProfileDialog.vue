@@ -14,6 +14,8 @@ const apiKey = ref('')
 const authKey = ref('')
 const allowInsecure = ref(false)
 const saving = ref(false)
+// 已存的密钥默认不显示，点「显示」才从钥匙串读明文
+const shownKey = ref<Record<string, string>>({})
 
 watch(
   () => props.profile,
@@ -27,6 +29,24 @@ watch(
   },
   { immediate: true },
 )
+
+// 点「显示」时从钥匙串读一次明文填进输入框；再点一次清空回密码态
+async function toggleReveal(kind: 'api' | 'auth') {
+  if (shownKey.value[kind]) {
+    shownKey.value = { ...shownKey.value, [kind]: '' }
+    if (kind === 'api') apiKey.value = ''
+    else authKey.value = ''
+    return
+  }
+  try {
+    const v = await api.revealCredential(kind)
+    if (kind === 'api') apiKey.value = v
+    else authKey.value = v
+    shownKey.value = { ...shownKey.value, [kind]: v }
+  } catch (err: any) {
+    emit('notify', '读取失败：' + (err?.message ?? err))
+  }
+}
 
 async function save() {
   if (saving.value) return
@@ -79,15 +99,26 @@ async function save() {
 
       <div class="grid2" style="gap:12px;margin-bottom:12px">
         <div>
-          <label class="field-label">管理 API Key</label>
-          <input class="input" type="password" v-model="apiKey"
+          <div class="spread" style="margin-bottom:5px">
+            <label class="field-label" style="margin:0">管理密钥（API Key）</label>
+            <button v-if="profile?.id" class="btn ghost sm" style="height:20px;padding:0 6px;font-size:10.5px"
+                    @click="toggleReveal('api')">{{ shownKey.api ? '隐藏' : '显示' }}</button>
+          </div>
+          <input class="input" :type="shownKey.api ? 'text' : 'password'" v-model="apiKey"
                  :placeholder="profile?.id ? '留空表示不修改' : 'hskey-apikey-…'" />
         </div>
         <div>
-          <label class="field-label">隧道注册 Auth Key</label>
-          <input class="input" type="password" v-model="authKey"
+          <div class="spread" style="margin-bottom:5px">
+            <label class="field-label" style="margin:0">节点注册密钥（Auth Key）</label>
+            <button v-if="profile?.id" class="btn ghost sm" style="height:20px;padding:0 6px;font-size:10.5px"
+                    @click="toggleReveal('auth')">{{ shownKey.auth ? '隐藏' : '显示' }}</button>
+          </div>
+          <input class="input" :type="shownKey.auth ? 'text' : 'password'" v-model="authKey"
                  :placeholder="profile?.id ? '留空表示不修改' : '可留空走浏览器授权'" />
         </div>
+      </div>
+      <div class="faint" style="font-size:10.5px;margin:-6px 0 12px">
+        节点注册密钥留空时，连接会走服务端授权：总览页会给出一个登录链接，在浏览器打开即可完成注册。
       </div>
 
       <div class="spread" style="padding:10px 0;border-top:1px solid var(--line-soft);margin-top:4px">

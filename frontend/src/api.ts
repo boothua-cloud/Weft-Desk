@@ -127,6 +127,7 @@ export const api = {
   // 只改界面偏好开关，立刻落库生效，不触发引擎重建
   setUIPrefs: (p: Partial<Config>) => parse<Config>(WeftService.SetUIPrefs(JSON.stringify(p))),
   setCredential: (kind: string, value: string) => WeftService.SetCredential(kind, value),
+  revealCredential: (kind: string): Promise<string> => (WeftService as any).RevealCredential(kind),
   testConnection: () => WeftService.TestConnection(),
   connect: () => parse<State>(WeftService.Connect()),
   disconnect: () => parse<State>(WeftService.Disconnect()),

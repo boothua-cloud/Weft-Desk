@@ -248,7 +248,7 @@ func (s *WeftService) SaveConfig(raw string) error {
 	s.mu.Lock()
 	s.cfg = c
 	s.cfg.AuthKey = ""
-	s.cap = Capabilities{}
+	s.cap = defaultCapabilities()
 	hook := s.prefsHook
 	s.mu.Unlock()
 	if hook != nil {
@@ -329,7 +329,7 @@ func (s *WeftService) SwitchProfile(id string) error {
 	}
 	s.mu.Lock()
 	s.cfg = cfg
-	s.cap = Capabilities{}
+	s.cap = defaultCapabilities()
 	s.mu.Unlock()
 
 	s.reload()
@@ -435,7 +435,7 @@ func (s *WeftService) DeleteProfile(id string) error {
 	}
 	s.mu.Lock()
 	s.cfg = cfg
-	s.cap = Capabilities{}
+	s.cap = defaultCapabilities()
 	s.mu.Unlock()
 
 	_ = secretSet(secretMain+"."+id, "")
@@ -548,7 +548,7 @@ func (s *WeftService) SaveProfileRaw(raw string) (string, error) {
 	}
 	s.mu.Lock()
 	s.cfg = cfg
-	s.cap = Capabilities{}
+	s.cap = defaultCapabilities()
 	s.mu.Unlock()
 
 	if changedActive {
@@ -670,6 +670,23 @@ func (s *WeftService) SetCredential(kind, value string) error {
 	return nil
 }
 
+// RevealCredential 返回某个凭证的明文，供「显示」按钮用。
+// 钥匙串本来就是为了不落明文，所以这里不做缓存，每次现读。
+func (s *WeftService) RevealCredential(kind string) (string, error) {
+	key := secretMain
+	switch kind {
+	case "auth":
+		key = secretAuth
+	case "client":
+		key = secretClient
+	}
+	v := strings.TrimSpace(secretGet(key))
+	if v == "" {
+		return "", fmt.Errorf("尚未设置")
+	}
+	return v, nil
+}
+
 func (s *WeftService) TestConnection() (string, error) {
 	cap, err := s.cp.Probe()
 	if err != nil {
@@ -680,6 +697,16 @@ func (s *WeftService) TestConnection() (string, error) {
 	s.mu.Unlock()
 	s.store.AddAudit("测试连接", cap.ProbeMessage)
 	return cap.ProbeMessage, nil
+}
+
+// defaultCapabilities 是「还没探测过」时的取值。
+// 写操作先放行 —— 真不支持的话服务端会回错，不会假成功；
+// 一律给 false 反而会让 UI 把按钮禁掉，用户连试都试不了。
+func defaultCapabilities() Capabilities {
+	return Capabilities{
+		APIStyle: "v1 REST", CanCreateUser: true,
+		CanManageAPIKeys: true, CanManageACL: true,
+	}
 }
 
 func (s *WeftService) GetState() (string, error) {
