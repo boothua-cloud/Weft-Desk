@@ -36,7 +36,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
           这些命令行工具直接填 100.x 或内网 IP 就能连，不需要任何代理。
         </p>
         <div class="kv"><span>名字来历</span><b>李白《蜀道难》「天梯石栈相钩连」</b></div>
-        <div class="kv"><span>控制面</span><b>Headscale（自建）</b></div>
+        <div class="kv"><span>服务端</span><b>Headscale（自建）</b></div>
         <div class="kv"><span>数据目录</span><b class="mono" style="font-size:10px">{{ dataDir }}</b></div>
         <div class="kv"><span>收起窗口</span><b>{{ closeHint }}</b></div>
         <div class="kv"><span>退出应用</span><b>{{ quitHint }}</b></div>

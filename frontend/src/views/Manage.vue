@@ -16,6 +16,7 @@ const statusFilter = ref('')
 const userFilter = ref('')
 const tagFilter = ref('')
 const busy = ref(false)
+const loading = ref(false)
 
 // 抽屉：新建 Key / 设备详情 / 注册设备 / 批准认证 / 新建 API Key
 type Drawer = '' | 'key' | 'device' | 'register' | 'auth' | 'apikey' | 'debug' | 'user' | 'useredit'
@@ -24,7 +25,7 @@ const generated = ref('')
 const newUser = ref('')
 // headscale 的 user 有 name / displayName / email / pictureUrl 四个字段
 const userForm = ref({ name: '', displayName: '', email: '', pictureUrl: '' })
-const form = ref({ user: '', reusable: true, ephemeral: false, days: 90 })
+const form = ref({ user: '', reusable: true, ephemeral: false, days: 90, tags: '' })
 
 const sel = ref<Device | null>(null)
 const edit = ref({ name: '', tags: '', routes: '', expiry: '', confirmDelete: false })
@@ -36,10 +37,18 @@ const apiKeyForm = ref({ days: 90 })
 const userOptions = computed(() => users.value.map((u) => ({ value: u.name, label: u.rawName || u.name })))
 const statusOptions = computed(() => {
   const base = [{ value: '', label: '全部状态' }]
-  const items = props.tab === 'keys'
-    ? ['有效', '已过期', '已吊销']
-    : ['在线', '离线', '已过期']
+  const items = props.tab === 'devices'
+    ? ['在线', '离线', '已过期']
+    : ['有效', '已过期', '已吊销']
   return base.concat(items.map(v => ({ value: v, label: v })))
+})
+const shownApiKeys = computed(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  return apiKeys.value.filter(k => {
+    if (kw && !(k.prefix + k.status).toLowerCase().includes(kw)) return false
+    if (statusFilter.value && k.status !== statusFilter.value) return false
+    return true
+  })
 })
 const tagOptions = computed(() => [{ value: '', label: '全部标签' }].concat(allTags.value.map(t => ({ value: t, label: t }))))
 const memberOptions = computed(() => [{ value: '', label: '全部成员' }].concat(userOptions.value))
@@ -96,6 +105,7 @@ const shownKeys = computed(() => keys.value.filter(k => {
 }))
 
 async function load() {
+  loading.value = true
   try {
     if (props.tab === 'devices') devices.value = (await api.devices()).items
     else if (props.tab === 'users') {
@@ -111,6 +121,8 @@ async function load() {
     } else apiKeys.value = (await api.apiKeys()).items
   } catch (err: any) {
     emit('notify', '加载失败：' + (err?.message ?? err))
+  } finally {
+    loading.value = false
   }
 }
 watch(() => props.tab, () => {
@@ -300,14 +312,14 @@ async function doDebug() {
 
 function openKeyForm() {
   generated.value = ''
-  form.value = { user: users.value[0]?.name ?? '', reusable: true, ephemeral: false, days: 90 }
+  form.value = { user: users.value[0]?.name ?? '', reusable: true, ephemeral: false, days: 90, tags: '' }
   drawer.value = 'key'
 }
 async function createKey() {
   if (!form.value.user) { emit('notify', '请选择归属用户'); return }
   busy.value = true
   try {
-    generated.value = await api.createAuthKey(form.value.user, form.value.reusable, form.value.ephemeral, form.value.days, '')
+    generated.value = await api.createAuthKey(form.value.user, form.value.reusable, form.value.ephemeral, form.value.days, form.value.tags)
     await load()
     emit('notify', 'Key 已生成，仅显示一次')
   } catch (err: any) { emit('notify', '生成失败：' + (err?.message ?? err)) }
@@ -463,7 +475,9 @@ function splitList(v: string) {
     <div class="spread" style="margin-bottom:16px;flex-shrink:0">
       <div class="faint" style="font-size:11.5px">实时数据</div>
       <div class="row">
-        <button class="btn" @click="load">刷新</button>
+        <button class="btn" :disabled="loading" @click="load">
+          <span v-if="loading" class="spinner"></span>{{ loading ? '刷新中…' : '刷新' }}
+        </button>
         <template v-if="tab === 'devices'">
           <button class="btn ghost" @click="backfill">同步节点 IP</button>
           <button class="btn ghost" @click="openDebug">手动添加节点</button>
@@ -485,12 +499,12 @@ function splitList(v: string) {
     <div v-if="tab !== 'users'" class="filter-bar">
       <input class="input" style="width:240px" v-model="keyword"
              :placeholder="tab === 'devices' ? '搜索设备名 / IP / 标签…'
-               : tab === 'keys' ? '搜索 Key / 成员…' : '搜索 Key 前缀…'" />
+               : tab === 'keys' ? '搜索 Key / 成员…' : '搜索 Key 前缀…'" @keyup.enter="load" />
 
       <div v-if="tab === 'devices'" style="width:132px"><Pick v-model="statusFilter" :options="statusOptions" /></div>
       <div v-if="tab === 'devices' || tab === 'keys'" style="width:132px"><Pick v-model="userFilter" :options="memberOptions" /></div>
       <div v-if="tab === 'devices' && allTags.length" style="width:132px"><Pick v-model="tagFilter" :options="tagOptions" /></div>
-      <div v-if="tab === 'keys'" style="width:132px"><Pick v-model="statusFilter" :options="statusOptions" /></div>
+      <div v-if="tab === 'keys' || tab === 'api'" style="width:132px"><Pick v-model="statusFilter" :options="statusOptions" /></div>
 
       <button v-if="keyword || statusFilter || userFilter || tagFilter" class="btn ghost sm"
               @click="keyword=''; statusFilter=''; userFilter=''; tagFilter=''">清空条件</button>
@@ -502,9 +516,11 @@ function splitList(v: string) {
         共 {{ devices.length }} 台
       </span>
       <span v-else class="faint" style="margin-left:auto;font-size:11px">
-        {{ tab === 'keys' ? shownKeys.length : apiKeys.length }} 条记录
+        {{ tab === 'keys' ? shownKeys.length : shownApiKeys.length }} 条记录
       </span>
     </div>
+
+    <div v-if="loading" class="load-hint"><span class="spinner"></span>加载中…</div>
 
     <!-- 设备 -->
     <div class="card table-scroll" style="padding:0" v-if="tab === 'devices'">
@@ -607,7 +623,7 @@ function splitList(v: string) {
       <table class="tbl">
         <thead><tr><th style="width:20%">前缀</th><th>到期</th><th>创建时间</th><th>最后使用</th><th>状态</th><th style="width:120px"></th></tr></thead>
         <tbody>
-          <tr v-for="k in apiKeys" :key="k.id">
+          <tr v-for="k in shownApiKeys" :key="k.id">
             <td class="cell-main mono">{{ k.prefix }}</td>
             <td>{{ k.expires || '—' }}</td><td>{{ k.created || '—' }}</td><td>{{ k.lastSeen || '—' }}</td>
             <td><span class="tag" :class="statusTag(k.status)">{{ k.status }}</span></td>
@@ -828,9 +844,16 @@ function splitList(v: string) {
               <div><b style="font-size:12px">可复用</b><div class="faint" style="font-size:10.5px;margin-top:3px">允许多台设备使用同一 Key</div></div>
               <button class="switch" :class="{ on: form.reusable }" @click="form.reusable = !form.reusable"></button>
             </div>
-            <div class="spread" style="margin-bottom:20px">
+            <div class="spread" style="margin-bottom:14px">
               <div><b style="font-size:12px">临时节点 Ephemeral</b><div class="faint" style="font-size:10.5px;margin-top:3px">离线后自动删除设备</div></div>
               <button class="switch" :class="{ on: form.ephemeral }" @click="form.ephemeral = !form.ephemeral"></button>
+            </div>
+            <div class="field">
+              <label class="field-label">ACL 标签</label>
+              <input class="input mono" v-model="form.tags" placeholder="tag:server, tag:db（可选，逗号分隔）" />
+              <div class="faint" style="font-size:10.5px;margin-top:4px">
+                用这个 Key 注册的节点会自动带上这些标签，对应 headscale 的 aclTags
+              </div>
             </div>
             <button class="btn primary" style="width:100%;height:38px" :disabled="busy" @click="createKey">生成 Key</button>
           </template>

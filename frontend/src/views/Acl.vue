@@ -8,10 +8,13 @@ const emit = defineEmits(['notify'])
 const doc = ref<PolicyDoc>({ content: '', updatedAt: '' })
 const check = ref('')
 const busy = ref(false)
+const loading = ref(false)
 
 async function load() {
+  loading.value = true
   try { doc.value = await api.policy() }
   catch (err: any) { emit('notify', '读取 ACL 失败：' + (err?.message ?? err)) }
+  finally { loading.value = false }
 }
 onMounted(load)
 watch(reloadTick, load)
@@ -47,6 +50,12 @@ async function save() {
         更新时间 {{ doc.updatedAt || '—' }}
       </div>
       <div class="row">
+        <span v-if="loading" class="load-hint" style="margin:0 8px 0 0">
+          <span class="spinner"></span>读取中…
+        </span>
+        <button class="btn" :disabled="loading" @click="load">
+          <span v-if="loading" class="spinner"></span>{{ loading ? '刷新中…' : '刷新' }}
+        </button>
         <button class="btn" @click="validate">校验</button>
         <button class="btn primary" :disabled="busy" @click="save">保存并应用</button>
       </div>

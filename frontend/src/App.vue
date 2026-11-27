@@ -44,7 +44,7 @@ const icons: Record<string, string> = {
 }
 const nav = [
   { label: '总览', items: [{ key: 'overview', label: '隧道总览' }] },
-  { label: '控制面管理', items: [
+  { label: '服务端管理', items: [
     { key: 'devices', label: '设备管理' },
     { key: 'users', label: '人员管理' },
     { key: 'keys', label: '授权 Key' },
@@ -58,9 +58,9 @@ const nav = [
   ] },
 ]
 const meta: Record<string, [string, string]> = {
-  overview: ['隧道', '总览'], devices: ['控制面管理', '设备管理'],
-  users: ['控制面管理', '人员管理'], keys: ['控制面管理', '密钥管理'],
-  api: ['控制面管理', '密钥管理'], acl: ['控制面管理', 'ACL 策略'],
+  overview: ['隧道', '总览'], devices: ['服务端管理', '设备管理'],
+  users: ['服务端管理', '人员管理'], keys: ['服务端管理', '密钥管理'],
+  api: ['服务端管理', '密钥管理'], acl: ['服务端管理', 'ACL 策略'],
   apps: ['工作台', '应用管理'], forwards: ['工作台', '端口转发'],
   settings: ['设置', '连接设置'],
 }
@@ -208,7 +208,7 @@ onUnmounted(() => {
       <div class="side-foot">
         <span class="dot" :class="state?.connecting ? 'warn pulse' : (state?.connected ? 'ok' : 'off')"></span>
         <div>
-          <b>{{ state?.connecting ? '正在连接…' : (state?.connected ? '隧道已连接' : '已配置控制面') }}</b>
+          <b>{{ state?.connecting ? '正在连接…' : (state?.connected ? '隧道已连接' : '已配置服务端') }}</b>
           <small>{{ state?.message || '读取中…' }}</small>
         </div>
       </div>
