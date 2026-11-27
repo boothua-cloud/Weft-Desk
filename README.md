@@ -110,4 +110,4 @@ Linux 必须带 `gtk3` 标签——Wails 默认走 GTK4 + WebKitGTK 6.0，主流
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE)。产物里打包的第三方组件（、Wails、wintun.dll 等）各自的许可声明在 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
