@@ -1,14 +1,16 @@
 name: build
 
-# GitHub Actions：三平台都在原生托管 runner 上构建，不用交叉编译、不用自建机器。
+# GitHub Actions：三平台都在原生托管 runner 上构建。
 #   linux   → ubuntu-24.04 出 tar.gz
-#   windows → windows-latest 出 NSIS 安装包
+#   windows → windows-latest 出 zip
 #   macos   → macos-14 (arm64) 出 dmg
-# 打 tag 时额外把产物挂到 Release。
+#
+# 只在两种情况下跑，日常 push 不触发（省额度也省时间）：
+#   1. 打 tag（v1.0.0）→ 构建 + 挂到 Release
+#   2. 手动 Run workflow → 只构建，产物在 Actions 页面的 artifact 里
 
 on:
   push:
-    branches: [main, master]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -110,12 +112,14 @@ jobs:
         run: bash scripts/fetch-wintun.sh amd64 || echo "wintun 获取跳过"
 
       - name: 打包 zip
-        shell: bash
+        # Windows runner 上没有 zip 命令，用 PowerShell 自带的 Compress-Archive
+        shell: pwsh
         run: |
-          mkdir -p dist
-          cp bin/weft.exe dist/ 2>/dev/null || cp bin/云栈.exe dist/weft.exe
-          [ -f bin/wintun.dll ] && cp bin/wintun.dll dist/ || true
-          cd dist && zip -q -r "weft-${APP_VERSION}-windows-amd64.zip" .
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Copy-Item bin\weft.exe out\
+          if (Test-Path bin\wintun.dll) { Copy-Item bin\wintun.dll out\ }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path out\* -DestinationPath "dist\weft-$env:APP_VERSION-windows-amd64.zip" -Force
 
       - uses: actions/upload-artifact@v4
         with:
@@ -154,7 +158,8 @@ jobs:
 
   release:
     needs: [linux, windows, macos]
-    if: startsWith(github.ref, 'refs/tags/')
+    # 只有正式 tag（v1.0.0）发 Release；v0.1.0-test 这类只构建不发
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-test')
     runs-on: ubuntu-latest
     permissions:
       contents: write
