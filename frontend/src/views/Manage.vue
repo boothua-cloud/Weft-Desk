@@ -32,6 +32,15 @@ const debugForm = ref({ user: '', key: '', name: '', routes: '' })
 const apiKeyForm = ref({ days: 90 })
 
 const userOptions = computed(() => users.value.map((u) => ({ value: u.name, label: u.rawName || u.name })))
+const statusOptions = computed(() => {
+  const base = [{ value: '', label: '全部状态' }]
+  const items = props.tab === 'keys'
+    ? ['有效', '已过期', '已吊销']
+    : ['在线', '离线', '已过期']
+  return base.concat(items.map(v => ({ value: v, label: v })))
+})
+const tagOptions = computed(() => [{ value: '', label: '全部标签' }].concat(allTags.value.map(t => ({ value: t, label: t }))))
+const memberOptions = computed(() => [{ value: '', label: '全部成员' }].concat(userOptions.value))
 const dayOptions = [1, 7, 30, 90, 180, 365].map((d) => ({ value: d, label: d + ' 天' }))
 
 const canCreateUser = computed(() => props.state?.capabilities?.canCreateUser !== false)
@@ -385,29 +394,10 @@ function splitList(v: string) {
       <input class="input" style="width:240px" v-model="keyword"
              :placeholder="tab === 'devices' ? '搜索设备名 / IP / 标签…' : '搜索 Key / 成员…'" />
 
-      <select v-if="tab === 'devices'" class="filter-select" v-model="statusFilter">
-        <option value="">全部状态</option>
-        <option value="在线">在线</option>
-        <option value="离线">离线</option>
-        <option value="已过期">已过期</option>
-      </select>
-
-      <select v-if="tab === 'devices' || tab === 'keys'" class="filter-select" v-model="userFilter">
-        <option value="">全部成员</option>
-        <option v-for="u in users" :key="u.id" :value="(u.rawName || u.name)">{{ u.rawName || u.name }}</option>
-      </select>
-
-      <select v-if="tab === 'devices' && allTags.length" class="filter-select" v-model="tagFilter">
-        <option value="">全部标签</option>
-        <option v-for="t in allTags" :key="t" :value="t">{{ t }}</option>
-      </select>
-
-      <select v-if="tab === 'keys'" class="filter-select" v-model="statusFilter">
-        <option value="">全部状态</option>
-        <option value="有效">有效</option>
-        <option value="已过期">已过期</option>
-        <option value="已吊销">已吊销</option>
-      </select>
+      <div v-if="tab === 'devices'" style="width:132px"><Pick v-model="statusFilter" :options="statusOptions" /></div>
+      <div v-if="tab === 'devices' || tab === 'keys'" style="width:132px"><Pick v-model="userFilter" :options="memberOptions" /></div>
+      <div v-if="tab === 'devices' && allTags.length" style="width:132px"><Pick v-model="tagFilter" :options="tagOptions" /></div>
+      <div v-if="tab === 'keys'" style="width:132px"><Pick v-model="statusFilter" :options="statusOptions" /></div>
 
       <button v-if="keyword || statusFilter || userFilter || tagFilter" class="btn ghost sm"
               @click="keyword=''; statusFilter=''; userFilter=''; tagFilter=''">清空条件</button>

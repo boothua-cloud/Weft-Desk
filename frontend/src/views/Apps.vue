@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { api, type State, type AppBookmark } from '../api'
+import Pick from '../components/Pick.vue'
 import { reloadTick } from '../bus'
 
 const props = defineProps<{ state: State | null }>()
@@ -10,6 +11,8 @@ const allowInsecure = ref(true)
 const hasHTTPS = computed(() => apps.value.some((a) => a.url.trim().toLowerCase().startsWith('https://')))
 const keyword = ref('')
 const groupFilter = ref('')
+const groupOptions = computed(() => [{ value: '', label: '全部分组' }]
+  .concat(groups.value.map(g => ({ value: g, label: g }))))
 const groups = computed(() => {
   const set = new Set<string>()
   apps.value.forEach(a => { if (a.group) set.add(a.group) })
@@ -78,10 +81,7 @@ async function external(a: AppBookmark) {
 
     <div class="filter-bar">
       <input class="input" style="width:240px" v-model="keyword" placeholder="搜索名称 / 地址…" />
-      <select class="filter-select" v-model="groupFilter">
-        <option value="">全部分组</option>
-        <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
-      </select>
+      <div style="width:132px"><Pick v-model="groupFilter" :options="groupOptions" /></div>
       <button v-if="keyword || groupFilter" class="btn ghost sm"
               @click="keyword=''; groupFilter=''">清空条件</button>
       <span class="faint" style="margin-left:auto;font-size:11px">{{ shown.length }} / {{ apps.length }} 个应用</span>
