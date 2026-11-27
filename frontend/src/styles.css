@@ -651,3 +651,8 @@ html[data-theme="dark"] .modal::-webkit-scrollbar-thumb {
 /* 原生 select 专用类：.select 是 Pick 下拉组件的样式，不能复用 */
 .filter-select { flex: none; width: 132px; height: 32px; padding: 0 8px; border-radius: 8px;
   border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 12px; }
+/* 表格里的可点数字，看起来像链接但不抢眼 */
+.link-btn { background: none; border: 0; padding: 0; cursor: pointer; font: inherit;
+  color: var(--brand); text-decoration: underline; text-underline-offset: 2px; }
+.link-btn.ok { color: var(--ok); }
+.link-btn:hover { opacity: .75; }

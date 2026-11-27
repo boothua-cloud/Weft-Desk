@@ -10,8 +10,10 @@ const audit = ref<AuditEvent[]>([])
 const busy = ref(false)
 const opening = ref('')
 
-// 连接/断开过程中：本地按钮状态 + 后端建卡状态，任一为真就显示加载态
-const connecting = computed(() => busy.value || !!props.state?.connecting)
+// 连接/断开过程中：本地按钮状态 + 后端建卡状态，任一为真就显示加载态。
+// state 还是 null 说明首次状态还没取回来，这时也得显示「加载中」，
+// 否则启动瞬间会先闪一下「未连接」再跳到「正在连接」。
+const connecting = computed(() => !props.state || busy.value || !!props.state?.connecting)
 const disconnecting = ref(false)
 const busyLabel = ref('')
 
@@ -20,12 +22,6 @@ const online = computed(() => peers.value.filter(p => p.online).length)
 const total = computed(() => peers.value.length)
 const routes = computed(() => props.state?.routes ?? [])
 const skipped = computed(() => props.state?.skipped ?? [])
-// 指标卡里的小柱状图，用在线比例凑出一点仪表盘的感觉
-const bars = computed(() => {
-  const n = 16
-  const ratio = total.value ? online.value / total.value : 0
-  return Array.from({ length: n }, (_, i) => i / n < ratio)
-})
 
 async function load() {
   try {
@@ -183,8 +179,8 @@ function copyLogin() {
       <div class="card">
         <div class="metric-top">
           <div class="stat-label" style="margin:0">在线设备</div>
-          <div class="metric-spark">
-            <i v-for="(on, i) in bars" :key="i" :class="{ on }" :style="{ height: (6 + (i % 5) * 3) + 'px' }"></i>
+          <div class="metric-ico">
+            <span :class="online ? 'dot ok' : 'dot off'" style="width:8px;height:8px"></span>
           </div>
         </div>
         <div class="stat-num">{{ online }}<span style="font-size:13px;color:var(--faint);font-weight:400"> / {{ total }}</span></div>
@@ -233,7 +229,12 @@ function copyLogin() {
         <div class="kv"><span>主机名</span><b>{{ state?.hostname || '—' }}</b></div>
         <div class="kv"><span>节点地址</span><b class="mono">{{ state?.selfIP || '—' }}</b></div>
         <div class="kv"><span>控制面</span><b class="mono" style="font-size:10.5px">{{ state?.endpoint || '—' }}</b></div>
-        <div class="kv"><span>状态</span><b>{{ state?.message || '—' }}</b></div>
+        <div class="kv">
+          <span>连接状态</span>
+          <b :style="{ color: state?.connected ? 'var(--ok)' : 'var(--faint)' }">
+            {{ connecting ? '连接中…' : state?.connected ? '已连接' : '未连接' }}
+          </b>
+        </div>
       </div>
 
       <div class="card">

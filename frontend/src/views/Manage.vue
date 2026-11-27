@@ -46,6 +46,15 @@ const memberOptions = computed(() => [{ value: '', label: '全部成员' }].conc
 const dayOptions = [1, 7, 30, 90, 180, 365].map((d) => ({ value: d, label: d + ' 天' }))
 
 const canCreateUser = computed(() => props.state?.capabilities?.canCreateUser !== false)
+// headscale 只给节点元数据，直连还是中继得问本机 tsnet 的对端信息
+function connKind(d: Device) {
+  const peers = props.state?.peers ?? []
+  const hit = peers.find(p => p.ip === d.ip || (d.ips ?? []).includes(p.ip))
+  if (!hit) return ''
+  if (hit.curAddr) return '直连'
+  return hit.relay ? '中继' : ''
+}
+
 const deviceStat = computed(() => {
   const m = new Map<string, { total: number; online: number }>()
   devices.value.forEach(d => {
@@ -107,10 +116,14 @@ async function load() {
 watch(() => props.tab, () => {
   keyword.value = ''
   statusFilter.value = ''
-  userFilter.value = ''
   tagFilter.value = ''
+  // 从成员页点设备数跳过来时，保留那次筛选；其余情况清空
+  userFilter.value = pendingUser.value
+  pendingUser.value = ''
   load()
 }, { immediate: true })
+
+const pendingUser = ref('')
 watch(reloadTick, load)
 
 // 成员列表在多个抽屉里都要用，进设备页时顺手拉一份
@@ -365,6 +378,12 @@ const userEdit = ref<{ id: string; rawName: string; displayName: string; email: 
 const editUserNewName = ref('')
 const editingUser = ref('')
 const editUserName = ref('')
+// 从成员行跳到设备页，只显示这个成员的设备
+function jumpToUserDevices(u: User) {
+  pendingUser.value = u.rawName || u.name
+  emit('navigate', 'devices')
+}
+
 function openUserEdit(u: User) {
   userEdit.value = {
     id: u.id, rawName: u.rawName || u.name,
@@ -465,7 +484,8 @@ function splitList(v: string) {
 
     <div v-if="tab !== 'users'" class="filter-bar">
       <input class="input" style="width:240px" v-model="keyword"
-             :placeholder="tab === 'devices' ? '搜索设备名 / IP / 标签…' : '搜索 Key / 成员…'" />
+             :placeholder="tab === 'devices' ? '搜索设备名 / IP / 标签…'
+               : tab === 'keys' ? '搜索 Key / 成员…' : '搜索 Key 前缀…'" />
 
       <div v-if="tab === 'devices'" style="width:132px"><Pick v-model="statusFilter" :options="statusOptions" /></div>
       <div v-if="tab === 'devices' || tab === 'keys'" style="width:132px"><Pick v-model="userFilter" :options="memberOptions" /></div>
@@ -490,12 +510,21 @@ function splitList(v: string) {
     <div class="card table-scroll" style="padding:0" v-if="tab === 'devices'">
       <table class="tbl">
         <thead><tr>
-          <th style="width:24%">设备</th><th>成员</th><th>Tailscale IP</th><th>标签</th><th>最后在线</th><th>状态</th><th style="width:80px"></th>
+          <th style="width:22%">设备</th><th>成员</th><th style="width:130px">IP</th><th style="width:80px">连接</th><th>标签</th><th>最后在线</th><th style="width:70px">状态</th><th style="width:70px"></th>
         </tr></thead>
         <tbody>
           <tr v-for="d in shownDevices" :key="d.id" style="cursor:pointer" @click="openDevice(d)">
             <td><div class="cell-main">{{ d.name }}</div><div class="cell-sub">{{ d.registerMethod }} · {{ d.hostname }}</div></td>
-            <td>{{ d.user || '—' }}</td><td class="mono">{{ d.ip || '—' }}</td>
+            <td>{{ d.user || '—' }}</td>
+            <td class="mono" style="font-size:11px;line-height:1.5">
+              <div v-for="(ip, i) in (d.ips && d.ips.length ? d.ips : [d.ip])" :key="i"
+                   :class="i === 0 ? '' : 'faint'">{{ ip || '—' }}</div>
+            </td>
+            <td>
+              <span v-if="connKind(d) === '直连'" class="tag green">直连</span>
+              <span v-else-if="connKind(d) === '中继'" class="tag amber">中继</span>
+              <span v-else class="faint">—</span>
+            </td>
             <td><span v-if="d.tags" class="tag blue">{{ d.tags }}</span><span v-else class="faint">—</span></td>
             <td>{{ d.lastSeen || '—' }}</td>
             <td><span class="tag" :class="statusTag(d.status)">{{ d.status }}</span></td>
@@ -528,9 +557,10 @@ function splitList(v: string) {
               <td>{{ u.displayName || '—' }}</td>
               <td class="mono">{{ u.email || '—' }}</td>
               <td>
-                <span v-if="statOf(u).total" class="tag" :class="statOf(u).online ? 'green' : ''">
+                <button v-if="statOf(u).total" class="link-btn" :class="statOf(u).online ? 'ok' : ''"
+                        @click="jumpToUserDevices(u)">
                   {{ statOf(u).online }}/{{ statOf(u).total }}
-                </span>
+                </button>
                 <span v-else class="faint">0</span>
               </td>
               <td>{{ u.createdAt || '—' }}</td>
