@@ -444,16 +444,20 @@ func (c *headscaleCP) ApproveRoutes(id string, routes []string) error {
 	return err
 }
 
+// BackfillIPs 给缺少 IP 的节点补分配地址。
+// 只对老数据（升级前注册、ip_addresses 为空的节点）有意义，正常注册的节点都有 IP。
+// headscale 要求显式带 confirmed=true，否则直接拒绝。
+// 返回的 changes 是节点名数组，不是数量。
 func (c *headscaleCP) BackfillIPs(confirmed bool) (int, error) {
 	q := url.Values{}
 	q.Set("confirmed", strconv.FormatBool(confirmed))
 	var v struct {
-		Changes int `json:"changes"`
+		Changes []string `json:"changes"`
 	}
 	if _, err := doJSON("POST", c.url("/api/v1/node/backfillips?"+q.Encode()), c.bearer(), nil, &v); err != nil {
 		return 0, err
 	}
-	return v.Changes, nil
+	return len(v.Changes), nil
 }
 
 func (c *headscaleCP) DebugCreateNode(user, key, name string, routes []string) (Device, error) {

@@ -274,8 +274,9 @@ async function doRegister() {
 
 async function backfill() {
   await run('补齐 IP', async () => {
-    await api.backfillIPs(true)
+    const n = await api.backfillIPs(true)
     await load()
+    emit('notify', n > 0 ? `已为 ${n} 台节点补上地址` : '所有节点都有 IP，不需要补齐')
   })
 }
 
@@ -493,7 +494,8 @@ function splitList(v: string) {
           <span v-if="loading" class="spinner"></span>{{ loading ? '刷新中…' : '刷新' }}
         </button>
         <template v-if="tab === 'devices'">
-          <button class="btn ghost" @click="backfill">同步节点 IP</button>
+          <button class="btn ghost" @click="backfill"
+                  title="给 ip_addresses 为空的节点补分配地址。正常注册的节点都有 IP，只有从很老的版本升级上来才可能需要">同步节点 IP</button>
           <button class="btn ghost" @click="openDebug">手动添加节点</button>
           <button class="btn" @click="openAuth">待审批请求</button>
           <button class="btn primary" @click="openRegister">＋ 注册设备</button>
