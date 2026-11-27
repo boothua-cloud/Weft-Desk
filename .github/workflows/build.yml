@@ -161,6 +161,12 @@ jobs:
           choco install nsis --no-progress -y
           "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+      - name: 取 WebView2 引导程序
+        # 安装包要在没装 WebView2 的机器上自己补运行库，必须把这个 exe 嵌进去。
+        # 它在 .gitignore 里，CI 上得现生成；wails3 自带一份，不用联网。
+        shell: pwsh
+        run: wails3 generate webview2bootstrapper -dir build/windows/nsis
+
       - name: 打 NSIS 安装包
         # 装到 %LOCALAPPDATA%\Programs\Weft，per-user 免 UAC；
         # NSIS 的 VIProductVersion 只认 x.y.z 四段数字，预览版 tag（v0.1.2-rc1）
