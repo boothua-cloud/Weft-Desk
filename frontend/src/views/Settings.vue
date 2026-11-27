@@ -287,9 +287,9 @@ async function uninstallHelper() {
       <pre v-if="helper?.logTail" class="mono" style="font-size:10px;line-height:1.5;background:var(--surface-2);padding:8px;border-radius:6px;margin:0 0 10px;white-space:pre-wrap;max-height:130px;overflow:auto">{{ helper.logTail }}</pre>
       <div class="row">
         <button id="btn-install-helper" class="btn" :disabled="helperBusy" @click="installHelper">
-          {{ helper?.installed ? '重新安装（一次授权）' : '安装 · 一次授权后免密' }}
+          {{ helper?.installed ? '重新安装' : '安装登录自启' }}
         </button>
-        <span class="faint" style="font-size:10.5px">装好后每次开机自动接管网络，不再弹授权</span>
+        <span class="faint" style="font-size:10.5px">装好后开机自动启动并接管网络，不用每次确认 UAC</span>
       </div>
     </div>
 

@@ -11,7 +11,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-VER="${APP_VERSION:-0.1.2}"
+VER="${APP_VERSION:-0.1.3}"
 
 if ! command -v go >/dev/null 2>&1; then
   echo "需要先装 Go 1.27+：https://go.dev/dl/"

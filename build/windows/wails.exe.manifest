@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1" xmlns:asmv3="urn:schemas-microsoft-com:asm.v3">
-    <assemblyIdentity type="win32" name="com.boothua.yunzhan" version="0.1.2" processorArchitecture="*"/>
+    <assemblyIdentity type="win32" name="com.boothua.yunzhan" version="0.1.3" processorArchitecture="*"/>
     <dependency>
         <dependentAssembly>
             <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
@@ -14,14 +14,18 @@
     </asmv3:application>
     <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
         <security>
-            <!-- asInvoker：界面本身不需要管理员权限。
-                 提权只发生在真正要建 WinTun 网卡的那一刻（点「连接」时弹一次 UAC），
-                 或安装「登录自启任务」时弹一次；装好之后每次登录都由计划任务以
-                 最高权限拉起，不再弹窗。
-                 不用 requireAdministrator：那会让每次双击都弹 UAC，而且整个 WebView
-                 都跑在管理员上下文里，资源管理器拖放等功能会失效。 -->
+            <!-- requireAdministrator：建 WinTun 虚拟网卡要求进程本身提权，
+                 而 WinTun 的会话没法从提权子进程转交给普通进程。
+                 早先用 asInvoker + 按需重启（点「连接」弹 UAC、旧窗口关闭、
+                 新窗口以管理员重开），实测打开后的自动连接必然失败——那条路径
+                 只打日志不请求授权，用户每次都得手点一次，然后看着窗口关掉重开。
+                 现在改成启动即提权：双击时弹一次 UAC，打开就有权限，自动连接
+                 一次成功，窗口不再重启。
+                 开了「登录自启」之后由计划任务以最高权限拉起，日常不弹窗。
+                 代价是整个 WebView 跑在管理员上下文，资源管理器往窗口里拖文件
+                 这类操作会失效（本应用不依赖拖放）。 -->
             <requestedPrivileges>
-                <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+                <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
             </requestedPrivileges>
         </security>
     </trustInfo>

@@ -6,6 +6,7 @@ const props = defineProps<{ kind: 'about' | 'help'; state?: State | null }>()
 const emit = defineEmits(['close'])
 
 const isMac = computed(() => (props.state?.platform ?? 'darwin') === 'darwin')
+const isWin = computed(() => props.state?.platform === 'windows')
 
 // 数据目录直接读后端给的绝对路径，不同系统各自不同
 const dataDir = computed(() =>
@@ -27,7 +28,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
           <img src="/appicon.png" alt="云栈" class="about-logo" draggable="false" />
           <div>
             <div class="about-name">云栈</div>
-            <div class="faint" style="font-size:11.5px;margin-top:4px">Headscale 桌面客户端 · v0.1.2</div>
+            <div class="faint" style="font-size:11.5px;margin-top:4px">Headscale 桌面客户端 · v0.1.3</div>
           </div>
         </div>
         <p class="about-desc">
@@ -60,8 +61,15 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
             <figcaption>连接设置：地址、凭证都填在这里</figcaption>
           </figure>
           <p style="margin-top:10px">
-            填完回到「总览」点右边的<span class="hl">连接</span>。首次会要求输入管理员密码，
-            用来创建虚拟网卡（TUN）——这是接管系统路由必须的权限，一次授权后不再询问。
+            填完回到「总览」点右边的<span class="hl">连接</span>。
+            <template v-if="isWin">
+              Windows 版在双击打开时就会请求管理员权限（UAC），用来创建虚拟网卡（TUN）；
+              允许之后这里点一下直接连上。嫌每次弹窗的话，去「连接设置」装一次登录自启，
+              之后开机由计划任务以最高权限拉起，不再询问。
+            </template>
+            <template v-else>
+              首次会要求输入管理员密码，用来创建虚拟网卡（TUN）——这是接管系统路由必须的权限，一次授权后不再询问。
+            </template>
           </p>
           <figure class="shot">
             <img src="/help/overview.png" alt="总览" />

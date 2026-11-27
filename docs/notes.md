@@ -121,8 +121,8 @@ Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 
 | 目标 | 产出 | 构建机 |
 |---|---|---|
-| Windows 便携版 | `weft-0.1.2-windows-amd64.zip`（`weft.exe` + `wintun.dll`） | windows-latest，`CGO_ENABLED=0` |
-| Windows 安装包 | `weft-0.1.2-windows-amd64-setup.exe`（NSIS，装到 `%LOCALAPPDATA%\Programs\Weft`，per-user 免 UAC） | windows-latest，`choco install nsis` 后直接跑 `makensis` |
+| Windows 便携版 | `weft-0.1.3-windows-amd64.zip`（`weft.exe` + `wintun.dll`） | windows-latest，`CGO_ENABLED=0` |
+| Windows 安装包 | `weft-0.1.3-windows-amd64-setup.exe`（NSIS，装到 `%LOCALAPPDATA%\Programs\Weft`，per-user 免 UAC） | windows-latest，`choco install nsis` 后直接跑 `makensis` |
 | Linux | `云栈_0.1.0-1_amd64.deb` + `云栈-0.1.0-linux-amd64.tar.gz` | Linux 原生（`CGO_ENABLED=1 -tags gtk3`） |
 | macOS | `云栈-0.1.0-macos-arm64.dmg` | 必须 macOS 主机，需要 `macos-latest` runner |
 

@@ -193,7 +193,9 @@ function copyLogin() {
               <template v-if="connecting">
                 <span>{{ busyLabel || '正在恢复上次的连接…' }}</span>
                 <i class="hero-sep"></i>
-                <span class="faint">首次连接需要管理员授权，可能要十几秒</span>
+                <!-- Windows 版启动时就已经是管理员，这里不会再弹授权 -->
+                <span v-if="state?.platform === 'windows'" class="faint">正在创建虚拟网卡，可能要十几秒</span>
+                <span v-else class="faint">首次连接需要管理员授权，可能要十几秒</span>
               </template>
               <template v-else>
               <span>{{ state?.endpoint || '未配置服务端' }}</span>

@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 env:
-  APP_VERSION: 0.1.2
+  APP_VERSION: 0.1.3
   WAILS_VERSION: v3.0.0
   GOTOOLCHAIN: local
 
@@ -185,7 +185,7 @@ jobs:
 
       - name: 打 NSIS 安装包
         # 装到 %LOCALAPPDATA%\Programs\Weft，per-user 免 UAC；
-        # NSIS 的 VIProductVersion 只认 x.y.z 四段数字，预览版 tag（v0.1.2-rc1）
+        # NSIS 的 VIProductVersion 只认 x.y.z 四段数字，预览版 tag（v0.1.3-rc1）
         # 带连字符就不注入版本，用 project.nsi 里的默认值
         shell: pwsh
         run: |
@@ -301,7 +301,7 @@ jobs:
           | Windows x64 | `weft-*-windows-amd64-setup.exe`（安装版，免管理员）<br>`weft-*-windows-amd64.zip`（便携版，解压即用） |
           | Linux x64 | `weft-*-linux-amd64.tar.gz` / `weft_*_amd64.deb` |
 
-          Windows 首次连接会弹一次 UAC（创建虚拟网卡），装好「系统助手」之后不再提示。
+          Windows 版启动时会请求一次 UAC（创建虚拟网卡）；装一次「登录自启」后开机自动以管理员启动，日常不再弹窗。
           EOF
           echo "--- 发布说明 ---"
           cat release-body.md
