@@ -170,6 +170,19 @@ func (s *WeftService) shutdown() {
 
 // cachedList 先请求真实控制面；成功就写 SQLite 缓存，
 // 失败则回退到上次同步的数据，前端会标注「离线缓存」。
+// cacheKey 给列表缓存加服务端前缀。
+// 之前所有 profile 共用 "devices" 这一个 key，切换服务端后一旦新服务端请求失败，
+// 就会把上一个服务端的缓存当成当前数据显示出来。
+func (s *WeftService) cacheKey(name string) string {
+	s.mu.Lock()
+	id := s.cfg.ActiveID
+	s.mu.Unlock()
+	if id == "" {
+		id = "default"
+	}
+	return name + ":" + id
+}
+
 func cachedList[T any](st *Store, key string, fetch func() ([]T, error)) (string, error) {
 	items, err := fetch()
 	if err == nil {
@@ -841,7 +854,7 @@ func (s *WeftService) ListDevices() (string, error) {
 	if msg := s.manageErr(); msg != "" {
 		return toJSON(Cached[Device]{Items: []Device{}, Source: "none", Error: msg})
 	}
-	return cachedList(s.store, "devices", func() ([]Device, error) { return s.cp.Devices("") })
+	return cachedList(s.store, s.cacheKey("devices"), func() ([]Device, error) { return s.cp.Devices("") })
 }
 
 // ListDevicesByUser 支持按成员过滤（对应 ?user=）。
@@ -941,7 +954,7 @@ func (s *WeftService) ListUsers() (string, error) {
 	if msg := s.manageErr(); msg != "" {
 		return toJSON(Cached[User]{Items: []User{}, Source: "none", Error: msg})
 	}
-	return cachedList(s.store, "users", s.cp.Users)
+	return cachedList(s.store, s.cacheKey("users"), s.cp.Users)
 }
 
 func (s *WeftService) CreateUser(name, displayName, email, pictureURL string) (string, error) {
@@ -975,7 +988,7 @@ func (s *WeftService) ListAuthKeys() (string, error) {
 	if msg := s.manageErr(); msg != "" {
 		return toJSON(Cached[AuthKey]{Items: []AuthKey{}, Source: "none", Error: msg})
 	}
-	return cachedList(s.store, "authkeys", s.cp.AuthKeys)
+	return cachedList(s.store, s.cacheKey("authkeys"), s.cp.AuthKeys)
 }
 
 func (s *WeftService) CreateAuthKey(user string, reusable, ephemeral bool, days int, tags string) (string, error) {
@@ -1009,7 +1022,7 @@ func (s *WeftService) ListAPIKeys() (string, error) {
 	if msg := s.manageErr(); msg != "" {
 		return toJSON(Cached[APIKey]{Items: []APIKey{}, Source: "none", Error: msg})
 	}
-	return cachedList(s.store, "apikeys", s.cp.APIKeys)
+	return cachedList(s.store, s.cacheKey("apikeys"), s.cp.APIKeys)
 }
 
 func (s *WeftService) CreateAPIKey(days int) (string, error) {

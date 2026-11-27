@@ -138,8 +138,14 @@ watch(() => props.tab, () => {
 const pendingUser = ref('')
 watch(reloadTick, load)
 // 首次挂载时 state 可能还是 null，那时 api 还没配置好，拉回来的是空列表。
-// 等 endpoint 有值（配置就绪）或者换了服务端，再拉一次。
-watch(() => props.state?.endpoint, (v) => { if (v) load() })
+// 等 state 首次到达时补一次；之后只有 endpoint 变了（切了服务端）才重拉。
+let readyOnce = false
+let lastEndpoint = ''
+watch(() => props.state, (v) => {
+  if (!v) return
+  if (!readyOnce) { readyOnce = true; lastEndpoint = v.endpoint; load(); return }
+  if (v.endpoint !== lastEndpoint) { lastEndpoint = v.endpoint; load() }
+}, { immediate: true })
 
 // 成员列表在多个抽屉里都要用，进设备页时顺手拉一份
 watch(() => props.tab, async (t) => {
