@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { api, type State, type Device, type User, type AuthKey, type APIKey } from '../api'
 import Pick from '../components/Pick.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import { useConfirm } from '../confirm'
 import { reloadTick } from '../bus'
 
 const props = defineProps<{ tab: string; state: State | null }>()
@@ -17,6 +19,8 @@ const userFilter = ref('')
 const tagFilter = ref('')
 const busy = ref(false)
 const loading = ref(false)
+// 吊销 / 删除都不可逆，统一先弹确认
+const { confirmBox, askConfirm, closeConfirm } = useConfirm()
 
 // 抽屉：新建 Key / 设备详情 / 注册设备 / 批准认证 / 新建 API Key
 type Drawer = '' | 'key' | 'device' | 'register' | 'auth' | 'apikey' | 'debug' | 'user' | 'useredit'
@@ -238,7 +242,7 @@ function removeDev() {
     title: '删除这台设备？',
     desc: `${d.givenName || d.name || d.id}\n删除后该节点需要重新注册才能接入网络，已批准的路由也会失效。`,
     ok: '删除',
-    run: async () => {
+    action: async () => {
       await run('删除设备', async () => {
         await api.deleteDevice(d.id)
         close()
@@ -345,29 +349,6 @@ async function createKey() {
   } catch (err: any) { emit('notify', '生成失败：' + (err?.message ?? err)) }
   finally { busy.value = false }
 }
-// 吊销和删除都不可逆，先弹确认再执行
-const confirmBox = ref<null | { title: string; desc: string; ok: string; run: () => Promise<void> }>(null)
-const confirmBusy = ref(false)
-
-function askConfirm(box: { title: string; desc: string; ok: string; run: () => Promise<void> }) {
-  confirmBox.value = box
-}
-function cancelConfirm() {
-  if (!confirmBusy.value) confirmBox.value = null
-}
-async function runConfirm() {
-  if (!confirmBox.value) return
-  const box = confirmBox.value
-  confirmBusy.value = true
-  try {
-    await box.run()
-  } finally {
-    confirmBusy.value = false
-    // 操作失败时也关掉，原因已经通过 notify 提示过
-    confirmBox.value = null
-  }
-}
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 function expireKey(k: AuthKey) {
@@ -375,7 +356,7 @@ function expireKey(k: AuthKey) {
     title: '吊销这把授权 Key？',
     desc: `${k.key}\n吊销后立即失效，且无法恢复。已经用它注册过的节点不受影响。`,
     ok: '吊销',
-    run: async () => {
+    action: async () => {
       try {
         await api.expireAuthKey(k.id)
         emit('notify', 'Key 已吊销')
@@ -390,7 +371,7 @@ function deleteKey(k: AuthKey) {
     title: '删除这把授权 Key？',
     desc: `${k.key}\n删除后记录彻底消失，无法恢复。已经用它注册过的节点不受影响。`,
     ok: '删除',
-    run: async () => {
+    action: async () => {
       try {
         await api.deleteAuthKey(k.id)
         emit('notify', 'Key 已删除')
@@ -422,7 +403,7 @@ function expireApiKey(k: APIKey) {
     title: '吊销这个 API Key？',
     desc: `${k.prefix}\n吊销后立即失效，正用它调用管理接口的客户端会立刻失去权限，且无法恢复。`,
     ok: '吊销',
-    run: async () => {
+    action: async () => {
       try {
         await api.expireAPIKey(k.prefix, k.id)
         emit('notify', '已吊销')
@@ -437,7 +418,7 @@ function deleteApiKey(k: APIKey) {
     title: '删除这个 API Key？',
     desc: `${k.prefix}\n删除后记录彻底消失，无法恢复。如果还想留痕，建议用「吊销」。`,
     ok: '删除',
-    run: async () => {
+    action: async () => {
       try {
         await api.deleteAPIKey(k.prefix, '')
         emit('notify', '已删除')
@@ -530,7 +511,7 @@ function deleteUser(u: User) {
     title: '删除这个成员？',
     desc: `${who}\n删除后该成员名下的设备、授权 Key 会一并失去归属，正在使用它登录的客户端会断开，且无法恢复。`,
     ok: '删除',
-    run: async () => {
+    action: async () => {
       try {
         await api.deleteUser(u.id)
         await load()
@@ -1003,19 +984,7 @@ function splitList(v: string) {
       </div>
     </template>
 
-    <!-- 通用确认框：吊销 / 删除都要过这一步 -->
-    <template v-if="confirmBox">
-      <div class="mask" style="z-index:30" @click="cancelConfirm"></div>
-      <div class="dialog" role="dialog" aria-modal="true">
-        <b class="dialog-title">{{ confirmBox.title }}</b>
-        <p class="dialog-desc">{{ confirmBox.desc }}</p>
-        <div class="row" style="justify-content:flex-end;gap:8px;margin-top:18px">
-          <button class="btn" :disabled="confirmBusy" @click="cancelConfirm">取消</button>
-          <button class="btn danger" :disabled="confirmBusy" @click="runConfirm">
-            <span v-if="confirmBusy" class="spinner" style="margin-right:6px"></span>{{ confirmBox.ok }}
-          </button>
-        </div>
-      </div>
-    </template>
+    <!-- 吊销 / 删除的二次确认 -->
+    <ConfirmDialog v-if="confirmBox" v-bind="confirmBox" @close="closeConfirm" />
   </div>
 </template>

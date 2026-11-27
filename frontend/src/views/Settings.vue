@@ -5,6 +5,8 @@ import { api, type Config, type HelperStatus, type State } from '../api'
 import { reloadTick } from '../bus'
 import { modeRef, setTheme, type ThemeMode } from '../theme'
 import ProfileDialog from '../components/ProfileDialog.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import { useConfirm } from '../confirm'
 
 defineProps<{ state: State | null }>()
 const emit = defineEmits(['refresh', 'notify'])
@@ -54,9 +56,8 @@ async function afterSaved() {
   emit('refresh')
   emit('notify', '服务端已保存')
 }
-// 删除要点两下：第一次变成「确认删除」，3 秒内再点才真删
-const confirming = ref('')
-let confirmTimer = 0
+// 删除服务端是不可逆的：弹框确认过才执行
+const { confirmBox, askConfirm, closeConfirm } = useConfirm()
 const renameText = ref('')
 
 function startRename(p: ProfileRow) {
@@ -120,26 +121,26 @@ async function switchTo(p: ProfileRow) {
   }
 }
 
-async function removeProfile(p: ProfileRow) {
-  if (confirming.value !== p.id) {
-    confirming.value = p.id
-    window.clearTimeout(confirmTimer)
-    confirmTimer = window.setTimeout(() => { confirming.value = '' }, 3000)
-    return
-  }
-  confirming.value = ''
-  switching.value = p.id
-  try {
-    await api.deleteProfile(p.id)
-    await loadProfiles()
-    await loadCfg()
-    emit('refresh')
-    emit('notify', '已删除 ' + p.name)
-  } catch (err: any) {
-    emit('notify', '删除失败：' + (err?.message ?? err))
-  } finally {
-    switching.value = ''
-  }
+function removeProfile(p: ProfileRow) {
+  askConfirm({
+    title: '删除这个服务端？',
+    desc: `${p.name}\n${p.baseURL || '未填地址'}\n该服务端保存的地址、API Key、节点身份会一并删除，无法恢复。`,
+    ok: '删除',
+    action: async () => {
+      switching.value = p.id
+      try {
+        await api.deleteProfile(p.id)
+        await loadProfiles()
+        await loadCfg()
+        emit('refresh')
+        emit('notify', '已删除 ' + p.name)
+      } catch (err: any) {
+        emit('notify', '删除失败：' + (err?.message ?? err))
+      } finally {
+        switching.value = ''
+      }
+    },
+  })
 }
 
 async function loadHelper() {
@@ -261,9 +262,7 @@ async function uninstallHelper() {
                   @click="switchTo(p)">切换</button>
           <button class="btn ghost sm" @click="openEdit(p)">编辑</button>
           <button class="btn ghost sm" @click="startRename(p)">重命名</button>
-          <button class="btn ghost sm" :class="{ danger: confirming === p.id }" @click="removeProfile(p)">
-            {{ confirming === p.id ? '确认删除' : '删除' }}
-          </button>
+          <button class="btn ghost sm" @click="removeProfile(p)">删除</button>
         </div>
       </div>
     </div>
@@ -325,4 +324,5 @@ async function uninstallHelper() {
 
   <ProfileDialog v-if="dialogOpen" :profile="dialogFor" @close="dialogOpen = false"
                  @saved="afterSaved" @notify="emit('notify', $event)" />
+  <ConfirmDialog v-if="confirmBox" v-bind="confirmBox" @close="closeConfirm" />
 </template>

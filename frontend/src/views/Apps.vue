@@ -2,6 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { api, type State, type AppBookmark } from '../api'
 import Pick from '../components/Pick.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import { useConfirm } from '../confirm'
 import { reloadTick } from '../bus'
 
 const props = defineProps<{ state: State | null }>()
@@ -21,6 +23,7 @@ const groups = computed(() => {
 const drawer = ref(false)
 const form = ref<AppBookmark>({ id: '', name: '', url: '', group: '常用', icon: '#0F6E56', browser: false })
 const colors = ['#0F6E56', '#185FA5', '#378ADD', '#D85A30', '#BA7517', '#534AB7']
+const { confirmBox, askConfirm, closeConfirm } = useConfirm()
 
 const shown = computed(() => apps.value.filter(a => {
   const kw = keyword.value.trim().toLowerCase()
@@ -52,9 +55,19 @@ async function submit() {
     emit('notify', '应用已保存到本地数据库')
   } catch (err: any) { emit('notify', '保存失败：' + (err?.message ?? err)) }
 }
-async function remove(a: AppBookmark) {
-  try { await api.deleteApp(a.id); await load(); emit('notify', '已删除 ' + a.name) }
-  catch (err: any) { emit('notify', '删除失败：' + (err?.message ?? err)) }
+function remove(a: AppBookmark) {
+  askConfirm({
+    title: '删除这个应用？',
+    desc: `${a.name}\n${a.url}\n只删本地书签，不影响内网里的服务本身。`,
+    ok: '删除',
+    action: async () => {
+      try {
+        await api.deleteApp(a.id)
+        await load()
+        emit('notify', '已删除 ' + a.name)
+      } catch (err: any) { emit('notify', '删除失败：' + (err?.message ?? err)) }
+    },
+  })
 }
 async function open(a: AppBookmark) {
   try {
@@ -145,5 +158,7 @@ async function external(a: AppBookmark) {
         </div>
       </div>
     </template>
+
+    <ConfirmDialog v-if="confirmBox" v-bind="confirmBox" @close="closeConfirm" />
   </div>
 </template>
