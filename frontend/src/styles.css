@@ -656,6 +656,20 @@ html[data-theme="dark"] .modal::-webkit-scrollbar-thumb {
   color: var(--brand); text-decoration: underline; text-underline-offset: 2px; }
 .link-btn.ok { color: var(--ok); }
 .link-btn:hover { opacity: .75; }
-/* 表格上方的轻量加载提示，不遮内容，只占一行 */
+/* 行内轻量提示（ACL 页顶部用） */
 .load-hint { display: flex; align-items: center; gap: 8px; font-size: 11.5px;
   color: var(--faint); padding: 6px 2px; flex-shrink: 0; }
+
+/* 表格加载遮罩：铺满容器并居中，别缩在左上角 */
+.load-overlay { position: absolute; inset: 0; z-index: 3;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 12px; color: var(--faint);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  backdrop-filter: blur(1px); }
+
+/* 空列表占位：图标 + 主文案 + 说明 */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 44px 0; color: var(--faint); text-align: center; }
+.empty-state svg { opacity: .45; }
+.empty-state b { font-size: 12px; font-weight: 500; color: var(--text); opacity: .75; }
+.empty-state span { font-size: 11px; }

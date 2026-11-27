@@ -137,6 +137,9 @@ watch(() => props.tab, () => {
 
 const pendingUser = ref('')
 watch(reloadTick, load)
+// 首次挂载时 state 可能还是 null，那时 api 还没配置好，拉回来的是空列表。
+// 等 endpoint 有值（配置就绪）或者换了服务端，再拉一次。
+watch(() => props.state?.endpoint, (v) => { if (v) load() })
 
 // 成员列表在多个抽屉里都要用，进设备页时顺手拉一份
 watch(() => props.tab, async (t) => {
@@ -520,10 +523,9 @@ function splitList(v: string) {
       </span>
     </div>
 
-    <div v-if="loading" class="load-hint"><span class="spinner"></span>加载中…</div>
-
     <!-- 设备 -->
-    <div class="card table-scroll" style="padding:0" v-if="tab === 'devices'">
+    <div class="card table-scroll" style="padding:0;position:relative" v-if="tab === 'devices'">
+      <div v-if="loading" class="load-overlay"><span class="spinner"></span>加载中…</div>
       <table class="tbl">
         <thead><tr>
           <th style="width:22%">设备</th><th>成员</th><th style="width:130px">IP</th><th style="width:80px">连接</th><th>标签</th><th>最后在线</th><th style="width:70px">状态</th><th style="width:70px"></th>
@@ -546,7 +548,13 @@ function splitList(v: string) {
             <td><span class="tag" :class="statusTag(d.status)">{{ d.status }}</span></td>
             <td><button class="btn ghost sm" @click.stop="openDevice(d)">管理</button></td>
           </tr>
-          <tr v-if="!shownDevices.length"><td colspan="7" class="empty">没有匹配的设备</td></tr>
+          <tr v-if="!shownDevices.length"><td colspan="8">
+            <div class="empty-state">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h5"/></svg>
+              <b>{{ devices.length ? '没有符合条件的设备' : '还没有设备接入' }}</b>
+              <span>{{ devices.length ? '换个筛选条件试试' : '在设备页点「注册设备」，或让终端跑 headscale login' }}</span>
+            </div>
+          </td></tr>
         </tbody>
       </table>
     </div>
@@ -591,14 +599,21 @@ function splitList(v: string) {
                 </template>
               </td>
             </tr>
-            <tr v-if="!users.length"><td colspan="6" class="empty">暂无成员</td></tr>
+            <tr v-if="!users.length"><td colspan="6">
+              <div class="empty-state">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="12" cy="8" r="3.2"/><path d="M5 19c1.2-3.2 3.8-4.6 7-4.6s5.8 1.4 7 4.6"/></svg>
+                <b>还没有成员</b>
+                <span>点右上角「新建成员」创建一个命名空间</span>
+              </div>
+            </td></tr>
           </tbody>
         </table>
       </div>
     </div>
 
     <!-- 授权 Key -->
-    <div class="card table-scroll" style="padding:0" v-else-if="tab === 'keys'">
+    <div class="card table-scroll" style="padding:0;position:relative" v-else-if="tab === 'keys'">
+      <div v-if="loading" class="load-overlay"><span class="spinner"></span>加载中…</div>
       <table class="tbl">
         <thead><tr><th>Key</th><th>成员</th><th>类型</th><th>到期</th><th>创建时间</th><th>状态</th><th style="width:120px"></th></tr></thead>
         <tbody>
@@ -613,13 +628,20 @@ function splitList(v: string) {
               <button class="btn ghost sm" @click="deleteKey(k)">删除</button>
             </td>
           </tr>
-          <tr v-if="!shownKeys.length"><td colspan="7" class="empty">暂无授权 Key</td></tr>
+          <tr v-if="!shownKeys.length"><td colspan="7">
+            <div class="empty-state">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="9" r="3.2"/><path d="M10.4 11.4 19 20M16 17l2-2"/></svg>
+              <b>{{ keys.length ? '没有符合条件的 Key' : '还没有授权 Key' }}</b>
+              <span>{{ keys.length ? '换个筛选条件试试' : '点右上角「新建授权 Key」生成一个' }}</span>
+            </div>
+          </td></tr>
         </tbody>
       </table>
     </div>
 
     <!-- API Key -->
-    <div class="card table-scroll" style="padding:0" v-else>
+    <div class="card table-scroll" style="padding:0;position:relative" v-else>
+      <div v-if="loading" class="load-overlay"><span class="spinner"></span>加载中…</div>
       <table class="tbl">
         <thead><tr><th style="width:20%">前缀</th><th>到期</th><th>创建时间</th><th>最后使用</th><th>状态</th><th style="width:120px"></th></tr></thead>
         <tbody>
@@ -632,7 +654,13 @@ function splitList(v: string) {
               <button class="btn ghost sm" @click="deleteApiKey(k)">删除</button>
             </td>
           </tr>
-          <tr v-if="!apiKeys.length"><td colspan="6" class="empty">暂无 API Key</td></tr>
+          <tr v-if="!shownApiKeys.length"><td colspan="6">
+            <div class="empty-state">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="9" r="3.2"/><path d="M10.4 11.4 19 20M16 17l2-2"/></svg>
+              <b>{{ apiKeys.length ? '没有符合条件的 API Key' : '还没有 API Key' }}</b>
+              <span>{{ apiKeys.length ? '换个筛选条件试试' : '点右上角「新建 API Key」生成一个' }}</span>
+            </div>
+          </td></tr>
         </tbody>
       </table>
     </div>

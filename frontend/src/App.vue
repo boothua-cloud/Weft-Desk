@@ -92,6 +92,8 @@ async function pickProfile(p: Profile) {
     await api.switchProfile(p.id)
     await loadProfiles()
     await refresh()
+    // 换了服务端，列表缓存全是上家的，必须让当前页面重拉
+    requestReload()
     notify('已切换到 ' + p.name)
   } catch (err: any) {
     notify('切换失败：' + (err?.message ?? err))
