@@ -33,14 +33,33 @@ function daysLeft(ts?: string): number {
   if (isNaN(d.getTime())) return Infinity
   return Math.ceil((d.getTime() - Date.now()) / 86400000)
 }
+const selfKey = computed(() => {
+  // 当前密钥在列表里的有效期：headscale 不给明文，用状态为「有效」里最晚到期的近似
+  const valid = apiKeys.value.filter(k => k.status === '有效')
+  if (!valid.length) return null
+  return valid.sort((a, b) => (daysLeft(b.expires) - daysLeft(a.expires)))[0]
+})
+const keyDays = computed(() => {
+  const k = selfKey.value
+  if (!k) return null
+  const n = daysLeft(k.expires)
+  return n === Infinity ? null : n
+})
+const keyExpires = computed(() => selfKey.value?.expires || '')
+const renewing = ref(false)
+async function renewAPIKey() {
+  renewing.value = true
+  try {
+    await api.renewAPIKey()
+    emit('notify', '管理密钥已续期，有效期 90 天')
+    await load()
+  } catch (err: any) {
+    emit('notify', '续期失败：' + (err?.message ?? err))
+  } finally { renewing.value = false }
+}
+
 const expiringDevices = computed(() =>
   devices.value.filter(d => { const n = daysLeft(d.expiry); return n !== Infinity && n <= EXPIRY_WARN_DAYS }))
-const expiringKey = computed(() =>
-  apiKeys.value.find(k => {
-    if (k.status !== '有效') return false
-    const n = daysLeft(k.expires)
-    return n !== Infinity && n <= EXPIRY_WARN_DAYS
-  }))
 async function renewDevice(d: Device) {
   try {
     await api.disableDeviceExpiry(d.id)
@@ -205,19 +224,13 @@ function copyLogin() {
       </div>
     </section>
 
-    <div v-if="expiringKey || expiringDevices.length" class="card" style="margin-bottom:14px;border-color:var(--warn-line, #c98a2e)">
-      <h3 class="sec" style="color:var(--warn-text, #b4741a)">密钥到期提醒</h3>
-      <div v-if="expiringKey" style="font-size:11.5px;line-height:1.8;margin-bottom:6px">
-        管理密钥还有 <b>{{ daysLeft(expiringKey.expires) }}</b> 天过期。过期后无法管理设备、成员与策略，
-        应用每小时会自动检查并在剩 7 天时换一把新的。
-      </div>
-      <div v-if="expiringDevices.length" style="font-size:11.5px;line-height:1.8">
-        以下节点即将到期，到期会从 tailnet 断开：
-        <div v-for="d in expiringDevices" :key="d.id" class="row" style="gap:8px;margin-top:6px">
-          <span class="mono" style="font-size:11px">{{ d.name }}</span>
-          <span class="faint" style="font-size:10.5px">{{ d.expiry }}</span>
-          <button class="btn sm ghost" @click="renewDevice(d)">取消到期</button>
-        </div>
+    <div v-if="expiringDevices.length" class="card" style="margin-bottom:14px">
+      <h3 class="sec" style="color:var(--warn-text, #b4741a)">节点即将到期</h3>
+      <div class="faint" style="font-size:11px;margin-bottom:8px">到期后节点会从 tailnet 断开，需要重新登录</div>
+      <div v-for="d in expiringDevices" :key="d.id" class="row" style="gap:10px;margin-top:6px">
+        <span class="mono" style="font-size:11px">{{ d.name }}</span>
+        <span class="faint" style="font-size:10.5px">{{ d.expiry }}</span>
+        <button class="btn sm ghost" style="margin-left:auto" @click="renewDevice(d)">取消到期</button>
       </div>
     </div>
 
@@ -262,11 +275,19 @@ function copyLogin() {
 
       <div class="card">
         <div class="metric-top">
-          <div class="stat-label" style="margin:0">服务端</div>
-          <span class="tag green" style="margin:0">{{ state?.capabilities?.version || '—' }}</span>
+          <div class="stat-label" style="margin:0">管理密钥</div>
+          <button v-if="state?.configured" class="btn sm ghost" :disabled="renewing"
+                  @click="renewAPIKey">
+            <span v-if="renewing" class="spinner"></span>{{ renewing ? '续期中' : '续期' }}
+          </button>
         </div>
-        <div class="stat-num" style="font-size:20px">Headscale</div>
-        <div class="stat-sub">{{ state?.configured ? '管理凭证已配置' : '未配置管理 API Key' }}</div>
+        <div class="stat-num">
+          {{ keyDays === null ? '—' : keyDays }}
+          <span v-if="keyDays !== null" style="font-size:13px;color:var(--faint);font-weight:400"> 天</span>
+        </div>
+        <div class="stat-sub">
+          {{ state?.configured ? (keyExpires || '未读取到有效期') : '未配置管理 API Key' }}
+        </div>
       </div>
     </div>
 
