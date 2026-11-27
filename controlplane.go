@@ -685,6 +685,15 @@ func (c *headscaleCP) Policy() (Policy, error) {
 		UpdatedAt string `json:"updatedAt"`
 	}
 	if _, err := doJSON("GET", c.url("/api/v1/policy"), c.bearer(), nil, &v); err != nil {
+		// headscale 在没配策略文件时会回 500，原文是
+		// reading policy from path "": open : no such file or directory
+		// 这不是客户端问题，直接告诉用户去哪改
+		msg := err.Error()
+		if strings.Contains(msg, "reading policy from path") || strings.Contains(msg, "no such file or directory") {
+			return Policy{}, fmt.Errorf("服务端未配置 ACL 策略文件。在 headscale 的 config.yaml 里加上：\n" +
+				"policy:\n  mode: file\n  path: /etc/headscale/acl.hujson\n" +
+				"然后创建该文件并重启 headscale")
+		}
 		return Policy{}, err
 	}
 	return Policy{Content: v.Policy, UpdatedAt: v.UpdatedAt}, nil
