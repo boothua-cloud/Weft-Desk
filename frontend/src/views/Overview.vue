@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { api, type State, type AppBookmark, type AuditEvent, type Device, type APIKey } from '../api'
+import Pick from '../components/Pick.vue'
 import { reloadTick } from '../bus'
 
 const props = defineProps<{ state: State | null }>()
@@ -33,12 +34,7 @@ function daysLeft(ts?: string): number {
   if (isNaN(d.getTime())) return Infinity
   return Math.ceil((d.getTime() - Date.now()) / 86400000)
 }
-const selfKey = computed(() => {
-  // 当前密钥在列表里的有效期：headscale 不给明文，用状态为「有效」里最晚到期的近似
-  const valid = apiKeys.value.filter(k => k.status === '有效')
-  if (!valid.length) return null
-  return valid.sort((a, b) => (daysLeft(b.expires) - daysLeft(a.expires)))[0]
-})
+const selfKey = computed(() => apiKeys.value.find(k => k.isCurrent) ?? null)
 const keyDays = computed(() => {
   const k = selfKey.value
   if (!k) return null
@@ -47,11 +43,16 @@ const keyDays = computed(() => {
 })
 const keyExpires = computed(() => selfKey.value?.expires || '')
 const renewing = ref(false)
+const renewOpen = ref(false)
+const renewDays = ref(90)
+const renewOptions = [30, 60, 90, 180, 365].map(d => ({ value: d, label: d + ' 天' }))
+function openRenew() { renewDays.value = 90; renewOpen.value = true }
 async function renewAPIKey() {
   renewing.value = true
   try {
-    await api.renewAPIKey()
-    emit('notify', '管理密钥已续期，有效期 90 天')
+    await api.renewAPIKey(renewDays.value)
+    renewOpen.value = false
+    emit('notify', `管理密钥已续期，有效期 ${renewDays.value} 天`)
     await load()
   } catch (err: any) {
     emit('notify', '续期失败：' + (err?.message ?? err))
@@ -276,8 +277,7 @@ function copyLogin() {
       <div class="card">
         <div class="metric-top">
           <div class="stat-label" style="margin:0">管理密钥</div>
-          <button v-if="state?.configured" class="btn sm ghost" :disabled="renewing"
-                  @click="renewAPIKey">
+          <button v-if="state?.configured" class="btn sm ghost" :disabled="renewing" @click="openRenew">
             <span v-if="renewing" class="spinner"></span>{{ renewing ? '续期中' : '续期' }}
           </button>
         </div>
@@ -365,5 +365,27 @@ function copyLogin() {
       </div>
       <div style="font-size:11px;margin-top:8px">在系统浏览器打开并完成授权后，节点会自动上线；以后重开 App 不再需要登录。</div>
     </div>
+    <template v-if="renewOpen">
+      <div class="mask" @click="renewOpen = false"></div>
+      <div class="drawer">
+        <div class="spread" style="margin-bottom:18px">
+          <b style="font-size:14px">续期管理密钥</b>
+          <button class="btn ghost sm" @click="renewOpen = false">✕</button>
+        </div>
+        <div class="notice info" style="margin-bottom:16px">
+          headscale 没有续期接口，这里是新建一把密钥替换旧的：旧密钥会立即吊销，
+          新密钥写进系统钥匙串。正在用旧密钥的其他工具会失效。
+        </div>
+        <div class="field">
+          <label class="field-label">新的有效期</label>
+          <Pick v-model="renewDays" :options="renewOptions" />
+        </div>
+        <div v-if="selfKey" class="kv"><span>当前密钥前缀</span><b class="mono" style="font-size:10.5px">{{ selfKey.prefix }}</b></div>
+        <div v-if="selfKey" class="kv"><span>当前到期</span><b>{{ selfKey.expires || '—' }}</b></div>
+        <button class="btn primary" style="width:100%;height:38px;margin-top:16px" :disabled="renewing" @click="renewAPIKey">
+          <span v-if="renewing" class="spinner"></span>{{ renewing ? '续期中…' : '确认续期' }}
+        </button>
+      </div>
+    </template>
   </div>
 </template>

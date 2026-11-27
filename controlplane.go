@@ -624,11 +624,16 @@ func (c *headscaleCP) APIKeys() ([]APIKey, error) {
 	if _, err := doJSON("GET", c.url("/api/v1/apikey"), c.bearer(), nil, &v); err != nil {
 		return nil, err
 	}
+	// 当前这把的明文在钥匙串里，用前缀认出来，标在列表上。
+	// 前端不能自己猜「最晚到期的是当前这把」—— 续期后新 Key 只有 90 天，
+	// 旧的如果还剩 365 天就会被选中，看起来像没续上。
+	cur := c.bearer()
 	out := make([]APIKey, 0, len(v.Keys))
 	for _, k := range v.Keys {
 		out = append(out, APIKey{
 			ID: k.ID, Prefix: k.Prefix, Expires: fmtTS(k.Expiration),
 			Created: fmtTS(k.CreatedAt), LastSeen: fmtTS(k.LastSeen), Status: statusOf(k.Expiration),
+			IsCurrent: cur != "" && k.Prefix != "" && strings.HasPrefix(cur, k.Prefix),
 		})
 	}
 	return out, nil

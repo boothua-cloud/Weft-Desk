@@ -132,6 +132,7 @@ type AuthKey struct {
 type APIKey struct {
 	ID       string `json:"id"`
 	Prefix   string `json:"prefix"`
+	IsCurrent bool  `json:"isCurrent"` // 是否就是当前正在用的这把
 	Expires  string `json:"expires"`
 	Created  string `json:"created"`
 	LastSeen string `json:"lastSeen"`

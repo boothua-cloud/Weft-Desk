@@ -781,7 +781,11 @@ func (s *WeftService) EnsureAPIKeyFresh(window time.Duration) (bool, error) {
 }
 
 // RenewAPIKey 强制换一把新的管理密钥（不看剩余天数），供界面上的「续期」按钮调用。
-func (s *WeftService) RenewAPIKey() error {
+// days 是新的有效期，<=0 时按 90 天算。
+func (s *WeftService) RenewAPIKey(days int) error {
+	if days <= 0 {
+		days = 90
+	}
 	s.mu.Lock()
 	cp := s.cp
 	s.mu.Unlock()
@@ -803,7 +807,7 @@ func (s *WeftService) RenewAPIKey() error {
 			break
 		}
 	}
-	fresh, err := cp.CreateAPIKey(90)
+	fresh, err := cp.CreateAPIKey(days)
 	if err != nil {
 		return fmt.Errorf("创建新密钥失败: %w", err)
 	}
@@ -813,7 +817,7 @@ func (s *WeftService) RenewAPIKey() error {
 	if self != nil {
 		_ = cp.ExpireAPIKey(self.Prefix, self.ID)
 	}
-	s.store.AddAudit("手动续期管理密钥", "有效期重置为 90 天")
+	s.store.AddAudit("手动续期管理密钥", fmt.Sprintf("有效期重置为 %d 天", days))
 	return nil
 }
 
