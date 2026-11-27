@@ -28,7 +28,7 @@ macOS / Windows / Linux，安装即用，没有外部依赖。
 
 ### ACL 策略
 
-![ACL](docs/screenshots/acl.png)
+![ACL](docs/screenshots/acl-policy.png)
 
 ### 连接设置
 
