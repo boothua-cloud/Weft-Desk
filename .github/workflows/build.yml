@@ -206,6 +206,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      # 这个 job 只拿到 artifact，没有工作区；CHANGELOG.md 要靠 checkout 拿
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
