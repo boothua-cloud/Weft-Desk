@@ -297,3 +297,11 @@ jobs:
           prerelease: ${{ steps.kind.outputs.prerelease == 'true' }}
           generate_release_notes: true
           body_path: release-body.md
+
+      - name: 写入发布说明
+        # action-gh-release 在「release 已存在」时会先建一个带 body 的草稿、
+        # 再切回已有 release，正文就丢了（日志里是 Using release ... instead of
+        # duplicate draft）。这里用 gh 明确写一次，覆盖上面的不确定行为。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${GITHUB_REF_NAME}" --notes-file release-body.md
