@@ -60,10 +60,28 @@ jobs:
           CGO_ENABLED=1 go build -tags "production gtk3" \
             -trimpath -buildvcs=false -ldflags="-w -s" -o bin/weft .
 
-      - name: 打包
+      - name: 生成 .desktop
+        run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          wails3 generate .desktop -name "云栈" -exec weft -icon weft \
+            -outputfile build/linux/weft.desktop -categories "Network;Utility;"
+
+      - name: 打包 tar.gz 与 deb
         run: |
           mkdir -p dist
           tar -C bin -czf "dist/weft-${APP_VERSION}-linux-amd64.tar.gz" weft
+
+          # deb 用 nfpm 打，配置在 build/linux/nfpm/nfpm.yaml
+          case "$GITHUB_REF" in
+            refs/tags/v*) VERSION="${GITHUB_REF_NAME#v}" ;;
+            *)            VERSION="${APP_VERSION}" ;;
+          esac
+          export VERSION
+          echo "deb 版本号: $VERSION"
+
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          "$(go env GOPATH)/bin/nfpm" package -f build/linux/nfpm/nfpm.yaml -p deb -t dist/
+          ls -la dist/
 
       - uses: actions/upload-artifact@v4
         with:

@@ -9,7 +9,8 @@
 name: "weft"
 arch: "amd64"
 platform: "linux"
-version: "0.1.0"
+# 由 CI 或手动打包时通过环境变量注入：VERSION=0.1.0 nfpm package ...
+version: "${VERSION}"
 section: "net"
 priority: "optional"
 maintainer: "Boothua <boothua@boothua.cn>"
@@ -17,7 +18,7 @@ description: |-
   云栈 —— Tailscale / Headscale 桌面客户端。
   节点跑在应用进程内，接管系统网络后 ssh / mysql / psql 等外部工具可直接访问 tailnet 与内网网段。
 vendor: "Boothua"
-homepage: "https://git.boothua.cn/boothua/WeftDesk"
+homepage: "https://github.com/boothua-cloud/Weft-Desk"
 release: "1"
 
 contents:
