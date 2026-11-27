@@ -201,11 +201,20 @@ func main() {
 			app.Event.Emit("weft:navigate", p)
 		}()
 	}
-	// 截图/自动化用：WEFT_DEBUG_CLICK="#btn-add-profile" 启动后点一下这个元素
+	// 截图/自动化用：WEFT_DEBUG_CLICK="#btn-add-profile" 启动后点一下这个元素。
+	// 用 | 分隔可以连点多次（比如先点「下载并安装」、等下载完再点「立即重启」），
+	// 每次之间留 5 秒，够一轮网络请求或状态切换。
 	if sel := strings.TrimSpace(os.Getenv("WEFT_DEBUG_CLICK")); sel != "" {
 		go func() {
 			time.Sleep(5000 * time.Millisecond)
-			w.ExecJS(fmt.Sprintf("(()=>{const e=document.querySelector(%q); if(e) e.click();})()", sel))
+			for _, one := range strings.Split(sel, "|") {
+				one = strings.TrimSpace(one)
+				if one == "" {
+					continue
+				}
+				w.ExecJS(fmt.Sprintf("(()=>{const e=document.querySelector(%q); if(e) e.click();})()", one))
+				time.Sleep(5 * time.Second)
+			}
 		}()
 	}
 	ui := newAppUI(app, svc, w)
