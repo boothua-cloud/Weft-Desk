@@ -10,6 +10,10 @@
 // @ts-ignore: Unused imports
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as time$0 from "../../../time/models.js";
+
 export function ApproveAuth(authID: string): $CancellablePromise<void> {
     return $Call.ByID(956314926, authID);
 }
@@ -95,6 +99,20 @@ export function DisableDeviceExpiry(id: string): $CancellablePromise<void> {
 
 export function Disconnect(): $CancellablePromise<string> {
     return $Call.ByID(58482593);
+}
+
+/**
+ * EnsureAPIKeyFresh 在当前管理密钥快过期时自动换一把新的。
+ * 
+ * headscale 没有「续期」接口，只能新建后替换。流程：
+ *   1. 列出所有 API Key，用前缀认出当前这把
+ *   2. 剩余天数小于阈值就新建一把（用旧 Key 授权），立刻写进钥匙串
+ *   3. 旧 Key 吊销，避免留着一把没人管的凭证
+ * 
+ * 失败不会抛出到界面，只写审计；下次定时器还会再试。
+ */
+export function EnsureAPIKeyFresh(window: time$0.Duration): $CancellablePromise<boolean> {
+    return $Call.ByID(1006500886, window);
 }
 
 export function ExpireAPIKey(prefix: string, id: string): $CancellablePromise<void> {
@@ -235,6 +253,14 @@ export function RenameProfile(id: string, name: string): $CancellablePromise<voi
 
 export function RenameUser(id: string, name: string): $CancellablePromise<void> {
     return $Call.ByID(2364800702, id, name);
+}
+
+/**
+ * RenewAPIKey 强制换一把新的管理密钥（不看剩余天数），供界面上的「续期」按钮调用。
+ * days 是新的有效期，<=0 时按 90 天算。
+ */
+export function RenewAPIKey(days: number): $CancellablePromise<void> {
+    return $Call.ByID(3992832443, days);
 }
 
 /**
