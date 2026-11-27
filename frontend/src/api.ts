@@ -94,6 +94,7 @@ export interface AuthKey {
 }
 export interface APIKey {
   id: string; prefix: string; expires: string; created: string; lastSeen: string; status: string
+  isCurrent?: boolean
 }
 export interface PolicyDoc { content: string; updatedAt: string }
 export interface HealthInfo { database: boolean }
@@ -127,7 +128,7 @@ export const api = {
   // 只改界面偏好开关，立刻落库生效，不触发引擎重建
   setUIPrefs: (p: Partial<Config>) => parse<Config>(WeftService.SetUIPrefs(JSON.stringify(p))),
   setCredential: (kind: string, value: string) => WeftService.SetCredential(kind, value),
-  renewAPIKey: (): Promise<void> => (WeftService as any).RenewAPIKey(),
+  renewAPIKey: (days: number): Promise<void> => (WeftService as any).RenewAPIKey(days),
   revealCredential: (kind: string): Promise<string> => (WeftService as any).RevealCredential(kind),
   testConnection: () => WeftService.TestConnection(),
   connect: () => parse<State>(WeftService.Connect()),
