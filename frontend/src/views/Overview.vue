@@ -67,7 +67,7 @@ async function act(kind: 'connect' | 'disconnect') {
       } else {
         emit('notify', st?.lastError
           ? '连接失败：' + st.lastError
-          : '等了 2 分钟还没连上。检查控制面地址、Auth Key，或看终端日志里的 [system] 输出')
+          : '等了 2 分钟还没连上。检查服务端地址、Auth Key，或看终端日志里的 [system] 输出')
       }
     } else {
       await api.disconnect()
@@ -145,7 +145,7 @@ function copyLogin() {
                 <span class="faint">首次连接需要管理员授权，可能要十几秒</span>
               </template>
               <template v-else>
-              <span>{{ state?.endpoint || '未配置控制面' }}</span>
+              <span>{{ state?.endpoint || '未配置服务端' }}</span>
               <i class="hero-sep"></i>
               <span>运行时长 {{ state?.uptime || '—' }}</span>
               <i class="hero-sep"></i>
@@ -215,7 +215,7 @@ function copyLogin() {
 
       <div class="card">
         <div class="metric-top">
-          <div class="stat-label" style="margin:0">控制面</div>
+          <div class="stat-label" style="margin:0">服务端</div>
           <span class="tag green" style="margin:0">{{ state?.capabilities?.version || '—' }}</span>
         </div>
         <div class="stat-num" style="font-size:20px">Headscale</div>
@@ -228,7 +228,7 @@ function copyLogin() {
         <h3 class="sec">本节点</h3>
         <div class="kv"><span>主机名</span><b>{{ state?.hostname || '—' }}</b></div>
         <div class="kv"><span>节点地址</span><b class="mono">{{ state?.selfIP || '—' }}</b></div>
-        <div class="kv"><span>控制面</span><b class="mono" style="font-size:10.5px">{{ state?.endpoint || '—' }}</b></div>
+        <div class="kv"><span>服务端</span><b class="mono" style="font-size:10.5px">{{ state?.endpoint || '—' }}</b></div>
         <div class="kv">
           <span>连接状态</span>
           <b :style="{ color: state?.connected ? 'var(--ok)' : 'var(--faint)' }">
