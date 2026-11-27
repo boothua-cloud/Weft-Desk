@@ -46,6 +46,25 @@ const memberOptions = computed(() => [{ value: '', label: '全部成员' }].conc
 const dayOptions = [1, 7, 30, 90, 180, 365].map((d) => ({ value: d, label: d + ' 天' }))
 
 const canCreateUser = computed(() => props.state?.capabilities?.canCreateUser !== false)
+const deviceStat = computed(() => {
+  const m = new Map<string, { total: number; online: number }>()
+  devices.value.forEach(d => {
+    const k = d.user || ''
+    const cur = m.get(k) ?? { total: 0, online: 0 }
+    cur.total++
+    if (d.online) cur.online++
+    m.set(k, cur)
+  })
+  return m
+})
+const deviceSummary = computed(() => {
+  const online = devices.value.filter(d => d.status === '在线').length
+  const expired = devices.value.filter(d => d.status === '已过期').length
+  return { online, expired, offline: devices.value.length - online - expired }
+})
+function statOf(u: User) {
+  return deviceStat.value.get(u.rawName || u.name) ?? { total: 0, online: 0 }
+}
 const allTags = computed(() => {
   const set = new Set<string>()
   devices.value.forEach(d => splitList(d.tags).forEach(t => set.add(t)))
@@ -70,7 +89,13 @@ const shownKeys = computed(() => keys.value.filter(k => {
 async function load() {
   try {
     if (props.tab === 'devices') devices.value = (await api.devices()).items
-    else if (props.tab === 'users') users.value = (await api.users()).items
+    else if (props.tab === 'users') {
+      users.value = (await api.users()).items
+      // 列表里要显示每个成员名下的设备数，顺带取一份
+      if (!devices.value.length) {
+        try { devices.value = (await api.devices()).items } catch { /* 统计不到就不显示 */ }
+      }
+    }
     else if (props.tab === 'keys') {
       keys.value = (await api.authKeys()).items
       if (!users.value.length) users.value = (await api.users()).items
@@ -418,8 +443,14 @@ function splitList(v: string) {
       <button v-if="keyword || statusFilter || userFilter || tagFilter" class="btn ghost sm"
               @click="keyword=''; statusFilter=''; userFilter=''; tagFilter=''">清空条件</button>
 
-      <span class="faint" style="margin-left:auto;font-size:11px">
-        {{ tab === 'devices' ? shownDevices.length : tab === 'keys' ? shownKeys.length : apiKeys.length }} 条记录
+      <span v-if="tab === 'devices'" class="faint" style="margin-left:auto;font-size:11px">
+        <span style="color:var(--ok)">在线 {{ deviceSummary.online }}</span> ·
+        离线 {{ deviceSummary.offline }} ·
+        过期 {{ deviceSummary.expired }} ·
+        共 {{ devices.length }} 台
+      </span>
+      <span v-else class="faint" style="margin-left:auto;font-size:11px">
+        {{ tab === 'keys' ? shownKeys.length : apiKeys.length }} 条记录
       </span>
     </div>
 
@@ -451,13 +482,24 @@ function splitList(v: string) {
       </div>
       <div class="card table-scroll" style="padding:0">
         <table class="tbl">
-          <thead><tr><th>成员 / 命名空间</th><th>来源</th><th>创建时间</th><th style="width:170px"></th></tr></thead>
+          <thead><tr>
+            <th style="width:22%">成员 / 命名空间</th><th>显示名称</th><th>邮箱</th>
+            <th style="width:100px">设备</th><th>来源</th><th>创建时间</th><th style="width:150px"></th>
+          </tr></thead>
           <tbody>
             <tr v-for="u in users" :key="u.id">
               <td class="cell-main">
                 <input v-if="editingUser === u.id" class="input" style="height:28px;max-width:200px"
                        v-model="editUserName" @keyup.enter="commitRename(u)" @keyup.esc="editingUser = ''" />
-                <span v-else>{{ u.rawName || u.name }}</span>
+                <span v-else class="mono">{{ u.rawName || u.name }}</span>
+              </td>
+              <td>{{ u.displayName || '—' }}</td>
+              <td class="mono">{{ u.email || '—' }}</td>
+              <td>
+                <span v-if="statOf(u).total" class="tag" :class="statOf(u).online ? 'green' : ''">
+                  {{ statOf(u).online }}/{{ statOf(u).total }}
+                </span>
+                <span v-else class="faint">0</span>
               </td>
               <td><span class="tag" :class="u.provider ? 'blue' : ''">{{ u.provider || '本地' }}</span></td>
               <td>{{ u.createdAt || '—' }}</td>
@@ -472,7 +514,7 @@ function splitList(v: string) {
                 </template>
               </td>
             </tr>
-            <tr v-if="!users.length"><td colspan="4" class="empty">暂无成员</td></tr>
+            <tr v-if="!users.length"><td colspan="7" class="empty">暂无成员</td></tr>
           </tbody>
         </table>
       </div>
