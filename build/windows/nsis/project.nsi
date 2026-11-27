@@ -1,4 +1,4 @@
-Unicode true
+﻿Unicode true
 
 ####
 ## Please note: Template replacements don't work in this file. They are provided with default defines like
@@ -20,7 +20,11 @@ Unicode true
 ## The following information is taken from the wails_tools.nsh file, but they can be overwritten here.
 ####
 !define INFO_PROJECTNAME    "weft"
+# INFO_PRODUCTNAME 决定安装目录（Programs\Weft）与卸载注册表键，保持英文：
+# 改成中文会让老用户升级后多出一份新目录。
 !define INFO_PRODUCTNAME    "Weft"
+# 界面上露出来的名字统一用它：快捷方式、开始菜单、卸载列表、安装程序标题。
+!define INFO_DISPLAYNAME    "云栈"
 !define INFO_COMPANYNAME    "Boothua"
 !ifndef INFO_PRODUCTVERSION
 !define INFO_PRODUCTVERSION "0.1.2"
@@ -46,11 +50,11 @@ VIProductVersion "${INFO_PRODUCTVERSION}.0"
 VIFileVersion    "${INFO_PRODUCTVERSION}.0"
 
 VIAddVersionKey "CompanyName"     "${INFO_COMPANYNAME}"
-VIAddVersionKey "FileDescription" "${INFO_PRODUCTNAME} Installer"
+VIAddVersionKey "FileDescription" "${INFO_DISPLAYNAME} 安装程序"
 VIAddVersionKey "ProductVersion"  "${INFO_PRODUCTVERSION}"
 VIAddVersionKey "FileVersion"     "${INFO_PRODUCTVERSION}"
 VIAddVersionKey "LegalCopyright"  "${INFO_COPYRIGHT}"
-VIAddVersionKey "ProductName"     "${INFO_PRODUCTNAME}"
+VIAddVersionKey "ProductName"     "${INFO_DISPLAYNAME}"
 
 # Enable HiDPI support. https://nsis.sourceforge.io/Reference/ManifestDPIAware
 ManifestDPIAware true
@@ -77,7 +81,7 @@ ManifestDPIAware true
 #!uninstfinalize 'signtool --file "%1"'
 #!finalize 'signtool --file "%1"'
 
-Name "${INFO_PRODUCTNAME}"
+Name "${INFO_DISPLAYNAME}"
 OutFile "..\..\..\bin\${INFO_PROJECTNAME}-${ARCH}-installer.exe" # Name of the installer's file.
 !if "${WAILS_INSTALL_SCOPE}" == "user"
     InstallDir "$LOCALAPPDATA\Programs\${INFO_PRODUCTNAME}"
@@ -115,8 +119,14 @@ Section
         !error "wintun.dll not found: ${WINTUN_DLL} - run scripts/fetch-wintun.sh amd64 first"
     !endif
 
-    CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
-    CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
+    # 旧版本用英文名建过快捷方式，升级时留着会指向同一个 exe 却叫 Weft
+    Delete "$SMPROGRAMS\${INFO_DISPLAYNAME}.lnk"
+    Delete "$DESKTOP\${INFO_DISPLAYNAME}.lnk"
+    # 兼容改名前装过的版本
+    Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk"
+    Delete "$DESKTOP\${INFO_PRODUCTNAME}.lnk"
+    CreateShortcut "$SMPROGRAMS\${INFO_DISPLAYNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
+    CreateShortCut "$DESKTOP\${INFO_DISPLAYNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
 
     !insertmacro wails.associateFiles
     !insertmacro wails.associateCustomProtocols

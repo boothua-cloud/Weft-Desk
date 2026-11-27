@@ -5,10 +5,11 @@
 set -e
 cd "$(dirname "$0")/.."
 
-APP="Weft"
+APP="云栈"      # .app 的显示名，Finder / Dock 里看到的就是它
+PKG="weft"     # 产物文件名前缀，下载链接里别出现中文
 # CI 打 tag 时由 VERSION 环境变量传进来，本地不传就用默认值
 VER="${VERSION:-0.1.2}"
-OUT="release/${APP}-${VER}-macos-arm64.dmg"
+OUT="release/${PKG}-${VER}-macos-arm64.dmg"
 RW="/tmp/weft-rw-$$.dmg"
 SRC="/tmp/weft-src-$$.dmg"
 

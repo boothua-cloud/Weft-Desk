@@ -6,10 +6,10 @@
 		"0409": {
 			"ProductVersion": "0.1.2",
 			"CompanyName": "Boothua",
-			"FileDescription": "Weft - Tailscale / Headscale desktop client",
+			"FileDescription": "云栈 - Tailscale / Headscale 桌面客户端",
 			"LegalCopyright": "(c) 2026 Boothua",
-			"ProductName": "Weft",
-			"Comments": "Weft"
+			"ProductName": "云栈",
+			"Comments": "云栈"
 		}
 	}
 }

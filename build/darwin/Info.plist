@@ -4,9 +4,9 @@
         <key>CFBundlePackageType</key>
             <string>APPL</string>
         <key>CFBundleName</key>
-            <string>Weft</string>
+            <string>云栈</string>
         <key>CFBundleDisplayName</key>
-            <string>Weft</string>
+            <string>云栈</string>
         <key>CFBundleExecutable</key>
             <string>weft</string>
         <key>CFBundleIdentifier</key>
