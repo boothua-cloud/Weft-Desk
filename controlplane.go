@@ -617,6 +617,15 @@ func (c *headscaleCP) DeleteAuthKey(id string) error {
 
 // ---- API Key ----
 
+// keyPrefixMatches 判断列表里的某条 Key 是不是当前这把。
+// headscale 返回的 prefix 带 *** 掩码（hskey-api-8Z6n5H9TrGjV-***），
+// 直接 HasPrefix 永远不成立，得先掐掉掩码尾部。
+func keyPrefixMatches(current, listed string) bool {
+	cur := strings.TrimSpace(current)
+	p := strings.TrimSuffix(strings.TrimSpace(listed), "***")
+	return cur != "" && p != "" && strings.HasPrefix(cur, p)
+}
+
 func (c *headscaleCP) APIKeys() ([]APIKey, error) {
 	var v struct {
 		Keys []hsAPIKey `json:"apiKeys"`
@@ -633,7 +642,7 @@ func (c *headscaleCP) APIKeys() ([]APIKey, error) {
 		out = append(out, APIKey{
 			ID: k.ID, Prefix: k.Prefix, Expires: fmtTS(k.Expiration),
 			Created: fmtTS(k.CreatedAt), LastSeen: fmtTS(k.LastSeen), Status: statusOf(k.Expiration),
-			IsCurrent: cur != "" && k.Prefix != "" && strings.HasPrefix(cur, k.Prefix),
+			IsCurrent: keyPrefixMatches(cur, k.Prefix),
 		})
 	}
 	return out, nil

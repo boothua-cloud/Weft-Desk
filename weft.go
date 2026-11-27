@@ -746,7 +746,7 @@ func (s *WeftService) EnsureAPIKeyFresh(window time.Duration) (bool, error) {
 	}
 	var self *APIKey
 	for i := range keys {
-		if keys[i].Prefix != "" && strings.HasPrefix(cur, keys[i].Prefix) {
+		if keyPrefixMatches(cur, keys[i].Prefix) {
 			self = &keys[i]
 			break
 		}
@@ -802,7 +802,7 @@ func (s *WeftService) RenewAPIKey(days int) error {
 	}
 	var self *APIKey
 	for i := range keys {
-		if keys[i].Prefix != "" && strings.HasPrefix(cur, keys[i].Prefix) {
+		if keyPrefixMatches(cur, keys[i].Prefix) {
 			self = &keys[i]
 			break
 		}
