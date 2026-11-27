@@ -238,6 +238,14 @@ export function RenameUser(id: string, name: string): $CancellablePromise<void> 
 }
 
 /**
+ * RevealCredential 返回某个凭证的明文，供「显示」按钮用。
+ * 钥匙串本来就是为了不落明文，所以这里不做缓存，每次现读。
+ */
+export function RevealCredential(kind: string): $CancellablePromise<string> {
+    return $Call.ByID(505997083, kind);
+}
+
+/**
  * RevealWindow 供前端在启动画面渲染完成后调用。
  * 主窗口创建时是隐藏的，这样用户不会先看到一块空白底色。
  */

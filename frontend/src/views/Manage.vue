@@ -11,6 +11,10 @@ const users = ref<User[]>([])
 const keys = ref<AuthKey[]>([])
 const apiKeys = ref<APIKey[]>([])
 const keyword = ref('')
+// 条件筛选：设备页用状态/成员/标签，Key 页用状态/成员
+const statusFilter = ref('')
+const userFilter = ref('')
+const tagFilter = ref('')
 const busy = ref(false)
 
 // 抽屉：新建 Key / 设备详情 / 注册设备 / 批准认证 / 新建 API Key
@@ -31,10 +35,26 @@ const userOptions = computed(() => users.value.map((u) => ({ value: u.name, labe
 const dayOptions = [1, 7, 30, 90, 180, 365].map((d) => ({ value: d, label: d + ' 天' }))
 
 const canCreateUser = computed(() => props.state?.capabilities?.canCreateUser !== false)
-const shownDevices = computed(() => devices.value.filter(d =>
-  !keyword.value || (d.name + d.user + d.ip + d.tags).toLowerCase().includes(keyword.value.toLowerCase())))
-const shownKeys = computed(() => keys.value.filter(k =>
-  !keyword.value || (k.key + k.user).toLowerCase().includes(keyword.value.toLowerCase())))
+const allTags = computed(() => {
+  const set = new Set<string>()
+  devices.value.forEach(d => splitList(d.tags).forEach(t => set.add(t)))
+  return [...set].sort()
+})
+const shownDevices = computed(() => devices.value.filter(d => {
+  const kw = keyword.value.trim().toLowerCase()
+  if (kw && !(d.name + d.user + d.ip + d.tags + d.hostname).toLowerCase().includes(kw)) return false
+  if (statusFilter.value && d.status !== statusFilter.value) return false
+  if (userFilter.value && d.user !== userFilter.value) return false
+  if (tagFilter.value && !splitList(d.tags).includes(tagFilter.value)) return false
+  return true
+}))
+const shownKeys = computed(() => keys.value.filter(k => {
+  const kw = keyword.value.trim().toLowerCase()
+  if (kw && !(k.key + k.user).toLowerCase().includes(kw)) return false
+  if (userFilter.value && k.user !== userFilter.value) return false
+  if (statusFilter.value && k.status !== statusFilter.value) return false
+  return true
+}))
 
 async function load() {
   try {
@@ -48,7 +68,13 @@ async function load() {
     emit('notify', '加载失败：' + (err?.message ?? err))
   }
 }
-watch(() => props.tab, load, { immediate: true })
+watch(() => props.tab, () => {
+  keyword.value = ''
+  statusFilter.value = ''
+  userFilter.value = ''
+  tagFilter.value = ''
+  load()
+}, { immediate: true })
 watch(reloadTick, load)
 
 // 成员列表在多个抽屉里都要用，进设备页时顺手拉一份
@@ -332,15 +358,15 @@ function splitList(v: string) {
 </script>
 
 <template>
-  <div>
-    <div class="spread" style="margin-bottom:16px">
-      <div class="faint" style="font-size:11.5px">数据来源：Headscale /api/v1</div>
+  <div class="page-flex">
+    <div class="spread" style="margin-bottom:16px;flex-shrink:0">
+      <div class="faint" style="font-size:11.5px">实时数据</div>
       <div class="row">
         <button class="btn" @click="load">刷新</button>
         <template v-if="tab === 'devices'">
-          <button class="btn ghost" @click="backfill">补齐 IP</button>
-          <button class="btn ghost" @click="openDebug">调试建节点</button>
-          <button class="btn" @click="openAuth">认证请求</button>
+          <button class="btn ghost" @click="backfill">同步节点 IP</button>
+          <button class="btn ghost" @click="openDebug">手动添加节点</button>
+          <button class="btn" @click="openAuth">待审批请求</button>
           <button class="btn primary" @click="openRegister">＋ 注册设备</button>
         </template>
         <button v-else-if="tab === 'keys'" class="btn primary" @click="openKeyForm">＋ 新建授权 Key</button>
@@ -348,22 +374,51 @@ function splitList(v: string) {
       </div>
     </div>
 
-    <div class="tabs">
+    <div class="tabs" style="flex-shrink:0">
       <button class="tab" :class="{ active: tab === 'devices' }" @click="emit('navigate', 'devices')">设备管理</button>
       <button class="tab" :class="{ active: tab === 'users' }" @click="emit('navigate', 'users')">人员管理</button>
       <button class="tab" :class="{ active: tab === 'keys' }" @click="emit('navigate', 'keys')">授权 Key</button>
       <button class="tab" :class="{ active: tab === 'api' }" @click="emit('navigate', 'api')">API Key</button>
     </div>
 
-    <div v-if="tab !== 'users'" class="card tight row" style="margin-bottom:14px;gap:10px">
-      <input class="input" style="width:300px" v-model="keyword" placeholder="搜索名称 / 成员 / IP / 标签…" />
+    <div v-if="tab !== 'users'" class="filter-bar">
+      <input class="input" style="width:240px" v-model="keyword"
+             :placeholder="tab === 'devices' ? '搜索设备名 / IP / 标签…' : '搜索 Key / 成员…'" />
+
+      <select v-if="tab === 'devices'" class="filter-select" v-model="statusFilter">
+        <option value="">全部状态</option>
+        <option value="在线">在线</option>
+        <option value="离线">离线</option>
+        <option value="已过期">已过期</option>
+      </select>
+
+      <select v-if="tab === 'devices' || tab === 'keys'" class="filter-select" v-model="userFilter">
+        <option value="">全部成员</option>
+        <option v-for="u in users" :key="u.id" :value="(u.rawName || u.name)">{{ u.rawName || u.name }}</option>
+      </select>
+
+      <select v-if="tab === 'devices' && allTags.length" class="filter-select" v-model="tagFilter">
+        <option value="">全部标签</option>
+        <option v-for="t in allTags" :key="t" :value="t">{{ t }}</option>
+      </select>
+
+      <select v-if="tab === 'keys'" class="filter-select" v-model="statusFilter">
+        <option value="">全部状态</option>
+        <option value="有效">有效</option>
+        <option value="已过期">已过期</option>
+        <option value="已吊销">已吊销</option>
+      </select>
+
+      <button v-if="keyword || statusFilter || userFilter || tagFilter" class="btn ghost sm"
+              @click="keyword=''; statusFilter=''; userFilter=''; tagFilter=''">清空条件</button>
+
       <span class="faint" style="margin-left:auto;font-size:11px">
         {{ tab === 'devices' ? shownDevices.length : tab === 'keys' ? shownKeys.length : apiKeys.length }} 条记录
       </span>
     </div>
 
     <!-- 设备 -->
-    <div class="card" style="padding:0;overflow:hidden" v-if="tab === 'devices'">
+    <div class="card table-scroll" style="padding:0" v-if="tab === 'devices'">
       <table class="tbl">
         <thead><tr>
           <th style="width:24%">设备</th><th>成员</th><th>Tailscale IP</th><th>标签</th><th>最后在线</th><th>状态</th><th style="width:80px"></th>
@@ -383,12 +438,12 @@ function splitList(v: string) {
     </div>
 
     <!-- 成员 -->
-    <div v-else-if="tab === 'users'">
+    <div v-else-if="tab === 'users'" style="display:flex;flex-direction:column;min-height:0;flex:1">
       <div class="card tight row" style="margin-bottom:14px">
         <input class="input" style="width:220px" v-model="newUser" placeholder="新成员名称" :disabled="!canCreateUser" />
         <button class="btn" :disabled="!canCreateUser" @click="createUser">创建成员</button>
       </div>
-      <div class="card" style="padding:0;overflow:hidden">
+      <div class="card table-scroll" style="padding:0">
         <table class="tbl">
           <thead><tr><th>成员 / 命名空间</th><th>来源</th><th>创建时间</th><th style="width:170px"></th></tr></thead>
           <tbody>
@@ -418,7 +473,7 @@ function splitList(v: string) {
     </div>
 
     <!-- 授权 Key -->
-    <div class="card" style="padding:0;overflow:hidden" v-else-if="tab === 'keys'">
+    <div class="card table-scroll" style="padding:0" v-else-if="tab === 'keys'">
       <table class="tbl">
         <thead><tr><th>Key</th><th>成员</th><th>类型</th><th>到期</th><th>创建时间</th><th>状态</th><th style="width:120px"></th></tr></thead>
         <tbody>
@@ -439,7 +494,7 @@ function splitList(v: string) {
     </div>
 
     <!-- API Key -->
-    <div class="card" style="padding:0;overflow:hidden" v-else>
+    <div class="card table-scroll" style="padding:0" v-else>
       <table class="tbl">
         <thead><tr><th style="width:20%">前缀</th><th>到期</th><th>创建时间</th><th>最后使用</th><th>状态</th><th style="width:120px"></th></tr></thead>
         <tbody>

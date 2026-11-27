@@ -64,6 +64,8 @@ const meta: Record<string, [string, string]> = {
   apps: ['工作台', '应用管理'], forwards: ['工作台', '端口转发'],
   settings: ['设置', '连接设置'],
 }
+// 这几个页面是列表型：头部与筛选条固定，只有表格自己滚动
+const fixedLayout = computed(() => ['devices', 'users', 'keys', 'api', 'apps'].includes(page.value))
 const crumb = computed(() => meta[page.value]?.[0] ?? '总览')
 const title = computed(() => meta[page.value]?.[1] ?? '总览')
 const manageTab = computed(() => ['devices', 'users', 'keys', 'api'].includes(page.value) ? page.value : 'devices')
@@ -287,7 +289,7 @@ onUnmounted(() => {
         </div>
       </header>
 
-      <div class="content">
+      <div class="content" :class="{ 'content-fixed': fixedLayout }">
         <Overview v-if="page === 'overview'" :state="state" @refresh="refresh" @notify="notify" />
         <Manage v-else-if="['devices','users','keys','api'].includes(page)" :tab="manageTab" :state="state"
                 @notify="notify" @navigate="page = $event" />

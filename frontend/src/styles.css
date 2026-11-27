@@ -641,3 +641,13 @@ html[data-theme="dark"] .modal::-webkit-scrollbar-thumb {
 }
 .shot figcaption { margin-top: 6px; font-size: 10.5px; color: var(--faint); text-align: center; }
 .hl { color: var(--brand); font-weight: 600; }
+
+/* 页面级固定布局：头部和筛选条不动，只有表格区域自己滚 */
+.content-fixed { overflow: hidden; display: flex; flex-direction: column; }
+.page-flex { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.table-scroll { flex: 1; min-height: 0; overflow: auto; }
+.filter-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-shrink: 0; }
+.filter-bar .input { flex: none; }
+/* 原生 select 专用类：.select 是 Pick 下拉组件的样式，不能复用 */
+.filter-select { flex: none; width: 132px; height: 32px; padding: 0 8px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 12px; }

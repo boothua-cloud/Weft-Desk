@@ -9,12 +9,22 @@ const apps = ref<AppBookmark[]>([])
 const allowInsecure = ref(true)
 const hasHTTPS = computed(() => apps.value.some((a) => a.url.trim().toLowerCase().startsWith('https://')))
 const keyword = ref('')
+const groupFilter = ref('')
+const groups = computed(() => {
+  const set = new Set<string>()
+  apps.value.forEach(a => { if (a.group) set.add(a.group) })
+  return [...set].sort()
+})
 const drawer = ref(false)
 const form = ref<AppBookmark>({ id: '', name: '', url: '', group: '常用', icon: '#0F6E56', browser: false })
 const colors = ['#0F6E56', '#185FA5', '#378ADD', '#D85A30', '#BA7517', '#534AB7']
 
-const shown = computed(() => apps.value.filter(a =>
-  !keyword.value || (a.name + a.url + a.group).toLowerCase().includes(keyword.value.toLowerCase())))
+const shown = computed(() => apps.value.filter(a => {
+  const kw = keyword.value.trim().toLowerCase()
+  if (kw && !(a.name + a.url + a.group).toLowerCase().includes(kw)) return false
+  if (groupFilter.value && a.group !== groupFilter.value) return false
+  return true
+}))
 
 async function load() {
   try { apps.value = await api.apps() }
@@ -56,8 +66,8 @@ async function external(a: AppBookmark) {
 </script>
 
 <template>
-  <div>
-    <div class="spread" style="margin-bottom:18px">
+  <div class="page-flex">
+    <div class="spread" style="margin-bottom:18px;flex-shrink:0">
       <div class="faint" style="font-size:11.5px">共 {{ apps.length }} 个内网应用 · 书签保存在本地 SQLite</div>
       <button class="btn primary" @click="openForm()">＋ 添加应用</button>
     </div>
@@ -66,11 +76,18 @@ async function external(a: AppBookmark) {
       有应用使用 HTTPS：自签证书在应用窗口内会被直接拒绝加载（白屏）。到「连接设置」打开「信任自签 HTTPS 证书」即可。
     </div>
 
-    <div class="card tight row" style="margin-bottom:14px">
-      <input class="input" style="width:260px" v-model="keyword" placeholder="搜索名称 / 地址 / 分组…" />
-      <span class="faint" style="font-size:11px">「应用内打开」由 Wails v3 新开独立 WebView，经 127.0.0.1 本地代理转发到 tailnet，不使用 iframe</span>
+    <div class="filter-bar">
+      <input class="input" style="width:240px" v-model="keyword" placeholder="搜索名称 / 地址…" />
+      <select class="filter-select" v-model="groupFilter">
+        <option value="">全部分组</option>
+        <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
+      </select>
+      <button v-if="keyword || groupFilter" class="btn ghost sm"
+              @click="keyword=''; groupFilter=''">清空条件</button>
+      <span class="faint" style="margin-left:auto;font-size:11px">{{ shown.length }} / {{ apps.length }} 个应用</span>
     </div>
 
+    <div class="table-scroll">
     <div class="grid3">
       <div v-for="a in shown" :key="a.id" class="appcard">
         <div class="row">
@@ -95,6 +112,7 @@ async function external(a: AppBookmark) {
         <b>添加应用</b>
         <div class="faint" style="font-size:10.5px">名称 · 地址 · 分组 · 图标</div>
       </div>
+    </div>
     </div>
 
     <template v-if="drawer">
