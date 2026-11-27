@@ -253,7 +253,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: release/*.dmg
+          # 不只 dmg：make-dmg.sh 还会出一个内含单个 .app 的 zip，
+          # 自动更新只认那个（框架不会挂载 dmg），漏了它 mac 就没法更新。
+          path: |
+            release/*.dmg
+            release/*-macos-arm64.zip
           if-no-files-found: error
 
   release:
@@ -309,6 +313,9 @@ jobs:
           | macOS (Apple Silicon) | `weft-*-macos-arm64.dmg` |
           | Windows x64 | `weft-*-windows-amd64-setup.exe`（安装版，装到用户目录）<br>`weft-*-windows-amd64.zip`（便携版，解压即用） |
           | Linux x64 | `weft-*-linux-amd64.tar.gz` / `weft_*_amd64.deb` |
+
+          装好之后应用会自己检查更新，在「更多 → 检查更新」里一键下载并重启即可。
+          发布里的 `*-update.zip` / `*-macos-arm64.zip` 是自动更新专用的中间产物，手动安装不用管它们。
 
           Windows 版启动时会请求一次 UAC（创建虚拟网卡）；装一次「登录自启」后开机自动以管理员启动，日常不再弹窗。
           EOF
