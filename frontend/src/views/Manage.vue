@@ -361,7 +361,7 @@ async function createUser() {
 }
 // headscale v1 只有 create / rename / delete 三个用户接口，
 // 邮箱和显示名是创建时写进去、之后由 OIDC 提供方维护的，没有修改接口。
-const userEdit = ref<{ id: string; rawName: string; displayName: string; email: string; pictureUrl: string; provider: string } | null>(null)
+const userEdit = ref<{ id: string; rawName: string; displayName: string; email: string; pictureUrl: string } | null>(null)
 const editUserNewName = ref('')
 const editingUser = ref('')
 const editUserName = ref('')
@@ -369,7 +369,7 @@ function openUserEdit(u: User) {
   userEdit.value = {
     id: u.id, rawName: u.rawName || u.name,
     displayName: u.displayName || '', email: u.email || '',
-    pictureUrl: u.pictureUrl || '', provider: u.provider || '本地',
+    pictureUrl: u.pictureUrl || '',
   }
   editUserNewName.value = u.rawName || u.name
   drawer.value = 'useredit'
@@ -515,8 +515,8 @@ function splitList(v: string) {
       <div class="card table-scroll" style="padding:0">
         <table class="tbl">
           <thead><tr>
-            <th style="width:22%">成员 / 命名空间</th><th>显示名称</th><th>邮箱</th>
-            <th style="width:100px">设备</th><th>来源</th><th>创建时间</th><th style="width:150px"></th>
+            <th style="width:24%">成员 / 命名空间</th><th>显示名称</th><th>邮箱</th>
+            <th style="width:100px">设备</th><th>创建时间</th><th style="width:150px"></th>
           </tr></thead>
           <tbody>
             <tr v-for="u in users" :key="u.id">
@@ -533,7 +533,6 @@ function splitList(v: string) {
                 </span>
                 <span v-else class="faint">0</span>
               </td>
-              <td><span class="tag" :class="u.provider ? 'blue' : ''">{{ u.provider || '本地' }}</span></td>
               <td>{{ u.createdAt || '—' }}</td>
               <td class="row" style="justify-content:flex-end">
                 <template v-if="editingUser === u.id">
@@ -546,7 +545,7 @@ function splitList(v: string) {
                 </template>
               </td>
             </tr>
-            <tr v-if="!users.length"><td colspan="7" class="empty">暂无成员</td></tr>
+            <tr v-if="!users.length"><td colspan="6" class="empty">暂无成员</td></tr>
           </tbody>
         </table>
       </div>
@@ -673,11 +672,6 @@ function splitList(v: string) {
           <div class="field">
             <label class="field-label">邮箱</label>
             <input class="input mono" :value="userEdit.email || '—'" readonly
-                   style="opacity:.6;cursor:not-allowed" />
-          </div>
-          <div class="field">
-            <label class="field-label">来源</label>
-            <input class="input" :value="userEdit.provider || '本地'" readonly
                    style="opacity:.6;cursor:not-allowed" />
           </div>
           <div class="notice info" style="margin-bottom:14px">
