@@ -18,10 +18,12 @@ const tagFilter = ref('')
 const busy = ref(false)
 
 // 抽屉：新建 Key / 设备详情 / 注册设备 / 批准认证 / 新建 API Key
-type Drawer = '' | 'key' | 'device' | 'register' | 'auth' | 'apikey' | 'debug'
+type Drawer = '' | 'key' | 'device' | 'register' | 'auth' | 'apikey' | 'debug' | 'user'
 const drawer = ref<Drawer>('')
 const generated = ref('')
 const newUser = ref('')
+// headscale 的 user 有 name / displayName / email / pictureUrl 四个字段
+const userForm = ref({ name: '', displayName: '', email: '', pictureUrl: '' })
 const form = ref({ user: '', reusable: true, ephemeral: false, days: 90 })
 
 const sel = ref<Device | null>(null)
@@ -309,14 +311,28 @@ async function deleteApiKey(k: APIKey) {
 
 // ---------- 成员 ----------
 
+function openUserForm() {
+  userForm.value = { name: '', displayName: '', email: '', pictureUrl: '' }
+  drawer.value = 'user'
+}
 async function createUser() {
-  if (!newUser.value.trim()) return
+  const name = userForm.value.name.trim()
+  if (!name) { emit('notify', '成员名称不能为空'); return }
+  if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
+    emit('notify', '名称只能用字母、数字、点、下划线、短横线')
+    return
+  }
+  busy.value = true
   try {
-    await api.createUser(newUser.value.trim(), '', '', '')
+    await api.createUser(name, userForm.value.displayName.trim(),
+                         userForm.value.email.trim(), userForm.value.pictureUrl.trim())
+    drawer.value = ''
     newUser.value = ''
     await load()
-    emit('notify', '用户已创建')
-  } catch (err: any) { emit('notify', '创建失败：' + (err?.message ?? err)) }
+    emit('notify', '已创建成员 ' + name)
+  } catch (err: any) {
+    emit('notify', '创建失败：' + (err?.message ?? err))
+  } finally { busy.value = false }
 }
 const editingUser = ref('')
 const editUserName = ref('')
@@ -429,9 +445,9 @@ function splitList(v: string) {
 
     <!-- 成员 -->
     <div v-else-if="tab === 'users'" style="display:flex;flex-direction:column;min-height:0;flex:1">
-      <div class="card tight row" style="margin-bottom:14px">
-        <input class="input" style="width:220px" v-model="newUser" placeholder="新成员名称" :disabled="!canCreateUser" />
-        <button class="btn" :disabled="!canCreateUser" @click="createUser">创建成员</button>
+      <div class="spread" style="margin-bottom:14px;flex-shrink:0">
+        <span class="faint" style="font-size:11px">共 {{ users.length }} 个成员</span>
+        <button class="btn primary" :disabled="!canCreateUser" @click="openUserForm">＋ 新建成员</button>
       </div>
       <div class="card table-scroll" style="padding:0">
         <table class="tbl">
@@ -509,7 +525,8 @@ function splitList(v: string) {
           <b style="font-size:14px">
             {{ drawer === 'device' ? '设备详情' : drawer === 'register' ? '注册设备'
               : drawer === 'auth' ? '认证请求' : drawer === 'debug' ? '调试建节点'
-                : drawer === 'apikey' ? '新建 API Key' : '新建授权 Key' }}
+                  : drawer === 'apikey' ? '新建 API Key'
+                  : drawer === 'user' ? '新建成员' : '新建授权 Key' }}
           </b>
           <button class="btn ghost sm" @click="close">✕</button>
         </div>
@@ -562,6 +579,37 @@ function splitList(v: string) {
                   :disabled="busy" @click="removeDev">
             {{ edit.confirmDelete ? '确认删除？再点一次' : '删除设备' }}
           </button>
+        </template>
+
+        <!-- 新建成员 -->
+        <template v-else-if="drawer === 'user'">
+          <div class="field">
+            <label class="field-label">成员名称 <span style="color:var(--danger)">*</span></label>
+            <input class="input mono" v-model="userForm.name" placeholder="boothua"
+                   @keyup.enter="createUser" />
+            <div class="faint" style="font-size:10.5px;margin-top:4px">
+              对应 headscale 的 user.name，创建后用作命名空间，只能用字母、数字、点、下划线、短横线
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label">显示名称</label>
+            <input class="input" v-model="userForm.displayName" placeholder="选填，界面上显示的名字" />
+          </div>
+          <div class="field">
+            <label class="field-label">邮箱</label>
+            <input class="input mono" v-model="userForm.email" placeholder="选填，name@example.com" />
+          </div>
+          <div class="field">
+            <label class="field-label">头像地址</label>
+            <input class="input mono" v-model="userForm.pictureUrl" placeholder="选填，https://…" />
+          </div>
+          <button class="btn primary" style="width:100%;height:38px" :disabled="busy" @click="createUser">
+            <span v-if="busy" class="spinner"></span>{{ busy ? '创建中…' : '创建成员' }}
+          </button>
+          <div class="notice info" style="margin-top:16px">
+            创建后可以在成员行上「重命名」或「删除」。删除会连带该成员名下的节点归属，
+            headscale 要求先清空节点才能删成员。
+          </div>
         </template>
 
         <!-- 注册设备 -->
