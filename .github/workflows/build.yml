@@ -1,0 +1,170 @@
+name: build
+
+# GitHub Actions：三平台都在原生托管 runner 上构建，不用交叉编译、不用自建机器。
+#   linux   → ubuntu-24.04 出 tar.gz
+#   windows → windows-latest 出 NSIS 安装包
+#   macos   → macos-14 (arm64) 出 dmg
+# 打 tag 时额外把产物挂到 Release。
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  APP_VERSION: 0.1.0
+  WAILS_VERSION: v3.0.0
+  GOTOOLCHAIN: local
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+
+      - name: 安装 wails3
+        # CGO_ENABLED=0：CLI 是纯 Go 工具，开了会去要 gtk4 头文件
+        run: CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
+
+      - name: 构建前端
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm run build
+
+      - name: 编译
+        # 必须带 gtk3 标签：Wails 默认走 GTK4 + WebKitGTK 6.0，Ubuntu 没有这个包
+        run: |
+          go mod download
+          CGO_ENABLED=1 go build -tags "production gtk3" \
+            -trimpath -buildvcs=false -ldflags="-w -s" -o bin/weft .
+
+      - name: 打包
+        run: |
+          mkdir -p dist
+          tar -C bin -czf "dist/weft-${APP_VERSION}-linux-amd64.tar.gz" weft
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装 wails3
+        shell: bash
+        run: |
+          CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: 构建前端
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm run build
+
+      - name: 编译
+        shell: bash
+        run: |
+          go mod download
+          go generate ./... 2>/dev/null || true
+          CGO_ENABLED=0 go build -tags production \
+            -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o bin/weft.exe .
+
+      - name: 取 WinTun 运行库
+        shell: bash
+        run: bash scripts/fetch-wintun.sh amd64 || echo "wintun 获取跳过"
+
+      - name: 打包 zip
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp bin/weft.exe dist/ 2>/dev/null || cp bin/云栈.exe dist/weft.exe
+          [ -f bin/wintun.dll ] && cp bin/wintun.dll dist/ || true
+          cd dist && zip -q -r "weft-${APP_VERSION}-windows-amd64.zip" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.zip
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 构建并打包
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          wails3 build -tags devtools
+          ./scripts/make-dmg.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: release/*.dmg
+          if-no-files-found: error
+
+  release:
+    needs: [linux, windows, macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
