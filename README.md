@@ -44,7 +44,7 @@ macOS / Windows / Linux，安装即用，没有外部依赖。
 |---|---|
 | macOS (Apple Silicon) | `weft-0.1.0-macos-arm64.dmg` |
 | Windows x64 | `weft-0.1.0-windows-amd64.zip`（内含 `wintun.dll`） |
-| Linux x64 | `weft-0.1.0-linux-amd64.tar.gz` |
+| Linux x64 | `weft_0.1.0_amd64.deb`（Ubuntu 24.04+）或 `weft-0.1.0-linux-amd64.tar.gz` |
 
 Windows 用户第一次点「连接」会弹一次 UAC——这是创建虚拟网卡的硬性要求。装好「系统助手」之后就不再提示。
 
@@ -74,7 +74,9 @@ headscale apikeys create
 | 路由 | `route` | IP Helper API | `ip route` |
 | 免密方案 | LaunchDaemon | 计划任务 | systemd unit |
 
-macOS 和 Windows 在真机上验证过完整流程。Linux 目前只做了交叉编译和类型检查，提权与路由清理还需要更多实机验证。
+macOS 和 Windows 在真机上验证过完整流程。
+
+Linux 目前只针对 **Ubuntu 24.04 桌面版**：编译时链的是 `webkit2gtk-4.1`，22.04 的仓库里只有 4.0，装 `.deb` 会提示依赖不满足。提权和路由清理还需要更多实机验证。
 
 ## 构建
 
