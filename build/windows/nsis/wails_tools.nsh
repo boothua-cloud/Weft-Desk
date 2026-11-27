@@ -1,4 +1,4 @@
-# DO NOT EDIT - Generated automatically by `wails build`
+﻿# DO NOT EDIT - Generated automatically by `wails build`
 
 !include "x64.nsh"
 !include "WinVer.nsh"
@@ -12,6 +12,11 @@
 !endif
 !ifndef INFO_PRODUCTNAME
     !define INFO_PRODUCTNAME "Weft"
+!endif
+# 界面上显示的名字（中文），默认跟 INFO_PRODUCTNAME 一致；
+# 安装目录等路径仍用 INFO_PRODUCTNAME，所以两者要能分开。
+!ifndef INFO_DISPLAYNAME
+    !define INFO_DISPLAYNAME "${INFO_PRODUCTNAME}"
 !endif
 !ifndef INFO_PRODUCTVERSION
     !define INFO_PRODUCTVERSION "0.1.2"
@@ -125,7 +130,7 @@ RequestExecutionLevel "${REQUEST_EXECUTION_LEVEL}"
     SetRegView 64
     !if "${WAILS_INSTALL_SCOPE}" == "user"
         WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "${INFO_COMPANYNAME}"
-        WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "${INFO_PRODUCTNAME}"
+        WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "${INFO_DISPLAYNAME}"
         WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "${INFO_PRODUCTVERSION}"
         WriteRegStr HKCU "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\${PRODUCT_EXECUTABLE}"
         WriteRegStr HKCU "${UNINST_KEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
@@ -136,7 +141,7 @@ RequestExecutionLevel "${REQUEST_EXECUTION_LEVEL}"
         WriteRegDWORD HKCU "${UNINST_KEY}" "EstimatedSize" "$0"
     !else
         WriteRegStr HKLM "${UNINST_KEY}" "Publisher" "${INFO_COMPANYNAME}"
-        WriteRegStr HKLM "${UNINST_KEY}" "DisplayName" "${INFO_PRODUCTNAME}"
+        WriteRegStr HKLM "${UNINST_KEY}" "DisplayName" "${INFO_DISPLAYNAME}"
         WriteRegStr HKLM "${UNINST_KEY}" "DisplayVersion" "${INFO_PRODUCTVERSION}"
         WriteRegStr HKLM "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\${PRODUCT_EXECUTABLE}"
         WriteRegStr HKLM "${UNINST_KEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
