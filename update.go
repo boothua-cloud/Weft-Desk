@@ -62,6 +62,12 @@ type updateState struct {
 	ready   bool
 }
 
+func (u *updateState) updater() *updater.Updater {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+	return u.up
+}
+
 func (u *updateState) setRelease(r *updater.Release) {
 	u.mu.Lock()
 	u.release = r
@@ -172,7 +178,8 @@ func (s *WeftService) CheckUpdate() (string, error) {
 
 func (s *WeftService) checkUpdate() UpdateStatus {
 	st := UpdateStatus{CurrentVersion: appVersion, State: "idle"}
-	if s.upd == nil || s.upd.up == nil {
+	up := s.upd.updater()
+	if up == nil {
 		st.State = "error"
 		st.Error = "更新模块未就绪"
 		return st
@@ -184,7 +191,7 @@ func (s *WeftService) checkUpdate() UpdateStatus {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
-	rel, err := s.upd.up.Check(ctx)
+	rel, err := up.Check(ctx)
 	if err != nil {
 		// 发布里没有可替换的附件，或者网络抖动。退回直接查 GitHub API：
 		// 至少让用户看到「有新版本」并能手动下载，而不是只看到一句报错。
@@ -229,13 +236,14 @@ func (s *WeftService) checkUpdate() UpdateStatus {
 
 // DownloadUpdate 下载并暂存新版。完成后调用 ApplyUpdate 重启生效。
 func (s *WeftService) DownloadUpdate() (string, error) {
-	if s.upd == nil || s.upd.up == nil {
+	up := s.upd.updater()
+	if up == nil {
 		return "", errors.New("更新模块未就绪")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	if err := s.upd.up.DownloadAndInstall(ctx); err != nil {
+	if err := up.DownloadAndInstall(ctx); err != nil {
 		return "", err
 	}
 	s.upd.mu.Lock()
@@ -248,12 +256,13 @@ func (s *WeftService) DownloadUpdate() (string, error) {
 
 // ApplyUpdate 用后台助手替换旧文件并重新拉起应用。调用后本进程会退出。
 func (s *WeftService) ApplyUpdate() error {
-	if s.upd == nil || s.upd.up == nil {
+	up := s.upd.updater()
+	if up == nil {
 		return errors.New("更新模块未就绪")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
-	return s.upd.up.Restart(ctx)
+	return up.Restart(ctx)
 }
 
 // UpdateInfo 返回当前更新状态，前端在弹窗打开时先拿一次。
@@ -399,8 +408,11 @@ func openInstaller(path string) error {
 	switch runtime.GOOS {
 	case "darwin":
 		return exec.Command("open", path).Start()
-	default:
+	case "windows":
 		return exec.Command(path).Start()
+	default:
+		// Linux 发的是 tar.gz，没法「运行」；打开所在目录让用户自己解。
+		return exec.Command("xdg-open", filepath.Dir(path)).Start()
 	}
 }
 
