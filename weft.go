@@ -88,6 +88,7 @@ func NewWeftService(store *Store) *WeftService {
 func (s *WeftService) attach(app *application.App) {
 	s.app = app
 	s.autoConnect()
+	s.watchAPIKeyExpiry()
 }
 
 // autoConnect 在启动与保存配置后复用，避免「配置好了还要手动再点一次连接」。
@@ -719,6 +720,78 @@ func (s *WeftService) TestConnection() (string, error) {
 	s.mu.Unlock()
 	s.store.AddAudit("测试连接", cap.ProbeMessage)
 	return cap.ProbeMessage, nil
+}
+
+// EnsureAPIKeyFresh 在当前管理密钥快过期时自动换一把新的。
+//
+// headscale 没有「续期」接口，只能新建后替换。流程：
+//   1. 列出所有 API Key，用前缀认出当前这把
+//   2. 剩余天数小于阈值就新建一把（用旧 Key 授权），立刻写进钥匙串
+//   3. 旧 Key 吊销，避免留着一把没人管的凭证
+//
+// 失败不会抛出到界面，只写审计；下次定时器还会再试。
+func (s *WeftService) EnsureAPIKeyFresh(window time.Duration) (bool, error) {
+	s.mu.Lock()
+	cp, cfg := s.cp, s.cfg
+	s.mu.Unlock()
+
+	cur := strings.TrimSpace(secretGet(secretMain))
+	if cur == "" || cp == nil {
+		return false, nil
+	}
+
+	keys, err := cp.APIKeys()
+	if err != nil {
+		return false, err
+	}
+	var self *APIKey
+	for i := range keys {
+		if keys[i].Prefix != "" && strings.HasPrefix(cur, keys[i].Prefix) {
+			self = &keys[i]
+			break
+		}
+	}
+	if self == nil || self.Expires == "" {
+		return false, nil // 认不出来或者永不过期，不动
+	}
+	exp, err := time.Parse(time.RFC3339, self.Expires)
+	if err != nil {
+		return false, err
+	}
+	left := time.Until(exp)
+	if left > window {
+		return false, nil
+	}
+
+	// 新 Key 的有效期给 90 天，比阈值宽得多
+	fresh, err := cp.CreateAPIKey(90)
+	if err != nil {
+		return false, fmt.Errorf("创建新密钥失败: %w", err)
+	}
+	if err := secretSet(secretMain, fresh); err != nil {
+		return false, fmt.Errorf("保存新密钥失败: %w", err)
+	}
+	// 旧 Key 已经没用了，吊销掉；失败不影响本次续期结果
+	if err := cp.ExpireAPIKey(self.Prefix, self.ID); err != nil {
+		log.Printf("[keys] 吊销旧 API Key 失败（新密钥已生效）: %v", err)
+	}
+	s.store.AddAudit("自动续期管理密钥", cfg.BaseURL+" · 剩余 "+left.Round(time.Hour).String())
+	log.Printf("[keys] 管理密钥已自动续期，旧 Key %s 剩余 %v", self.Prefix, left.Round(time.Hour))
+	return true, nil
+}
+
+// watchAPIKeyExpiry 每小时检查一次，启动后先等半分钟再跑第一次，
+// 免得跟自动连接抢带宽。
+func (s *WeftService) watchAPIKeyExpiry() {
+	go func() {
+		time.Sleep(30 * time.Second)
+		for {
+			if _, err := s.EnsureAPIKeyFresh(7 * 24 * time.Hour); err != nil {
+				log.Printf("[keys] 检查管理密钥到期时间失败: %v", err)
+			}
+			time.Sleep(time.Hour)
+		}
+	}()
 }
 
 // defaultCapabilities 是「还没探测过」时的取值。

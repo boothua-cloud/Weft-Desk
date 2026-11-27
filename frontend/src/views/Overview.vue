@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { api, type State, type AppBookmark, type AuditEvent } from '../api'
+import { api, type State, type AppBookmark, type AuditEvent, type Device, type APIKey } from '../api'
 import { reloadTick } from '../bus'
 
 const props = defineProps<{ state: State | null }>()
 const emit = defineEmits(['refresh', 'notify'])
 const apps = ref<AppBookmark[]>([])
 const audit = ref<AuditEvent[]>([])
+const devices = ref<Device[]>([])
+const apiKeys = ref<APIKey[]>([])
 const busy = ref(false)
 const opening = ref('')
 
@@ -23,11 +25,40 @@ const total = computed(() => peers.value.length)
 const routes = computed(() => props.state?.routes ?? [])
 const skipped = computed(() => props.state?.skipped ?? [])
 
+// 到期提醒：节点密钥过期会直接掉线，管理密钥过期就管不了服务端
+const EXPIRY_WARN_DAYS = 7
+function daysLeft(ts?: string): number {
+  if (!ts || ts.startsWith('0001') || ts.includes('永不过期')) return Infinity
+  const d = new Date(ts.replace(' ', 'T'))
+  if (isNaN(d.getTime())) return Infinity
+  return Math.ceil((d.getTime() - Date.now()) / 86400000)
+}
+const expiringDevices = computed(() =>
+  devices.value.filter(d => { const n = daysLeft(d.expiry); return n !== Infinity && n <= EXPIRY_WARN_DAYS }))
+const expiringKey = computed(() =>
+  apiKeys.value.find(k => {
+    if (k.status !== '有效') return false
+    const n = daysLeft(k.expires)
+    return n !== Infinity && n <= EXPIRY_WARN_DAYS
+  }))
+async function renewDevice(d: Device) {
+  try {
+    await api.disableDeviceExpiry(d.id)
+    emit('notify', d.name + ' 已取消到期时间')
+    await load()
+  } catch (err: any) { emit('notify', '续期失败：' + (err?.message ?? err)) }
+}
+
 async function load() {
   try {
     const [a, e] = await Promise.all([api.apps(), api.audit()])
     apps.value = a
     audit.value = e
+    // 到期检查要读服务端列表，没配管理密钥时会失败，忽略即可
+    try {
+      devices.value = (await api.devices()).items
+      apiKeys.value = (await api.apiKeys()).items
+    } catch { /* 未配置管理密钥 */ }
   } catch (err: any) {
     emit('notify', '加载总览数据失败：' + (err?.message ?? err))
   }
@@ -173,6 +204,22 @@ function copyLogin() {
         <small>本节点地址</small>
       </div>
     </section>
+
+    <div v-if="expiringKey || expiringDevices.length" class="card" style="margin-bottom:14px;border-color:var(--warn-line, #c98a2e)">
+      <h3 class="sec" style="color:var(--warn-text, #b4741a)">密钥到期提醒</h3>
+      <div v-if="expiringKey" style="font-size:11.5px;line-height:1.8;margin-bottom:6px">
+        管理密钥还有 <b>{{ daysLeft(expiringKey.expires) }}</b> 天过期。过期后无法管理设备、成员与策略，
+        应用每小时会自动检查并在剩 7 天时换一把新的。
+      </div>
+      <div v-if="expiringDevices.length" style="font-size:11.5px;line-height:1.8">
+        以下节点即将到期，到期会从 tailnet 断开：
+        <div v-for="d in expiringDevices" :key="d.id" class="row" style="gap:8px;margin-top:6px">
+          <span class="mono" style="font-size:11px">{{ d.name }}</span>
+          <span class="faint" style="font-size:10.5px">{{ d.expiry }}</span>
+          <button class="btn sm ghost" @click="renewDevice(d)">取消到期</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 指标 -->
     <div class="grid4" style="margin-bottom:14px">
