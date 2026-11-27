@@ -121,8 +121,8 @@ Linux 仅交叉编译与类型检查，提权与路由清理需真机确认。
 
 | 目标 | 产出 | 构建机 |
 |---|---|---|
-| Windows | `weft-0.1.0-windows-amd64.zip`（`weft.exe` + `wintun.dll`） | Linux 交叉编译（`CGO_ENABLED=0`） |
-| Windows 安装包 | `云栈-windows-amd64-setup.exe`（NSIS，装到 `%LOCALAPPDATA%\Programs\Weft`） | Linux + `makensis`，仅打 tag 时 |
+| Windows 便携版 | `weft-0.1.2-windows-amd64.zip`（`weft.exe` + `wintun.dll`） | windows-latest，`CGO_ENABLED=0` |
+| Windows 安装包 | `weft-0.1.2-windows-amd64-setup.exe`（NSIS，装到 `%LOCALAPPDATA%\Programs\Weft`，per-user 免 UAC） | windows-latest，`choco install nsis` 后直接跑 `makensis` |
 | Linux | `云栈_0.1.0-1_amd64.deb` + `云栈-0.1.0-linux-amd64.tar.gz` | Linux 原生（`CGO_ENABLED=1 -tags gtk3`） |
 | macOS | `云栈-0.1.0-macos-arm64.dmg` | 必须 macOS 主机，需要 `macos-latest` runner |
 
@@ -138,7 +138,7 @@ Release 上。三个 job 并发，脚本对「release 已存在」做了幂等�
 **发版**：先在 `CHANGELOG.md` 写下本版本的 `## [x.y.z]` 小节（发版说明会从这里截取），
 再 `git tag -a v0.1.1 -m "..." && git push origin v0.1.1`。
 tag 触发时附件挂到 `v0.1.1` 这个发布；手动触发时用 `build-<commit8>` 建一个临时发布。
-`installer` 打 NSIS 安装包（仅 tag）；`macos` 需要 macOS runner。
+`windows` job 顺带出 NSIS 安装包（`dist/*-windows-amd64-setup.exe`）；`macos` 需要 macOS runner。
 
 > runner 侧的两个环境要求（本机 Docker runner 已配好）：容器要能访问 github.com 拉
 > action 源码（配置了走网关代理，`NO_PROXY` 放行 `git.boothua.cn`，避免出口 IP 被
