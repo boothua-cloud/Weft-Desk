@@ -780,6 +780,43 @@ func (s *WeftService) EnsureAPIKeyFresh(window time.Duration) (bool, error) {
 	return true, nil
 }
 
+// RenewAPIKey 强制换一把新的管理密钥（不看剩余天数），供界面上的「续期」按钮调用。
+func (s *WeftService) RenewAPIKey() error {
+	s.mu.Lock()
+	cp := s.cp
+	s.mu.Unlock()
+	if cp == nil {
+		return fmt.Errorf("尚未配置服务端")
+	}
+	cur := strings.TrimSpace(secretGet(secretMain))
+	if cur == "" {
+		return fmt.Errorf("还没有管理密钥，请先在连接设置里填一个")
+	}
+	keys, err := cp.APIKeys()
+	if err != nil {
+		return err
+	}
+	var self *APIKey
+	for i := range keys {
+		if keys[i].Prefix != "" && strings.HasPrefix(cur, keys[i].Prefix) {
+			self = &keys[i]
+			break
+		}
+	}
+	fresh, err := cp.CreateAPIKey(90)
+	if err != nil {
+		return fmt.Errorf("创建新密钥失败: %w", err)
+	}
+	if err := secretSet(secretMain, fresh); err != nil {
+		return fmt.Errorf("保存新密钥失败: %w", err)
+	}
+	if self != nil {
+		_ = cp.ExpireAPIKey(self.Prefix, self.ID)
+	}
+	s.store.AddAudit("手动续期管理密钥", "有效期重置为 90 天")
+	return nil
+}
+
 // watchAPIKeyExpiry 每小时检查一次，启动后先等半分钟再跑第一次，
 // 免得跟自动连接抢带宽。
 func (s *WeftService) watchAPIKeyExpiry() {
