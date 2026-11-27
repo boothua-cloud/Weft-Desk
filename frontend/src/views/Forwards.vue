@@ -2,6 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { api, type ForwardRule, type ForwardView, type State } from '../api'
 import Pick from '../components/Pick.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import { useConfirm } from '../confirm'
 import { reloadTick } from '../bus'
 
 defineProps<{ state: State | null }>()
@@ -13,6 +15,7 @@ const drawer = ref(false)
 const snippet = ref('')
 const snippetOpen = ref(false)
 const form = ref<ForwardRule>({ id: '', name: '', kind: 'ssh', target: '', targetPort: 22, localPort: 2222, enabled: true })
+const { confirmBox, askConfirm, closeConfirm } = useConfirm()
 
 const kinds = [
   { value: 'ssh', label: 'SSH' }, { value: 'mysql', label: 'MySQL' },
@@ -52,6 +55,14 @@ async function act(fn: () => Promise<any>, msg: string) {
   try { await fn(); await load(); emit('notify', msg) }
   catch (err: any) { emit('notify', '操作失败：' + (err?.message ?? err)) }
   finally { busy.value = false }
+}
+function removeRule(r: ForwardRule) {
+  askConfirm({
+    title: '删除这条转发规则？',
+    desc: `${r.name}\n本地 ${r.localPort} → ${r.target}:${r.targetPort}\n删除后监听端口立即释放，正在用的连接会断开。`,
+    ok: '删除',
+    action: () => act(() => api.deleteForward(r.id), '已删除'),
+  })
 }
 async function showSnippet(r: ForwardRule) {
   try { snippet.value = await api.forwardSnippet(r.id); snippetOpen.value = true }
@@ -142,7 +153,7 @@ function stateTag(st?: string) {
                 <button class="btn ghost sm" @click="act(() => api.toggleForward(r.id, !r.enabled), r.enabled ? '已禁用' : '已启用')">{{ r.enabled ? '禁用' : '启用' }}</button>
                 <button class="btn ghost sm" @click="showSnippet(r)">命令</button>
                 <button class="btn ghost sm" @click="edit(r)">编辑</button>
-                <button class="btn ghost sm" @click="act(() => api.deleteForward(r.id), '已删除')">删除</button>
+                <button class="btn ghost sm" @click="removeRule(r)">删除</button>
               </div>
             </td>
           </tr>
@@ -186,5 +197,7 @@ function stateTag(st?: string) {
         <pre class="codearea mono" style="min-height:auto;white-space:pre-wrap">{{ snippet }}</pre>
       </div>
     </template>
+
+    <ConfirmDialog v-if="confirmBox" v-bind="confirmBox" @close="closeConfirm" />
   </div>
 </template>
