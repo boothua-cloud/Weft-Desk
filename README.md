@@ -42,9 +42,9 @@ macOS / Windows / Linux，安装即用，没有外部依赖。
 
 | 平台 | 文件 |
 |---|---|
-| macOS (Apple Silicon) | `weft-0.1.0-macos-arm64.dmg` |
-| Windows x64 | `weft-0.1.0-windows-amd64.zip`（内含 `wintun.dll`） |
-| Linux x64 | `weft_0.1.0_amd64.deb`（Ubuntu 24.04+）或 `weft-0.1.0-linux-amd64.tar.gz` |
+| macOS (Apple Silicon) | `weft-0.1.2-macos-arm64.dmg` |
+| Windows x64 | `weft-0.1.2-windows-amd64.zip`（内含 `wintun.dll`） |
+| Linux x64 | `weft_0.1.2_amd64.deb`（Ubuntu 24.04+）或 `weft-0.1.2-linux-amd64.tar.gz` |
 
 Windows 用户第一次点「连接」会弹一次 UAC——这是创建虚拟网卡的硬性要求。装好「系统助手」之后就不再提示。
 
