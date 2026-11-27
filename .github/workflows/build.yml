@@ -38,6 +38,8 @@ jobs:
 
       - name: 解析版本号
         # tag 触发取 tag（v0.1.1 → 0.1.1），手动触发用 APP_VERSION
+        # 显式指定 bash：Windows runner 默认是 pwsh，跑不了这段 shell 语法
+        shell: bash
         run: |
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then V="${GITHUB_REF_NAME#v}"; else V="${APP_VERSION}"; fi
           echo "VER=$V" >> $GITHUB_ENV
@@ -110,6 +112,8 @@ jobs:
 
       - name: 解析版本号
         # tag 触发取 tag（v0.1.1 → 0.1.1），手动触发用 APP_VERSION
+        # 显式指定 bash：Windows runner 默认是 pwsh，跑不了这段 shell 语法
+        shell: bash
         run: |
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then V="${GITHUB_REF_NAME#v}"; else V="${APP_VERSION}"; fi
           echo "VER=$V" >> $GITHUB_ENV
@@ -173,6 +177,8 @@ jobs:
 
       - name: 解析版本号
         # tag 触发取 tag（v0.1.1 → 0.1.1），手动触发用 APP_VERSION
+        # 显式指定 bash：Windows runner 默认是 pwsh，跑不了这段 shell 语法
+        shell: bash
         run: |
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then V="${GITHUB_REF_NAME#v}"; else V="${APP_VERSION}"; fi
           echo "VER=$V" >> $GITHUB_ENV
