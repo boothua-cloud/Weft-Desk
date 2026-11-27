@@ -18,7 +18,7 @@ const tagFilter = ref('')
 const busy = ref(false)
 
 // 抽屉：新建 Key / 设备详情 / 注册设备 / 批准认证 / 新建 API Key
-type Drawer = '' | 'key' | 'device' | 'register' | 'auth' | 'apikey' | 'debug' | 'user'
+type Drawer = '' | 'key' | 'device' | 'register' | 'auth' | 'apikey' | 'debug' | 'user' | 'useredit'
 const drawer = ref<Drawer>('')
 const generated = ref('')
 const newUser = ref('')
@@ -359,8 +359,40 @@ async function createUser() {
     emit('notify', '创建失败：' + (err?.message ?? err))
   } finally { busy.value = false }
 }
+// headscale v1 只有 create / rename / delete 三个用户接口，
+// 邮箱和显示名是创建时写进去、之后由 OIDC 提供方维护的，没有修改接口。
+const userEdit = ref<{ id: string; rawName: string; displayName: string; email: string; pictureUrl: string; provider: string } | null>(null)
+const editUserNewName = ref('')
 const editingUser = ref('')
 const editUserName = ref('')
+function openUserEdit(u: User) {
+  userEdit.value = {
+    id: u.id, rawName: u.rawName || u.name,
+    displayName: u.displayName || '', email: u.email || '',
+    pictureUrl: u.pictureUrl || '', provider: u.provider || '本地',
+  }
+  editUserNewName.value = u.rawName || u.name
+  drawer.value = 'useredit'
+}
+async function saveUserName() {
+  if (!userEdit.value) return
+  const v = editUserNewName.value.trim()
+  if (!v) { emit('notify', '名称不能为空'); return }
+  if (!/^[a-zA-Z0-9._-]+$/.test(v)) {
+    emit('notify', '名称只能用字母、数字、点、下划线、短横线')
+    return
+  }
+  if (v === userEdit.value.rawName) { drawer.value = ''; return }
+  busy.value = true
+  try {
+    await api.renameUser(userEdit.value.id, v)
+    drawer.value = ''
+    await load()
+    emit('notify', '已重命名为 ' + v)
+  } catch (err: any) {
+    emit('notify', '重命名失败：' + (err?.message ?? err))
+  } finally { busy.value = false }
+}
 function startRename(u: User) {
   editingUser.value = u.id
   editUserName.value = u.rawName || u.name
@@ -509,7 +541,7 @@ function splitList(v: string) {
                   <button class="btn ghost sm" @click="editingUser = ''">取消</button>
                 </template>
                 <template v-else>
-                  <button class="btn ghost sm" :disabled="!canCreateUser" @click="startRename(u)">重命名</button>
+                  <button class="btn ghost sm" :disabled="!canCreateUser" @click="openUserEdit(u)">编辑</button>
                   <button class="btn ghost sm" :disabled="!canCreateUser" @click="deleteUser(u)">删除</button>
                 </template>
               </td>
@@ -568,7 +600,8 @@ function splitList(v: string) {
             {{ drawer === 'device' ? '设备详情' : drawer === 'register' ? '注册设备'
               : drawer === 'auth' ? '认证请求' : drawer === 'debug' ? '调试建节点'
                   : drawer === 'apikey' ? '新建 API Key'
-                  : drawer === 'user' ? '新建成员' : '新建授权 Key' }}
+                  : drawer === 'user' ? '新建成员'
+                    : drawer === 'useredit' ? '编辑成员' : '新建授权 Key' }}
           </b>
           <button class="btn ghost sm" @click="close">✕</button>
         </div>
@@ -621,6 +654,44 @@ function splitList(v: string) {
                   :disabled="busy" @click="removeDev">
             {{ edit.confirmDelete ? '确认删除？再点一次' : '删除设备' }}
           </button>
+        </template>
+
+        <!-- 编辑成员 -->
+        <template v-else-if="drawer === 'useredit' && userEdit">
+          <div class="field">
+            <label class="field-label">成员名称 <span style="color:var(--danger)">*</span></label>
+            <input class="input mono" v-model="editUserNewName" @keyup.enter="saveUserName" />
+            <div class="faint" style="font-size:10.5px;margin-top:4px">
+              改名会同步到 headscale，节点归属跟着走；该名字也是 ACL 里引用成员的标识
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label">显示名称</label>
+            <input class="input" :value="userEdit.displayName || '—'" readonly
+                   style="opacity:.6;cursor:not-allowed" />
+          </div>
+          <div class="field">
+            <label class="field-label">邮箱</label>
+            <input class="input mono" :value="userEdit.email || '—'" readonly
+                   style="opacity:.6;cursor:not-allowed" />
+          </div>
+          <div class="field">
+            <label class="field-label">来源</label>
+            <input class="input" :value="userEdit.provider || '本地'" readonly
+                   style="opacity:.6;cursor:not-allowed" />
+          </div>
+          <div class="notice info" style="margin-bottom:14px">
+            headscale 的用户接口只有创建、改名、删除三种。邮箱和显示名是
+            创建时写入的，之后由 OIDC 提供方（或命令行）维护，没有单独的修改接口 ——
+            所以这里只读。要改的话得在提供方那边改，或者删了重建。
+          </div>
+          <div class="row" style="gap:8px">
+            <button class="btn primary" style="flex:1;height:38px" :disabled="busy" @click="saveUserName">
+              {{ busy ? '保存中…' : '保存名称' }}
+            </button>
+            <button class="btn danger" style="flex:none" :disabled="busy"
+                    @click="userEdit && deleteUser({ id: userEdit.id, name: userEdit.rawName } as User)">删除</button>
+          </div>
         </template>
 
         <!-- 新建成员 -->
