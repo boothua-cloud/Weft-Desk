@@ -103,7 +103,7 @@ const alerts = computed<Alert[]>(() => {
       out.push({
         id: 'route-' + d.id, level: 'warn',
         text: `${d.name} 有 ${pending.length} 段路由没批准`,
-        sub: pending.join('、'), page: 'devices', action: '去批准',
+        sub: pending.join('、'), page: 'routes', action: '去批准',
       })
     }
   }

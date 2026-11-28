@@ -8,6 +8,8 @@ export type ConfirmBox = {
   desc?: string
   ok?: string
   cancel?: string
+  /** 确认按钮的色调。默认红色（删除类），批准这种动作用 primary */
+  tone?: 'danger' | 'primary'
   action: () => Promise<void> | void
 }
 

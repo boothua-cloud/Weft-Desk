@@ -8,6 +8,7 @@ const props = defineProps<{
   desc?: string
   ok?: string
   cancel?: string
+  tone?: 'danger' | 'primary'
   action: () => Promise<void> | void
 }>()
 const emit = defineEmits(['close'])
@@ -33,7 +34,7 @@ async function go() {
       <p v-if="desc" class="confirm-desc">{{ desc }}</p>
       <div class="row" style="justify-content:flex-end;gap:8px;margin-top:20px">
         <button class="btn" :disabled="busy" @click="emit('close')">{{ cancel || '取消' }}</button>
-        <button class="btn danger" :disabled="busy" @click="go">
+        <button class="btn" :class="tone === 'primary' ? 'primary' : 'danger'" :disabled="busy" @click="go">
           <span v-if="busy" class="spinner" style="margin-right:6px"></span>{{ ok || '删除' }}
         </button>
       </div>

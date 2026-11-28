@@ -124,6 +124,14 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
             每行右侧「管理」打开详情抽屉：改主机名、打标签（<span class="mono">tag:server</span>）、勾选批准该节点通告的子网路由、
             让节点立即到期或取消到期、删除设备。删除会连同它的路由一起消失，正在连的客户端会断开。
           </p>
+          <p style="margin-top:8px">
+            路由不用逐台点进去：左侧「子网路由」把所有设备通告的网段列在一张表里，待批准的排前面，出口节点（<span class="mono">0.0.0.0/0</span>）单独标出来，
+            行上直接批准或撤销，也能一次全部批准。
+          </p>
+          <figure class="shot">
+            <img src="/help/routes.png" alt="子网路由" />
+            <figcaption>子网路由：待批准排在前面，出口节点单独标出</figcaption>
+          </figure>
         </section>
 
         <section class="help-sec">

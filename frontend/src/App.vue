@@ -6,6 +6,7 @@ import { requestReload } from './bus'
 import { darkMode, setTheme } from './theme'
 import Overview from './views/Overview.vue'
 import Manage from './views/Manage.vue'
+import Routes from './views/Routes.vue'
 import Acl from './views/Acl.vue'
 import Apps from './views/Apps.vue'
 import Forwards from './views/Forwards.vue'
@@ -60,6 +61,7 @@ const icons: Record<string, string> = {
   keys: 'M5.5 10.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M7.5 8.5 14 2M11 5l2 2M9 7l2 2',
   api: 'M6 3H5a2 2 0 0 0-2 2v2a2 2 0 0 1-2 2 2 2 0 0 1 2 2v2a2 2 0 0 0 2 2h1M10 3h1a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0-2 2v2a2 2 0 0 1-2 2h-1',
   acl: 'M8 1.5 14 4v4c0 3.5-2.5 5.5-6 6.5-3.5-1-6-3-6-6.5V4zM5.5 8l1.7 1.7L11 6',
+  routes: 'M2 12h3.5c2 0 2.5-4 4.5-4H14M11.5 6 14 8l-2.5 2M2 4h3',
   apps: 'M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z',
   settings: 'M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5 13 13M13 3l-1.5 1.5M4.5 11.5 3 13',
   forwards: 'M2 5h8M8 2l3 3-3 3M14 11H6M8 8l-3 3 3 3',
@@ -67,7 +69,7 @@ const icons: Record<string, string> = {
 }
 // 「服务端管理」这一组页面全靠管理 API Key，没有就整组不显示。
 // 判断以后端为准：空 Key 和节点 Auth Key 都不算（后者管理接口一律 401）。
-const managePages = ['devices', 'users', 'keys', 'api', 'acl']
+const managePages = ['devices', 'routes', 'users', 'keys', 'api', 'acl']
 const hasAPIKey = computed(() => !!state.value?.hasApiKey)
 
 const nav = computed(() => {
@@ -81,6 +83,7 @@ const nav = computed(() => {
       label: '服务端管理',
       items: [
         { key: 'devices', label: '设备管理' },
+        { key: 'routes', label: '子网路由' },
         { key: 'users', label: '人员管理' },
         { key: 'keys', label: '授权 Key' },
         { key: 'api', label: 'API Key' },
@@ -101,6 +104,7 @@ const nav = computed(() => {
 })
 const meta: Record<string, [string, string]> = {
   overview: ['隧道', '总览'], devices: ['服务端管理', '设备管理'],
+  routes: ['服务端管理', '子网路由'],
   users: ['服务端管理', '人员管理'], keys: ['服务端管理', '密钥管理'],
   api: ['服务端管理', '密钥管理'], acl: ['服务端管理', 'ACL 策略'],
   apps: ['工作台', '应用管理'], forwards: ['工作台', '端口转发'],
@@ -198,7 +202,7 @@ onMounted(async () => {
       else if (target === 'profile-new') {
         page.value = 'settings'
         window.setTimeout(() => window.dispatchEvent(new CustomEvent('weft:open-profile')), 900)
-      } else if (['overview', 'apps', 'forwards', 'acl', 'devices', 'users', 'keys', 'api', 'settings'].includes(target)) {
+      } else if (['overview', 'apps', 'forwards', 'acl', 'devices', 'routes', 'users', 'keys', 'api', 'settings'].includes(target)) {
         if (managePages.includes(target) && !hasAPIKey.value) {
           const why = state.value?.apiKeyIssue
           notify(why
@@ -377,6 +381,7 @@ onUnmounted(() => {
                   @navigate="page = $event" />
         <Manage v-else-if="['devices','users','keys','api'].includes(page)" :tab="manageTab" :state="state"
                 @notify="notify" @navigate="page = $event" />
+        <Routes v-else-if="page === 'routes'" :state="state" @notify="notify" />
         <Acl v-else-if="page === 'acl'" :state="state" @notify="notify" />
         <Apps v-else-if="page === 'apps'" :state="state" @notify="notify" />
         <Forwards v-else-if="page === 'forwards'" :state="state" @notify="notify" />
