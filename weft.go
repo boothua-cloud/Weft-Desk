@@ -872,7 +872,7 @@ func (s *WeftService) RenewAPIKey(days int) error {
 	}
 	if self == nil {
 		// 认不出来就没法吊销旧的，留着两把有效密钥容易搞混
-		return fmt.Errorf("已生成新密钥并写入钥匙串，但没能在服务端认出旧密钥，请到 API Key 页面手动吊销旧的")
+		return fmt.Errorf("新密钥已写入钥匙串，但没在服务端认出旧密钥，去 API Key 页面手动吊销旧的")
 	}
 	if err := cp.ExpireAPIKey(self.Prefix, self.ID); err != nil {
 		log.Printf("[keys] 吊销旧密钥失败（新密钥已生效）: %v", err)
@@ -978,19 +978,19 @@ func (s *WeftService) apiKeyStatus() (bool, string) {
 		return false, ""
 	}
 	if isAuthKey(key) {
-		return false, "填的是节点注册用的 Auth Key（hskey-auth-…）：管理接口只认 `headscale apikeys create` 生成的 Key"
+		return false, "这是节点注册的 Auth Key，管理接口不认。改用 `headscale apikeys create` 生成的 Key"
 	}
 	s.mu.Lock()
 	p := s.keyProbe
 	s.mu.Unlock()
 	if p.key == key {
 		if p.bad {
-			return false, "服务端拒绝了这把 Key（" + p.msg + "）：确认它是 `headscale apikeys create` 生成的，并且没过期"
+			return false, "服务端不认这把 Key（" + p.msg + "）。确认它由 `headscale apikeys create` 生成、没过期"
 		}
 		return true, ""
 	}
 	if !looksLikeAPIKey(key) {
-		return false, "这串不像 headscale 的 API Key（应以 hskey- 开头），多半是黏贴错了或者随手填的占位"
+		return false, "格式不正确：headscale 的管理 Key 以 `hskey-` 开头"
 	}
 	return true, ""
 }
@@ -1089,7 +1089,7 @@ func (s *WeftService) Connect() (string, error) {
 			// 否则新进程会判定「已有实例」而直接退出，用户看到窗口一闪就没。
 			releaseSingleInstance()
 			if e := relaunchElevatedConnect(); e != nil {
-				return "", fmt.Errorf("%s（%v）。也可以先在设置页点「安装」配置登录自启，之后不再需要授权", err, e)
+				return "", fmt.Errorf("%s（%v）。也可以先在设置页点「安装」配好登录自启，以后不用再授权", err, e)
 			}
 			log.Printf("[tunnel] 已请求管理员授权，授权后将以管理员身份重启并自动连接")
 			go func() {
@@ -1101,7 +1101,7 @@ func (s *WeftService) Connect() (string, error) {
 					app.Quit()
 				}
 			}()
-			return "", fmt.Errorf("需要管理员授权才能创建虚拟网卡：已在系统弹窗中请求，点「是」后云栈会以管理员身份重启并自动连接")
+			return "", fmt.Errorf("创建虚拟网卡要管理员授权。已在系统弹窗里请求，点「是」后云栈会以管理员身份重启并自动连接")
 		}
 		return "", err
 	}

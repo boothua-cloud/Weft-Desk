@@ -134,6 +134,7 @@ async function load() {
     loading.value = false
   }
 }
+const pendingUser = ref('')
 watch(() => props.tab, () => {
   keyword.value = ''
   statusFilter.value = ''
@@ -144,7 +145,6 @@ watch(() => props.tab, () => {
   load()
 }, { immediate: true })
 
-const pendingUser = ref('')
 watch(reloadTick, load)
 // 首次挂载时 state 可能还是 null，那时 api 还没配置好，拉回来的是空列表。
 // 等 state 首次到达时补一次；之后只有 endpoint 变了（切了服务端）才重拉。
@@ -401,7 +401,7 @@ async function createApiKey() {
 function expireApiKey(k: APIKey) {
   askConfirm({
     title: '吊销这个 API Key？',
-    desc: `${k.prefix}\n吊销后立即失效，正用它调用管理接口的客户端会立刻失去权限，且无法恢复。`,
+    desc: `${k.prefix}\n吊销后立即失效，正在用它的客户端马上失去管理权限，无法恢复。`,
     ok: '吊销',
     action: async () => {
       try {
@@ -416,7 +416,7 @@ function expireApiKey(k: APIKey) {
 function deleteApiKey(k: APIKey) {
   askConfirm({
     title: '删除这个 API Key？',
-    desc: `${k.prefix}\n删除后记录彻底消失，无法恢复。如果还想留痕，建议用「吊销」。`,
+    desc: `${k.prefix}\n删除后记录彻底消失，无法恢复。想留痕就吊销。`,
     ok: '删除',
     action: async () => {
       try {
@@ -509,7 +509,7 @@ function deleteUser(u: User) {
   const who = u.rawName || u.name || '该成员'
   askConfirm({
     title: '删除这个成员？',
-    desc: `${who}\n删除后该成员名下的设备、授权 Key 会一并失去归属，正在使用它登录的客户端会断开，且无法恢复。`,
+    desc: `${who}\n该成员名下的设备和授权 Key 会失去归属，正在登录的客户端会断开，无法恢复。`,
     ok: '删除',
     action: async () => {
       try {
@@ -561,7 +561,7 @@ function splitList(v: string) {
         </button>
         <template v-if="tab === 'devices'">
           <button class="btn ghost" @click="backfill"
-                  title="给 ip_addresses 为空的节点补分配地址。正常注册的节点都有 IP，只有从很老的版本升级上来才可能需要">同步节点 IP</button>
+                  title="给没有 IP 的节点补分配地址。正常注册都有 IP，一般不用点">同步节点 IP</button>
           <button class="btn ghost" @click="openDebug">手动添加节点</button>
           <button class="btn" @click="openAuth">待审批请求</button>
           <button class="btn primary" @click="openRegister">＋ 注册设备</button>
@@ -824,7 +824,7 @@ function splitList(v: string) {
             <label class="field-label">成员名称 <span style="color:var(--danger)">*</span></label>
             <input class="input mono" v-model="editUserNewName" @keyup.enter="saveUserName" />
             <div class="faint" style="font-size:10.5px;margin-top:4px">
-              改名会同步到 headscale，节点归属跟着走；该名字也是 ACL 里引用成员的标识
+              改名会同步到 headscale，节点归属跟着走。ACL 里引用成员用的也是这个名字
             </div>
           </div>
           <div class="field">
@@ -838,9 +838,9 @@ function splitList(v: string) {
                    style="opacity:.6;cursor:not-allowed" />
           </div>
           <div class="notice info" style="margin-bottom:14px">
-            headscale 的用户接口只有创建、改名、删除三种。邮箱和显示名是
-            创建时写入的，之后由 OIDC 提供方（或命令行）维护，没有单独的修改接口 ——
-            所以这里只读。要改的话得在提供方那边改，或者删了重建。
+            headscale 的用户接口只有创建、改名、删除。邮箱和显示名在创建时写入，
+            之后由 OIDC 或命令行维护，没有单独的修改接口，这里只读。
+            要改去提供方改，或者删了重建。
           </div>
           <div class="row" style="gap:8px">
             <button class="btn primary" style="flex:1;height:38px" :disabled="busy" @click="saveUserName">
@@ -877,8 +877,7 @@ function splitList(v: string) {
             <span v-if="busy" class="spinner"></span>{{ busy ? '创建中…' : '创建成员' }}
           </button>
           <div class="notice info" style="margin-top:16px">
-            创建后可以在成员行上「重命名」或「删除」。删除会连带该成员名下的节点归属，
-            headscale 要求先清空节点才能删成员。
+            创建后可在成员行上改名或删除。删成员前得先清空它名下的节点。
           </div>
         </template>
 

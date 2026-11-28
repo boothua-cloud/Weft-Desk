@@ -16,6 +16,9 @@ const allowInsecure = ref(false)
 const saving = ref(false)
 // 已存的密钥默认不显示，点「显示」才从钥匙串读明文
 const shownKey = ref<Record<string, string>>({})
+// 「显示」失败的原因是字段级的（比如根本没存过），
+// 所以贴在字段下面，不走全局提示条 —— 那条在弹窗遮罩底下看不见。
+const revealErr = ref<Record<string, string>>({})
 // 「留空不改」没法表达「删掉」，所以清空要单独打标记，保存时告诉后端真的删
 const clearApi = ref(false)
 const clearAuth = ref(false)
@@ -30,6 +33,7 @@ watch(
     apiKey.value = ''
     authKey.value = ''
     shownKey.value = {}
+    revealErr.value = {}
     clearApi.value = false
     clearAuth.value = false
   },
@@ -62,8 +66,15 @@ async function toggleReveal(kind: 'api' | 'auth') {
     if (kind === 'api') apiKey.value = v
     else authKey.value = v
     shownKey.value = { ...shownKey.value, [kind]: v }
+    revealErr.value = { ...revealErr.value, [kind]: '' }
   } catch (err: any) {
-    emit('notify', '读取失败：' + (err?.message ?? err))
+    const msg = String(err?.message ?? err)
+    revealErr.value = {
+      ...revealErr.value,
+      [kind]: msg.includes('尚未设置')
+        ? `这个服务端还没保存 ${kind === 'api' ? 'API Key' : 'Auth Key'}`
+        : '读取失败：' + msg,
+    }
   }
 }
 
@@ -101,7 +112,7 @@ async function save() {
       <header class="pf-head">
         <h2>{{ profile?.id ? '编辑服务端' : '新增服务端' }}</h2>
         <p class="pf-lead">
-          {{ profile?.id ? '改完保存会立即重连（如果改的是当前用的那个）' : '每个服务端有独立的节点身份，互不影响' }}
+          {{ profile?.id ? '保存后立即重连（当前服务端）' : '每个服务端有独立的节点身份，互不影响' }}
         </p>
       </header>
 
@@ -127,36 +138,6 @@ async function save() {
 
         <div class="pf-field">
           <div class="pf-label-row">
-            <label class="field-label">管理密钥 <span class="pf-en">API Key</span></label>
-            <div class="pf-actions">
-              <button v-if="profile?.id" type="button" class="pf-link" @click="toggleReveal('api')">
-                {{ shownKey.api ? '隐藏' : '显示' }}
-              </button>
-              <button v-if="profile?.id" type="button" class="pf-link" :class="{ danger: clearApi }"
-                      @click="clearApi = !clearApi; clearApi && (apiKey = '')">
-                {{ clearApi ? '取消清空' : '清空' }}
-              </button>
-            </div>
-          </div>
-          <input class="input" :type="shownKey.api ? 'text' : 'password'" v-model="apiKey"
-                 :disabled="clearApi"
-                 :placeholder="clearApi ? '保存后清空' : profile?.id ? '留空表示不修改' : 'hskey-api-…'" />
-          <p v-if="clearApi" class="pf-hint warn">
-            保存后删掉这把 Key，设备管理、人员管理、授权 Key、ACL 策略会一起收起来
-          </p>
-          <p v-else-if="keyHint === 'auth'" class="pf-hint warn">
-            这是节点注册用的 Auth Key（hskey-auth-…），管理接口不认，要用 <code>headscale apikeys create</code> 的输出
-          </p>
-          <p v-else-if="keyHint === 'shape'" class="pf-hint warn">
-            看起来不是 headscale 的 Key（应以 hskey- 开头），服务端会返回 401
-          </p>
-          <p v-else class="pf-hint">
-            填了可用 Key 才会出现设备管理、人员管理、授权 Key、ACL 策略
-          </p>
-        </div>
-
-        <div class="pf-field">
-          <div class="pf-label-row">
             <label class="field-label">节点注册密钥 <span class="pf-en">Auth Key</span></label>
             <div class="pf-actions">
               <button v-if="profile?.id" type="button" class="pf-link" @click="toggleReveal('auth')">
@@ -171,10 +152,36 @@ async function save() {
           <input class="input" :type="shownKey.auth ? 'text' : 'password'" v-model="authKey"
                  :disabled="clearAuth"
                  :placeholder="clearAuth ? '保存后清空' : profile?.id ? '留空表示不修改' : '可留空，走浏览器授权'" />
-          <p class="pf-hint">
-            <template v-if="clearAuth">保存后删掉，下次连接会走浏览器授权</template>
-            <template v-else>留空时连接会走服务端授权：总览页给出登录链接，浏览器打开即可完成注册</template>
+          <p v-if="clearAuth" class="pf-hint warn">保存后删除，下次连接改为浏览器授权</p>
+          <p v-else-if="revealErr.auth" class="pf-hint warn">{{ revealErr.auth }}</p>
+          <p v-else class="pf-hint">留空则走服务端授权：总览页给出登录链接，在浏览器里确认即可完成注册</p>
+        </div>
+
+        <div class="pf-field">
+          <div class="pf-label-row">
+            <label class="field-label">管理密钥 <span class="pf-en">API Key</span></label>
+            <div class="pf-actions">
+              <button v-if="profile?.id" type="button" class="pf-link" @click="toggleReveal('api')">
+                {{ shownKey.api ? '隐藏' : '显示' }}
+              </button>
+              <button v-if="profile?.id" type="button" class="pf-link" :class="{ danger: clearApi }"
+                      @click="clearApi = !clearApi; clearApi && (apiKey = '')">
+                {{ clearApi ? '取消清空' : '清空' }}
+              </button>
+            </div>
+          </div>
+          <input class="input" :type="shownKey.api ? 'text' : 'password'" v-model="apiKey"
+                 :disabled="clearApi"
+                 :placeholder="clearApi ? '保存后清空' : profile?.id ? '留空表示不修改' : 'hskey-api-…'" />
+          <p v-if="clearApi" class="pf-hint warn">保存后删除该 Key，设备管理、人员管理、密钥管理和 ACL 策略将不再显示</p>
+          <p v-else-if="revealErr.api" class="pf-hint warn">{{ revealErr.api }}</p>
+          <p v-else-if="keyHint === 'auth'" class="pf-hint warn">
+            这是节点注册用的 Auth Key，管理接口不接受；请填 <code>headscale apikeys create</code> 生成的 Key
           </p>
+          <p v-else-if="keyHint === 'shape'" class="pf-hint warn">
+            格式不正确：headscale 的管理 Key 以 <code>hskey-</code> 开头，保存后会被服务端拒绝
+          </p>
+          <p v-else class="pf-hint">填了可用 Key 才会显示设备管理、人员管理、密钥管理和 ACL 策略</p>
         </div>
       </section>
 

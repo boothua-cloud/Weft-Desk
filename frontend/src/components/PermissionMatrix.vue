@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watchEffect } from 'vue'
 import { accessPorts, groupKey, ownedTokens, portShort, tagKey, tokenLabel, userToken, type AccessPeer as Peer, type AclForm } from '../acl'
 
 // 「谁能访问谁」矩阵：行是人（以及设备标签），列是设备。
@@ -10,6 +10,19 @@ const props = defineProps<{
   peers: Peer[]
   members: string[]
 }>()
+
+// 规则页把矩阵收起来时只剩一条结论条，数据从这里出：
+// 推演只在本组件里做一份，父级不重复实现一套
+// <script setup> 里不能 export，父级按同形状自己声明
+interface MatrixSummary {
+  rows: number
+  cols: number
+  reachable: number
+  deadRows: number
+  deadCols: number
+  openAll: boolean
+}
+const emit = defineEmits<{ summary: [MatrixSummary] }>()
 
 interface Row {
   key: string
@@ -133,15 +146,26 @@ const reachable = computed(() => {
   for (const line of grid.value) for (const ports of line) if (ports.length) n++
   return n
 })
+
+watchEffect(() => {
+  emit('summary', {
+    rows: rows.value.length,
+    cols: cols.value.length,
+    reachable: reachable.value,
+    deadRows: rowDead.value.filter(Boolean).length,
+    deadCols: colDead.value.filter(Boolean).length,
+    openAll: openAll.value,
+  })
+})
 </script>
 
 <template>
   <div class="mtx">
     <div v-if="!peers.length" class="mtx-empty">
-      还没有设备数据，矩阵暂时画不出来。连上控制面、有设备注册后会自动显示。
+      还没有设备数据。连上服务端、有设备注册后会自动出现。
     </div>
     <div v-else-if="!rows.length" class="mtx-empty">
-      还没有成员或标签。等第一个成员加入后，这里会显示每个人能访问哪些设备。
+      还没有成员或标签。有第一个成员后，这里会显示各自能访问哪些设备。
     </div>
 
     <template v-else>
@@ -163,7 +187,7 @@ const reachable = computed(() => {
           <tbody>
             <tr v-for="(r, ri) in rows" :key="r.key" :class="{ dead: rowDead[ri] }">
               <th class="mtx-row">
-                <span class="mtx-row-name" :class="{ tag: r.kind === 'tag' }">{{ r.label }}</span>
+                <span class="mtx-row-name" :class="{ 'is-tag': r.kind === 'tag' }">{{ r.label }}</span>
                 <span class="mtx-row-note">{{ r.note }}</span>
               </th>
               <td
@@ -185,10 +209,10 @@ const reachable = computed(() => {
         <span class="mtx-legend"><i class="lg on"></i>可以访问</span>
         <span class="mtx-legend"><i class="lg all"></i>全部端口</span>
         <span class="mtx-legend"><i class="lg off"></i>不通</span>
-        <span class="mtx-stat">{{ reachable }} 条可达关系</span>
-        <span v-if="openAll" class="mtx-warn">策略里没有 acls，当前默认全部互通</span>
-        <span v-else-if="rowDead.some(Boolean) || colDead.some(Boolean)" class="mtx-warn">
-          {{ rowDead.filter(Boolean).length }} 行 / {{ colDead.filter(Boolean).length }} 列完全不通
+        <span class="mtx-stat">{{ reachable }} 条可达</span>
+        <span v-if="openAll" class="mtx-warn">策略里没有 acls，默认全部互通</span>
+        <span v-else-if="rowDead.some(Boolean)" class="mtx-warn">
+          {{ rowDead.filter(Boolean).length }} 行完全不通（这个成员哪台设备都去不了）
         </span>
       </div>
     </template>
@@ -205,6 +229,8 @@ const reachable = computed(() => {
 
 .mtx-scroll {
   overflow-x: auto;
+  /* 表格自己不透明：外层不再是白卡，若不铺底，行名列（墙面色）会和透明的数据格割开 */
+  background: var(--surface);
   border: 1px solid var(--line-soft);
   border-radius: 8px;
 }
@@ -272,7 +298,7 @@ const reachable = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.mtx-row-name.tag { color: var(--info); font-family: var(--mono); font-size: 11px; }
+.mtx-row-name.is-tag { color: var(--info); font-family: var(--mono); font-size: 11px; }
 .mtx-row-note { display: block; font-size: 9px; color: var(--faint); margin-top: 1px; }
 tr.dead .mtx-row-name { color: var(--faint); }
 

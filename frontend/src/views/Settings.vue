@@ -174,7 +174,7 @@ onUnmounted(() => {
 async function save() {
   const k = secret.value.trim()
   if (k.startsWith('hskey-auth-') || k.startsWith('tskey-auth-')) {
-    emit('notify', '这是节点注册 Auth Key，管理 API 需要 headscale apikeys create 生成的 Key')
+    emit('notify', '这是节点注册的 Auth Key。管理接口要用 headscale apikeys create 生成的 Key')
     return
   }
   busy.value = true
@@ -270,11 +270,10 @@ async function uninstallHelper() {
     <!-- 有 Key 但服务端不认（填错、填成 Auth Key）时，入口会整组消失。
          不说一句原因，看起来就像软件坏了。 -->
     <div v-if="state?.apiKeyIssue" class="notice warn" style="margin-bottom:14px">
-      <b>管理 API Key 不可用，「服务端管理」已收起</b>
+      <b>管理 API Key 不可用，「服务端管理」已隐藏</b>
       <div style="margin-top:5px">{{ state.apiKeyIssue }}</div>
       <div style="margin-top:5px;font-size:10.5px;opacity:.85">
-        在上面的服务端里点「编辑」换一把 <span class="mono">headscale apikeys create</span> 生成的 Key；
-        不需要管理功能就点「清空」，别留一串假的。
+        在上方服务端点「编辑」更换 Key；不需要管理功能则点「清空」。
       </div>
     </div>
 
@@ -308,7 +307,7 @@ async function uninstallHelper() {
       <div class="spread" style="margin-bottom:12px">
         <div>
           <span style="font-size:11.5px">外观主题</span>
-          <div class="faint" style="font-size:10.5px;margin-top:3px">暗色适合长时间盯盘与夜间使用</div>
+          <div class="faint" style="font-size:10.5px;margin-top:3px">暗色适合夜间使用</div>
         </div>
         <div class="row" style="gap:6px">
           <button v-for="t in themes" :key="t.value" class="btn sm"

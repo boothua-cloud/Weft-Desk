@@ -89,7 +89,7 @@ async function external(a: AppBookmark) {
     </div>
 
     <div v-if="hasHTTPS && !allowInsecure" class="notice warn" style="margin-bottom:14px">
-      有应用使用 HTTPS：自签证书在应用窗口内会被直接拒绝加载（白屏）。到「连接设置」打开「信任自签 HTTPS 证书」即可。
+      有应用用了 HTTPS：自签证书在应用窗口里会白屏。去「连接设置」打开「信任自签 HTTPS 证书」。
     </div>
 
     <div class="filter-bar">
@@ -154,7 +154,7 @@ async function external(a: AppBookmark) {
         </div>
         <button class="btn primary" style="width:100%;height:38px" @click="submit">保存</button>
         <div class="notice info" style="margin-top:16px">
-          地址支持 100.x IP、MagicDNS 名称或自定义域名。打开时 Go 侧会自动分配一个 127.0.0.1 端口做反向代理；系统浏览器按钮同样走该代理，只有云栈在运行期间有效。
+          地址支持 100.x IP、MagicDNS 和自定义域名。打开时在本地起反向代理（127.0.0.1 随机端口），系统浏览器按钮也走它，只在云栈运行时有效。
         </div>
       </div>
     </template>

@@ -170,7 +170,7 @@ function shortTime(t: string) {
 function copyLogin() {
   if (!props.state?.loginURL) return
   navigator.clipboard?.writeText(props.state.loginURL)
-  emit('notify', '登录链接已复制，请粘贴到系统浏览器打开')
+  emit('notify', '登录链接已复制，粘到浏览器打开')
 }
 </script>
 
@@ -313,7 +313,7 @@ function copyLogin() {
       <div class="card">
         <h3 class="sec">已接入网段</h3>
         <div v-if="!routes.length && !skipped.length" class="faint" style="font-size:11.5px;line-height:1.9">
-          还没有子网路由。在 Headscale 里给节点批准路由后，这里会自动列出。
+          还没有子网路由。在 Headscale 批准节点路由后，这里会自动列出。
         </div>
         <div v-if="routes.length" class="route-list" style="margin-bottom:10px">
           <span v-for="r in routes" :key="r" class="route-pill">{{ r }}</span>
@@ -368,7 +368,7 @@ function copyLogin() {
         </div>
         <button class="btn sm" @click="copyLogin">复制登录链接</button>
       </div>
-      <div style="font-size:11px;margin-top:8px">在系统浏览器打开并完成授权后，节点会自动上线；以后重开 App 不再需要登录。</div>
+      <div style="font-size:11px;margin-top:8px">在浏览器里完成授权后节点自动上线，以后重开不用再登录。</div>
     </div>
     <template v-if="renewOpen">
       <div class="mask" @click="renewOpen = false"></div>
@@ -378,8 +378,8 @@ function copyLogin() {
           <button class="btn ghost sm" @click="renewOpen = false">✕</button>
         </div>
         <div class="notice info" style="margin-bottom:16px">
-          headscale 没有续期接口，这里是新建一把密钥替换旧的：旧密钥会立即吊销，
-          新密钥写进系统钥匙串。正在用旧密钥的其他工具会失效。
+          headscale 没有续期接口，这里是新建一把替换旧的。旧密钥立即吊销，新密钥写进系统钥匙串。
+          正在用旧密钥的其他工具会失效。
         </div>
         <div class="field">
           <label class="field-label">新的有效期</label>

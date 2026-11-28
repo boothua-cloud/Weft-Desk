@@ -86,6 +86,16 @@ function stateTag(st?: string) {
   if (st === 'error') return 'red'
   return ''
 }
+// 原始字节数看不出量级，直接给 4.6 MB 这种
+function fmtBytes(n?: number): string {
+  let v = n || 0
+  if (v < 1024) return v + ' B'
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let i = 0
+  v /= 1024
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
+  return (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' ' + units[i]
+}
 </script>
 
 <template>
@@ -147,7 +157,7 @@ function stateTag(st?: string) {
                 {{ statusMap[r.id]?.state === 'listening' ? '监听中' : statusMap[r.id]?.state === 'error' ? '错误' : (r.enabled ? '未启动' : '已禁用') }}
               </span>
             </td>
-            <td class="mono">{{ statusMap[r.id]?.bytes || 0 }}</td>
+            <td class="mono">{{ fmtBytes(statusMap[r.id]?.bytes) }}</td>
             <td>
               <div class="row" style="gap:8px">
                 <button class="btn ghost sm" @click="act(() => api.toggleForward(r.id, !r.enabled), r.enabled ? '已禁用' : '已启用')">{{ r.enabled ? '禁用' : '启用' }}</button>

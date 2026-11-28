@@ -302,7 +302,7 @@ export function validateAcl(form: AclForm, ctx: ValidateCtx = {}): AclIssue[] {
     const n = g.name.trim()
     if (!n) { issues.push({ level: 'error', text: '有用户组没填名字' }); continue }
     const k = groupKey(n)
-    if (k !== n) issues.push({ level: 'warn', text: `「${n}」保存时会补成 ${k}（服务端要求 group: 开头）` })
+    if (k !== n) issues.push({ level: 'warn', text: `「${n}」会补成 ${k}（服务端要求 group: 开头）` })
     if (dup.has(k)) issues.push({ level: 'error', text: `用户组「${k}」重复定义` })
     dup.add(k)
     if (!g.values.length) issues.push({ level: 'warn', text: `用户组「${k}」没有成员` })
@@ -313,7 +313,7 @@ export function validateAcl(form: AclForm, ctx: ValidateCtx = {}): AclIssue[] {
     const n = t.name.trim()
     if (!n) { issues.push({ level: 'error', text: '有标签没填名字' }); continue }
     const k = tagKey(n)
-    if (k !== n) issues.push({ level: 'warn', text: `「${n}」保存时会补成 ${k}（服务端要求 tag: 开头）` })
+    if (k !== n) issues.push({ level: 'warn', text: `「${n}」会补成 ${k}（服务端要求 tag: 开头）` })
     if (dupTag.has(k)) issues.push({ level: 'error', text: `标签「${k}」重复定义` })
     dupTag.add(k)
     if (!t.values.length) issues.push({ level: 'warn', text: `标签「${k}」没有归属` })
@@ -339,7 +339,7 @@ export function validateAcl(form: AclForm, ctx: ValidateCtx = {}): AclIssue[] {
   }
   const unknownMember = (v: string): string => {
     const hint = near(v)
-    return `「${tokenLabel(v)}」服务端不认识，可能名字写错了${hint ? `（服务端里叫「${hint}」）` : ''}`
+    return `「${tokenLabel(v)}」服务端不认识，可能写错了${hint ? `（服务端里叫「${hint}」）` : ''}`
   }
   const knownDst = new Set([...(ctx.hosts ?? []), ...(ctx.devices ?? [])].map((v) => v.trim()).filter(Boolean))
 
@@ -361,11 +361,11 @@ export function validateAcl(form: AclForm, ctx: ValidateCtx = {}): AclIssue[] {
     if (r.action !== 'accept') issues.push({ level: 'warn', text: `${at}的动作是「${r.action}」，目前只支持 accept` })
     for (const s of r.src) {
       if (s.startsWith('group:')) {
-        if (!groupNames.has(s)) issues.push({ level: 'warn', text: `${at}引用了未定义的 ${s}` })
+        if (!groupNames.has(s)) issues.push({ level: 'warn', text: `${at}引用了没定义的 ${s}` })
         continue
       }
       if (s.startsWith('tag:')) {
-        if (!tagNames.has(s)) issues.push({ level: 'warn', text: `${at}引用了未在 tagOwners 定义的 ${s}` })
+        if (!tagNames.has(s)) issues.push({ level: 'warn', text: `${at}引用了 tagOwners 里没有的 ${s}` })
         continue
       }
       if (s === '*' || s.startsWith('autogroup:')) continue
@@ -388,18 +388,18 @@ export function validateAcl(form: AclForm, ctx: ValidateCtx = {}): AclIssue[] {
         issues.push({ level: 'warn', text: `${at}的目标「${d}」缺端口，应写成 host:port` })
       }
       if (host.startsWith('tag:') && !tagNames.has(host)) {
-        issues.push({ level: 'warn', text: `${at}的目标 ${host} 未在 tagOwners 定义` })
+        issues.push({ level: 'warn', text: `${at}的目标 ${host} 没在 tagOwners 里定义` })
       }
       // dst 只认设备 / 标签 / autogroup:self / IP，写成组或人名服务端必然报错
       if (host.startsWith('group:')) {
-        issues.push({ level: 'error', text: `${at}的目标不能是用户组「${host}」，改成设备或标签，例如 tag:server:22` })
+        issues.push({ level: 'error', text: `${at}的目标不能写用户组「${host}」。改成设备或标签，例如 tag:server:22` })
         continue
       }
       if (host === '*' || host.startsWith('autogroup:') || host.startsWith('tag:')) continue
       if (IP_LIKE.test(host)) continue
       if (knownDst.has(host)) continue
       if (members.has(host)) {
-        issues.push({ level: 'error', text: `${at}的目标「${host}」是成员名，服务端不认（host not defined）。目标只能写设备名、标签或 hosts 别名` })
+        issues.push({ level: 'error', text: `${at}的目标「${host}」是成员名，服务端不认。目标只能写设备名、标签或 hosts 别名` })
         continue
       }
       if (ctx.devices?.length || ctx.hosts?.length) {
@@ -418,7 +418,7 @@ export function validateAcl(form: AclForm, ctx: ValidateCtx = {}): AclIssue[] {
       if (covered.has(cidr)) continue
       issues.push({
         level: 'warn',
-        text: `子网路由 ${cidr} 没写进任何目标，连上后这条路由不会生效——在目标里加一组 ${cidr} 就行`,
+        text: `子网路由 ${cidr} 没写进任何目标，连上后不会生效。在目标里加一组 ${cidr}`,
       })
     }
   }
@@ -688,10 +688,10 @@ export function ruleSummary(rule: AclRule): string {
 export function explainPolicyError(message: string): string {
   const m = message ?? ''
   if (m.includes("update is disabled for modes other than 'database'")) {
-    return '这台 headscale 把策略存在文件里（policy.mode: file），API 不允许改。两条路：①把 config.yaml 的 policy.mode 改成 database 后重启，再用 headscale policy set -f 把现有策略导进库；②保持 file 模式，直接改服务器上的 policy 文件，然后 systemctl reload headscale'
+    return '这台 headscale 把策略存在文件里（policy.mode: file），API 不能改。两条路：把 config.yaml 的 policy.mode 改成 database 后重启，再用 headscale policy set -f 把现有策略导进库；或者保持 file 模式，直接改服务器上的文件，然后 systemctl reload headscale'
   }
   if (m.includes('username must contain @')) {
-    return '策略里的用户名要写成「名字@」的形式（邮箱用户名写 a@b.com 即可），以服务端用户名为准'
+    return '用户名要写成「名字@」（邮箱用户直接写 a@b.com），以服务端用户名为准'
   }
   if (m.includes("group must start with 'group:'")) {
     return 'groups 的键要以 group: 开头，tagOwners 的键要以 tag: 开头'

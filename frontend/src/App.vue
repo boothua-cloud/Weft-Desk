@@ -94,7 +94,7 @@ const meta: Record<string, [string, string]> = {
   settings: ['设置', '连接设置'],
 }
 // 这几个页面是列表型：头部与筛选条固定，只有表格自己滚动
-const fixedLayout = computed(() => ['devices', 'users', 'keys', 'api', 'apps'].includes(page.value))
+const fixedLayout = computed(() => ['devices', 'users', 'keys', 'api', 'apps', 'acl'].includes(page.value))
 const crumb = computed(() => meta[page.value]?.[0] ?? '总览')
 const title = computed(() => meta[page.value]?.[1] ?? '总览')
 const manageTab = computed(() => ['devices', 'users', 'keys', 'api'].includes(page.value) ? page.value : 'devices')
@@ -189,7 +189,7 @@ onMounted(async () => {
           const why = state.value?.apiKeyIssue
           notify(why
             ? `管理 API Key 不可用：${why}`
-            : '这张服务端还没配管理 API Key，设备 / 人员 / 密钥 / ACL 这些页面暂不显示')
+            : '这台服务端没配管理 API Key，设备、人员、密钥和 ACL 暂时不显示')
           page.value = 'overview'
         } else {
           page.value = target
@@ -204,7 +204,7 @@ onMounted(async () => {
     offUpdate = Events.On('weft:update-available', (ev) => {
       const v = (ev?.data as any)?.latestVersion
       updateHint.value = true
-      notify(v ? `发现新版本 v${v}，可在「更多 → 检查更新」里查看` : '发现新版本，可在「更多 → 检查更新」里查看')
+      notify(v ? `有新版本 v${v}，去「更多 → 检查更新」` : '有新版本，去「更多 → 检查更新」')
     })
   } catch { /* 忽略 */ }
 
