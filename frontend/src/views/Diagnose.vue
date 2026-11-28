@@ -89,16 +89,18 @@ function verdictTone(r: DiagReport): string {
   return 'bad'
 }
 
-function fmtKb(n: number): string {
-  if (!n) return '0'
-  const units = ['B', 'KB', 'MB', 'GB']
-  let v = n
-  let i = 0
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024
-    i++
-  }
-  return (i === 0 ? v : v.toFixed(1)) + ' ' + units[i]
+// 抖动 = 三次探测里最慢减最快。这里原来放的是「收发」，可那是这台设备
+// 开机以来的累计流量：摆在一个 3 毫秒的探测旁边，等于说「ping 传了 39 KB」。
+function jitter(p: PeerInfo): number {
+  const r = reports.value[p.ip]
+  if (!r || r.pingMs < 0 || r.pingWorst < 0) return 0
+  return Math.max(0, Math.round(r.pingWorst - r.pingMs))
+}
+
+function jitterText(p: PeerInfo): string {
+  const r = reports.value[p.ip]
+  if (!r || r.pingMs < 0) return '—'
+  return jitter(p) + ' ms'
 }
 
 // 没配管理 Key 就改不了策略，别让人去点一个改不了的页面。
@@ -197,7 +199,7 @@ watch(
           </div>
           <i></i>
           <div class="diag-self-item">
-            <span>检查结果</span>
+            <span>端口检查</span>
             <b :class="{ faint: !summary }">{{ summary || '还没检查' }}</b>
           </div>
         </div>
@@ -264,8 +266,8 @@ watch(
             <b>{{ self.direct ? '直连' : 'DERP' }}<template v-if="!self.direct && self.relay"> · {{ self.relay }}</template></b>
           </div>
           <div class="fact">
-            <span>子网接管</span>
-            <b :class="{ bad: !self.acceptRoutes }">{{ self.acceptRoutes ? '已接受' : '关着' }}</b>
+            <span>接受子网路由</span>
+            <b :class="{ bad: !self.acceptRoutes }">{{ self.acceptRoutes ? '开' : '关' }}</b>
           </div>
         </div>
 
@@ -295,7 +297,7 @@ watch(
           <b class="route-verdict" :class="r.tone">{{ r.verdict }}</b>
         </div>
         <div v-if="self.routes.some((r) => !r.known)" class="faint" style="margin-top:8px;font-size:10.5px">
-          配了管理 API Key 才能看到「通告」「批准」两步，现在只按本机看到的情况判断。
+          服务端的设备列表里没找到这几条路由对应的设备，只能按本机看到的情况判断——多半不在同一个账号下，或管理 Key 权限不够。
         </div>
       </div>
 
@@ -350,7 +352,8 @@ watch(
             </div>
             <div class="fact">
               <span>路径</span>
-              <b>{{ reports[p.ip].path }}<template v-if="reports[p.ip].relay"> · {{ reports[p.ip].relay }}</template></b>
+              <!-- 直连时对端挂在哪个 DERP 区域没有意义，只会让人以为在走中继 -->
+              <b>{{ reports[p.ip].path }}<template v-if="reports[p.ip].path === 'DERP' && reports[p.ip].relay"> · {{ reports[p.ip].relay }}</template></b>
             </div>
             <div class="fact">
               <span>握手</span>
@@ -359,6 +362,10 @@ watch(
             <div class="fact">
               <span>探测延迟</span>
               <b>{{ reports[p.ip].pingMs >= 0 ? Math.round(reports[p.ip].pingMs) + ' ms' : '—' }}</b>
+            </div>
+            <div class="fact">
+              <span>抖动</span>
+              <b :class="{ bad: jitter(p) > 50 }">{{ jitterText(p) }}</b>
             </div>
             <div class="fact">
               <span>丢包</span>
@@ -378,10 +385,6 @@ watch(
               <b v-else :class="{ bad: !reports[p.ip].aclAllowed }">
                 {{ reports[p.ip].aclAllowed ? '放行了这个端口' : '没有对应规则' }}
               </b>
-            </div>
-            <div class="fact">
-              <span>收发</span>
-              <b class="mono">{{ fmtKb(reports[p.ip].txBytes) }} / {{ fmtKb(reports[p.ip].rxBytes) }}</b>
             </div>
             <div v-if="reports[p.ip].version" class="fact">
               <span>对端版本</span>

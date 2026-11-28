@@ -182,7 +182,7 @@ func (e *systemTUNEngine) Peers() []PeerInfo {
 		out = append(out, PeerInfo{
 			Name: p.HostName, IP: ip, OS: p.OS,
 			Online: p.Online, LastSeen: last, Routes: routes, Allowed: allowed,
-			Relay: p.Relay, CurAddr: p.CurAddr,
+			Relay: relayLabel(p.Relay), CurAddr: p.CurAddr,
 		})
 	}
 	return out
@@ -875,7 +875,7 @@ func (e *systemTUNEngine) Snapshot(ctx context.Context) (SelfReport, error) {
 		st.BackendState != "NeedsMachineAuth"
 	rep.Health = st.Health
 	if st.Self != nil {
-		rep.Relay = st.Self.Relay
+		rep.Relay = relayLabel(st.Self.Relay)
 		rep.Direct = st.Self.CurAddr != ""
 		if len(st.Self.TailscaleIPs) > 0 {
 			rep.SelfIP = st.Self.TailscaleIPs[0].String()
@@ -950,9 +950,11 @@ func (e *systemTUNEngine) DiagPeer(ctx context.Context, ip netip.Addr, port uint
 
 	rep.Name = peer.HostName
 	rep.Online = peer.Online
-	rep.Relay = peer.Relay
+	rep.Relay = relayLabel(peer.Relay)
 	rep.CurAddr = peer.CurAddr
-	rep.TxBytes, rep.RxBytes = peer.TxBytes, peer.RxBytes
+	// 这里原来还塞了 peer.TxBytes / RxBytes。那是这台设备开机以来的
+	// 累计流量，摆在一个「三次探测 + 一次拨测」的报告里，等于告诉用户
+	// 「3 ms 的 ping 传了 39 KB」。诊断只报这次测出来的东西。
 	rep.Path = "DERP"
 	if peer.CurAddr != "" {
 		rep.Path = "直连"

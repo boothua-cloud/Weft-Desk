@@ -238,8 +238,6 @@ type DiagReport struct {
 	Relay     string `json:"relay"`     // 当前用的 DERP 区域
 	CurAddr   string `json:"curAddr"`   // 直连地址，空表示全靠 DERP
 	Handshake string `json:"handshake"` // 最近一次握手，多久以前
-	TxBytes   int64  `json:"txBytes"`
-	RxBytes   int64  `json:"rxBytes"`
 	Version   string `json:"version"`
 
 	// disco 探测：走 magicsock，不碰 wireguard 与 IP 层。

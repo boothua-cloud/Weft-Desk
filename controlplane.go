@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -290,7 +291,11 @@ func (n hsNode) toDevice() Device {
 	}
 	d := Device{
 		ID: n.ID, Name: name, Hostname: n.Name, GivenName: n.GivenName,
-		IP: strings.Join(n.IPAddresses, ", "), IPs: append([]string{}, n.IPAddresses...),
+		// IP 只放主地址。这个字段到处被拿去和 netmap 里的 100.x 比，
+		// 拼成 "100.64.0.5, fd7a:..." 就永远对不上：诊断页同一台设备
+		// 会冒出两行同样的路由，ACL 页还会把它当成一个目标地址写进规则。
+		// 两个地址都在 IPs 里，展示的地方本来就遍历 IPs。
+		IP: primaryIP(n.IPAddresses), IPs: append([]string{}, n.IPAddresses...),
 		Tags:     strings.Join(n.Tags, ", "),
 		LastSeen: fmtTS(n.LastSeen), CreatedAt: fmtTS(n.CreatedAt), Expiry: fmtTS(n.Expiry),
 		Online: n.Online, RegisterMethod: n.registerLabel(),
@@ -310,6 +315,21 @@ func (n hsNode) toDevice() Device {
 		d.Status = "已过期"
 	}
 	return d
+}
+
+// primaryIP 挑一个能用来做比较的地址：优先 IPv4，没有就取第一个。
+// headscale 每个节点会下发 v4 + v6 两个地址，而 100.x 那一半才是
+// 客户端 netmap 里能对上的那个。
+func primaryIP(addrs []string) string {
+	for _, a := range addrs {
+		if ip, err := netip.ParseAddr(a); err == nil && ip.Is4() {
+			return a
+		}
+	}
+	if len(addrs) > 0 {
+		return addrs[0]
+	}
+	return ""
 }
 
 func (k hsPreAuthKey) toAuthKey() AuthKey {

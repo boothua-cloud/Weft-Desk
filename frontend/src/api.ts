@@ -29,8 +29,6 @@ export interface DiagReport {
   relay: string
   curAddr: string
   handshake: string
-  txBytes: number
-  rxBytes: number
   version: string
   pingMs: number
   pingWorst: number

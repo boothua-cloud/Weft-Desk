@@ -122,3 +122,60 @@ func TestSelfCheckWithoutEngine(t *testing.T) {
 		t.Fatalf("至少要说一句为什么: %+v", rep)
 	}
 }
+
+// 截图里的那一幕：同一条 10.0.1.0/24 出现两行，一行「可用」一行
+// 「本机还没接受」。根因是 Device.IP 把 v4 和 v6 拼成了一个字符串，
+// 跟 netmap 里的 100.x 对不上，管理接口那条就当成新路由又加了一行。
+func TestMergeAdvertisedCollapsesSameRoute(t *testing.T) {
+	rows := []RouteCheck{{
+		Prefix: "10.0.1.0/24", Peer: "ubuntu", PeerIP: "100.64.0.5",
+		Accepted: true, PeerOnline: true,
+	}}
+	cp := fakeDevices{devs: []Device{{
+		Name: "ubuntu", IP: "100.64.0.5", IPs: []string{"100.64.0.5", "fd7a::5"},
+		Online: true, AdvertisedRoutes: "10.0.1.0/24", ApprovedRoutes: "10.0.1.0/24",
+	}}}
+	out := mergeAdvertised(rows, cp)
+	if len(out) != 1 {
+		t.Fatalf("同一条路由只能有一行，得到 %d 行: %+v", len(out), out)
+	}
+	r := out[0]
+	if !r.Known || !r.Advertised || !r.Approved || !r.Accepted {
+		t.Fatalf("四步都该是通: %+v", r)
+	}
+	if v, tone := routeVerdict(r); v != "可用" || tone != "ok" {
+		t.Fatalf("结论应该是可用: %q %q", v, tone)
+	}
+}
+
+// 设备在服务端改过名：netmap 给 hostname、管理接口给 givenName。
+// 这时只有 IP 能对上，也不能再冒第二行。
+func TestMergeAdvertisedMatchesByIPNotName(t *testing.T) {
+	rows := []RouteCheck{{Prefix: "10.0.1.0/24", Peer: "old-name", PeerIP: "100.64.0.5", Accepted: true}}
+	cp := fakeDevices{devs: []Device{{
+		Name: "ubuntu", IP: "100.64.0.5", Online: true,
+		AdvertisedRoutes: "10.0.1.0/24", ApprovedRoutes: "10.0.1.0/24",
+	}}}
+	if out := mergeAdvertised(rows, cp); len(out) != 1 || !out[0].Known {
+		t.Fatalf("按 IP 就该认出来: %+v", out)
+	}
+}
+
+// 一个节点两个地址时，比较用的那一个必须是 100.x
+func TestPrimaryIP(t *testing.T) {
+	if got := primaryIP([]string{"fd7a:115c:a1e0::5", "100.64.0.5"}); got != "100.64.0.5" {
+		t.Fatalf("优先取 IPv4: %q", got)
+	}
+	if got := primaryIP(nil); got != "" {
+		t.Fatalf("没有地址要返回空: %q", got)
+	}
+}
+
+func TestRelayLabel(t *testing.T) {
+	if got := relayLabel("headscale"); got != "自建中继" {
+		t.Fatalf("headscale 内嵌中继不该原样显示: %q", got)
+	}
+	if got := relayLabel("hkg"); got != "hkg" {
+		t.Fatalf("公网区域照原样: %q", got)
+	}
+}

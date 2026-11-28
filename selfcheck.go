@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -128,46 +129,112 @@ type deviceLister interface {
 // mergeAdvertised 用管理接口把「通告 / 批准」两列补上，并且把
 // 「通告了但本机没接受」的路由也拉进列表——这一类最常见：
 // 服务端批准了，客户端因为别的原因没拿到，用户只看到「内网不通」。
+//
+// 两个来源说的是同一条路由：netmap 只给「已接受」，管理接口给
+// 「已通告 / 已批准」。必须合成一行，否则页面上会同时出现
+// 「可用」和「本机还没接受」两条结论，看的人只会觉得这功能坏了。
 func mergeAdvertised(rows []RouteCheck, cp deviceLister) []RouteCheck {
 	devs, err := cp.Devices("")
 	if err != nil {
-		return rows
+		return collapseRoutes(rows)
 	}
 	byIP := make(map[string]Device, len(devs))
+	byName := make(map[string]Device, len(devs))
 	for _, d := range devs {
 		if d.IP != "" {
 			byIP[d.IP] = d
 		}
+		if d.Name != "" {
+			byName[strings.ToLower(d.Name)] = d
+		}
 	}
-	seen := make(map[string]bool, len(rows))
+
 	for i := range rows {
-		seen[rows[i].Prefix+"|"+rows[i].PeerIP] = true
 		d, ok := byIP[rows[i].PeerIP]
+		if !ok && rows[i].Peer != "" {
+			// netmap 给的是 hostname，管理接口给的是 givenName：
+			// 设备改过名的时候只有名字能对上，IP 反而对不上
+			d, ok = byName[strings.ToLower(rows[i].Peer)]
+		}
 		if !ok {
 			continue
 		}
 		rows[i].Known = true
+		rows[i].PeerIP = d.IP
+		if rows[i].Peer == "" {
+			rows[i].Peer = d.Name
+		}
 		// headscale 返回的 approved 是「批准且生效」的那部分，没批准的
 		// 只出现在 available 里。两个字段对不上时以 approved 为准。
 		rows[i].Approved = hasRoute(d.ApprovedRoutes, rows[i].Prefix)
 		rows[i].Advertised = rows[i].Approved || hasRoute(d.AdvertisedRoutes, rows[i].Prefix)
+		rows[i].PeerOnline = rows[i].PeerOnline || d.Online
 	}
 	for _, d := range devs {
 		for _, p := range splitList(d.AdvertisedRoutes) {
-			if seen[p+"|"+d.IP] {
-				continue
-			}
 			rows = append(rows, RouteCheck{
 				Prefix: p, Peer: d.Name, PeerIP: d.IP,
 				Known:      true,
 				Advertised: true,
 				Approved:   hasRoute(d.ApprovedRoutes, p),
-				Accepted:   false,
 				PeerOnline: d.Online,
 			})
 		}
 	}
-	return rows
+	return collapseRoutes(rows)
+}
+
+// collapseRoutes 把「同一个前缀 + 同一台设备」的行合成一条。
+// 合并规则是「任一边知道就算知道、任一边通就算通」——后到的
+// 管理接口永远不知道客户端接没接受，不能用它覆盖 Accepted。
+func collapseRoutes(rows []RouteCheck) []RouteCheck {
+	out := make([]RouteCheck, 0, len(rows))
+	byIP := make(map[string]int, len(rows))
+	byName := make(map[string]int, len(rows))
+	for _, r := range rows {
+		if r.Prefix == "" {
+			continue
+		}
+		var i int
+		var hit bool
+		if r.PeerIP != "" {
+			i, hit = byIP[r.Prefix+"|"+r.PeerIP]
+		}
+		if !hit && r.Peer != "" {
+			i, hit = byName[r.Prefix+"|"+strings.ToLower(r.Peer)]
+		}
+		if hit {
+			out[i] = mergeRoute(out[i], r)
+			// 合并后可能才补上 IP 或名字，两边索引都记一遍
+			byIP[out[i].Prefix+"|"+out[i].PeerIP] = i
+			byName[out[i].Prefix+"|"+strings.ToLower(out[i].Peer)] = i
+			continue
+		}
+		j := len(out)
+		out = append(out, r)
+		if r.PeerIP != "" {
+			byIP[r.Prefix+"|"+r.PeerIP] = j
+		}
+		if r.Peer != "" {
+			byName[r.Prefix+"|"+strings.ToLower(r.Peer)] = j
+		}
+	}
+	return out
+}
+
+func mergeRoute(a, b RouteCheck) RouteCheck {
+	a.Known = a.Known || b.Known
+	a.Advertised = a.Advertised || b.Advertised
+	a.Approved = a.Approved || b.Approved
+	a.Accepted = a.Accepted || b.Accepted
+	a.PeerOnline = a.PeerOnline || b.PeerOnline
+	if a.Peer == "" {
+		a.Peer = b.Peer
+	}
+	if a.PeerIP == "" {
+		a.PeerIP = b.PeerIP
+	}
+	return a
 }
 
 func hasRoute(list, prefix string) bool {
@@ -177,6 +244,16 @@ func hasRoute(list, prefix string) bool {
 		}
 	}
 	return false
+}
+
+// relayLabel 把 DERP 区域代码翻成一眼能懂的字。headscale 内嵌中继的
+// region code 就叫 "headscale"，原样显示像是控制面地址，
+// 用户会以为「出口」走的是控制面服务器。
+func relayLabel(code string) string {
+	if strings.EqualFold(code, "headscale") {
+		return "自建中继"
+	}
+	return code
 }
 
 // routeVerdict 按四步往下走，停在哪一步就说哪一步的事。
@@ -210,6 +287,13 @@ func finishSelf(rep SelfReport) SelfReport {
 	for _, h := range rep.Health {
 		warn = append(warn, h)
 	}
+	// 补出来的路由是追加在末尾的，不排一下顺序看着像两组数据
+	sort.SliceStable(rep.Routes, func(i, j int) bool {
+		if rep.Routes[i].Prefix != rep.Routes[j].Prefix {
+			return rep.Routes[i].Prefix < rep.Routes[j].Prefix
+		}
+		return rep.Routes[i].Peer < rep.Routes[j].Peer
+	})
 	for i := range rep.Routes {
 		rep.Routes[i].Verdict, rep.Routes[i].Tone = routeVerdict(rep.Routes[i])
 	}
