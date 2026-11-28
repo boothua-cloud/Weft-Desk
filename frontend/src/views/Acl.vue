@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { api, type State, type PolicyDoc, type Device, type User, type PolicyVersion } from '../api'
 import { reloadTick } from '../bus'
 import ChipsInput from '../components/ChipsInput.vue'
@@ -10,6 +10,7 @@ import TokenField from '../components/TokenField.vue'
 import { useConfirm } from '../confirm'
 import { diffStat, keepContext, lineDiff, type DiffLine } from '../diff'
 import {
+  auditAcl,
   explainPolicyError,
   flattenDst,
   groupDst,
@@ -26,6 +27,7 @@ import {
   type AclForm,
   type AclIssue,
   type DstGroup,
+  type Risk,
 } from '../acl'
 
 const props = defineProps<{ state: State | null }>()
@@ -99,6 +101,12 @@ const issuesLead = computed(
   () => issues.value.find((i) => i.level === 'error') ?? issues.value[0],
 )
 const formMode = computed(() => mode.value !== 'source')
+
+// 风险体检：只报「这条规则等于没设防」，和上面的语法校验分开显示。
+// 源码模式不解析表单，这里也不算，避免拿着旧 form 报错位。
+const risks = computed<Risk[]>(() => (formMode.value && form.value ? auditAcl(form.value) : []))
+const highRisks = computed(() => risks.value.filter((r) => r.level === 'high').length)
+const riskOpen = ref(false)
 const currentText = computed(() => (formMode.value && form.value ? serializeAcl(form.value) : text.value))
 const dirty = computed(() => currentText.value.trim() !== baseline.value.trim())
 
@@ -215,6 +223,18 @@ async function load() {
 onMounted(load)
 watch(reloadTick, load)
 
+// 风险条目点一下跳到那条规则：先切回规则页签，再滚到卡片并闪一下边
+function jumpRule(i: number) {
+  if (mode.value !== 'form') setMode('form')
+  nextTick(() => {
+    const el = document.getElementById('acl-rule-' + i)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('risk-flash')
+    window.setTimeout(() => el.classList.remove('risk-flash'), 1400)
+  })
+}
+
 // 规则 / 组与标签 共用同一份表单数据，源码是另一份缓冲区，切换时互相搬运。
 // 从源码往表单切必须先解析成功，否则界面会拿旧表单去覆盖用户刚写的内容。
 function setMode(m: 'form' | 'scope' | 'source') {
@@ -274,7 +294,6 @@ async function validate() {
 
 async function save() {
   if (readOnly.value) return
-  const payload = currentText.value
   if (formMode.value) {
     if (!form.value) return
     if (errorCount.value) {
@@ -283,6 +302,23 @@ async function save() {
       return
     }
   }
+  // 风险不挡保存，但要人在按下之前知道自己在放什么过去
+  if (risks.value.length) {
+    const high = highRisks.value
+    askConfirm({
+      title: `有 ${risks.value.length} 条风险规则`,
+      desc: `${risks.value[0].title}。${high ? `其中 ${high} 条是高危。` : ''}保存后立即生效。`,
+      ok: '仍然保存',
+      tone: 'primary',
+      action: () => doSave(),
+    })
+    return
+  }
+  await doSave()
+}
+
+async function doSave() {
+  const payload = currentText.value
   busy.value = true
   const hints = mode.value === 'source' ? policyKeyHints(payload) : []
   try {
@@ -518,6 +554,30 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
           </div>
         </div>
       </div>
+      <!-- 风险体检：规则存得下去，但等于没设防。和上面的语法校验分开说 -->
+      <div v-if="risks.length" class="notice acl-notice slim risk">
+        <div class="slim-head">
+          <span class="slim-tag risk-tag">{{ highRisks ? `${highRisks} 条高危` : `${risks.length} 条风险` }}</span>
+          <span class="slim-text">
+            {{ risks[0].title }}<template v-if="risks.length > 1">，还有 {{ risks.length - 1 }} 条</template>
+          </span>
+          <button type="button" class="link-btn slim-toggle" @click="riskOpen = !riskOpen">
+            {{ riskOpen ? '收起' : '逐条看' }}
+          </button>
+        </div>
+        <div v-if="riskOpen" class="slim-list risk-list">
+          <button v-for="(rk, i) in risks" :key="i" type="button" class="risk-row" @click="jumpRule(rk.rule)">
+            <span class="risk-dot" :class="rk.level"></span>
+            <span class="risk-body">
+              <span class="risk-line">
+                <b class="risk-title">{{ rk.title }}</b>
+                <i class="risk-go">第 {{ rk.rule + 1 }} 条</i>
+              </span>
+              <span class="risk-detail">{{ rk.detail }}</span>
+            </span>
+          </button>
+        </div>
+      </div>
       <div v-if="check" class="notice acl-notice" :class="check.kind === 'ok' ? 'info' : 'warn'">
         {{ check.text }}
       </div>
@@ -566,7 +626,7 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
           </div>
         </section>
 
-        <section v-for="(r, i) in form.acls" :key="i" class="acl-card rule">
+        <section v-for="(r, i) in form.acls" :key="i" :id="'acl-rule-' + i" class="acl-card rule">
           <div class="rule-head">
             <span class="rule-no">规则 {{ i + 1 }}</span>
             <span class="rule-sum">{{ ruleSummary(r) }}</span>
@@ -1156,6 +1216,47 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
   display: flex; flex-direction: column; gap: 5px;
   margin-top: 7px; padding-top: 7px;
   border-top: 1px dashed var(--line); font-size: 11.5px; line-height: 1.7;
+}
+
+/* ---- 风险体检：橙色，跟黄色的校验提示、红色的错误分开 ---- */
+.notice.risk {
+  background: var(--warn-soft);
+  border-color: color-mix(in srgb, var(--warn) 26%, transparent);
+  color: var(--text);
+}
+.risk-tag { color: var(--warn); }
+.risk-list { gap: 2px; }
+.risk-row {
+  display: grid;
+  grid-template-columns: 6px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  width: 100%; padding: 6px;
+  border: 0; border-radius: 7px;
+  background: transparent;
+  text-align: left;
+  font: inherit; font-size: 11.5px; line-height: 1.65;
+  color: var(--muted);
+  cursor: pointer;
+}
+.risk-row:hover { background: color-mix(in srgb, var(--warn) 9%, transparent); }
+.risk-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  margin-top: 7px; flex: none;
+}
+.risk-dot.high { background: var(--danger); }
+.risk-dot.mid { background: var(--warn); }
+.risk-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.risk-line { display: flex; align-items: baseline; gap: 10px; }
+.risk-title { color: var(--text); font-weight: 500; }
+.risk-go { margin-left: auto; color: var(--faint); font-size: 10.5px; white-space: nowrap; }
+.risk-detail { color: var(--muted); }
+.risk-row:hover .risk-go { color: var(--warn); }
+/* 跳转后闪一下边，不然滚过去也看不出是哪一条 */
+.acl-card.risk-flash { animation: risk-flash 1.4s ease; }
+@keyframes risk-flash {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  12%, 55% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--warn) 55%, transparent); }
 }
 
 /* 单栏滚动容器（组与标签页用）：顶部 16px 淡出 + 同宽 padding */

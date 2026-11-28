@@ -629,6 +629,116 @@ export function formatDstEntry(host: string, ports: string[]): string {
   return `${host}:${p.join(',')}`
 }
 
+// ---------- 风险体检 ----------
+
+// 敏感端口：默认配置就能直接拿到 shell 或数据库的那些。
+// 不全，只挑放开了会真出事的；SSH 放第一是因为爆破面最大。
+const SENSITIVE_PORTS = [22, 23, 445, 1433, 3306, 3389, 5432, 5900, 6379, 9200, 11211, 27017]
+
+const PORT_LABEL: Record<number, string> = {
+  22: 'SSH', 23: 'Telnet', 445: 'SMB', 1433: 'SQL Server', 3306: 'MySQL',
+  3389: '远程桌面', 5432: 'PostgreSQL', 5900: 'VNC', 6379: 'Redis',
+  9200: 'Elasticsearch', 11211: 'Memcached', 27017: 'MongoDB',
+}
+
+export interface Risk {
+  level: 'high' | 'mid'
+  /** 规则下标，0 基；点条目时滚到这条 */
+  rule: number
+  title: string
+  detail: string
+}
+
+// 端口串是否覆盖某个端口。`*` 全中，`8000-8100` 按区间算。
+function coversPort(ports: string[], port: number): boolean {
+  for (const p of ports) {
+    if (p === '*') return true
+    if (p.includes('-')) {
+      const [a, b] = p.split('-').map((x) => Number.parseInt(x, 10))
+      if (!Number.isNaN(a) && !Number.isNaN(b) && port >= a && port <= b) return true
+    } else if (Number.parseInt(p, 10) === port) {
+      return true
+    }
+  }
+  return false
+}
+
+const EVERYONE = ['*', 'autogroup:member']
+
+function portNames(hits: number[]): string {
+  const names = hits.map((p) => PORT_LABEL[p])
+  return names.length <= 3 ? names.join('、') : `${names.slice(0, 3).join('、')} 等 ${names.length} 个`
+}
+
+// 与 validateAcl 分工：那边管「能不能存」，这里管「存了会不会出事」。
+// 所以只报风险、不产生错误，也不改任何东西。
+export function auditAcl(form: AclForm): Risk[] {
+  const out: Risk[] = []
+  const seen = new Set<string>()
+
+  form.acls.forEach((r, i) => {
+    const openToAll = r.src.some((s) => EVERYONE.includes(s))
+    const who = r.src.find((s) => EVERYONE.includes(s)) ?? ''
+    for (const d of r.dst) {
+      const { host, ports } = parseDstEntry(d)
+      const key = `${i}|${host}|${ports.join(',')}`
+      if (seen.has(key)) continue
+      seen.add(key)
+
+      // autogroup:self 指「来源自己的设备」，对全员开放它本来就是设计意图；
+      // 这类相对集合也判断不出实际范围，一并跳过
+      if (host.startsWith('autogroup:')) continue
+
+      // 裸 * 和 *:* 在 headscale 里都是「所有设备的所有端口」
+      if (host === '*' && (ports.includes('*') || !ports.length)) {
+        out.push({
+          level: 'high',
+          rule: i,
+          title: '对所有设备开放全部端口',
+          detail: '目标写成 *:*，任何来源都能连任意设备的任意端口，这条等于没设防。',
+        })
+        continue
+      }
+
+      // 目标写 *，但限了端口：所有设备都会开放这组端口
+      if (host === '*') {
+        const hits = SENSITIVE_PORTS.filter((p) => coversPort(ports, p))
+        if (hits.length) {
+          out.push({
+            level: 'high',
+            rule: i,
+            title: hits.length === 1 ? `任何设备都能连 ${PORT_LABEL[hits[0]]}` : `任何设备都能连 ${hits.length} 个敏感端口`,
+            detail: `目标写成 ${d}，所有设备都会放开 ${portNames(hits)}。改成具体设备或标签。`,
+          })
+        } else {
+          out.push({
+            level: 'mid',
+            rule: i,
+            title: '目标对任何设备开放',
+            detail: `目标写成 ${d}，所有设备都会开放这组端口，以后新加的机器也在里面。`,
+          })
+        }
+        continue
+      }
+
+      // 来源是全员，落在具体设备或标签的敏感端口上
+      if (openToAll) {
+        const hits = SENSITIVE_PORTS.filter((p) => coversPort(ports, p))
+        if (hits.length) {
+          out.push({
+            level: 'high',
+            rule: i,
+            title: hits.length === 1 ? `${host} 的 ${PORT_LABEL[hits[0]]} 对全员开放` : `${host} 上有 ${hits.length} 个敏感端口对全员开放`,
+            detail: `命中 ${portNames(hits)}，来源是 ${who}。这类端口拿到登录就是 shell 或整个库。`,
+          })
+        }
+      }
+    }
+  })
+
+  return out
+}
+
 // 一条规则里的目标按「端口相同」归组，界面上就能写成
 // 「服务器、CI → SSH/HTTPS」，而不用每个目标重复一遍端口。
 export interface DstGroup {
