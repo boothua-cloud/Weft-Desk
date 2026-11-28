@@ -570,6 +570,14 @@ export function ToggleForward(id: string, enabled: boolean): $CancellablePromise
     return $Call.ByID(475188822, id, enabled);
 }
 
+/**
+ * Traffic 采一次累计流量。跟 PingPeer 一样不返回 error：没连上时
+ * 曲线只需要知道「这一秒没有数据」，不需要一次弹窗。
+ */
+export function Traffic(): $CancellablePromise<string> {
+    return $Call.ByID(2080293786);
+}
+
 export function UninstallHelper(): $CancellablePromise<string> {
     return $Call.ByID(4087897565);
 }

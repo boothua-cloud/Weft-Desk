@@ -207,6 +207,42 @@ func (s *WeftService) PingPeer(ip string) (string, error) {
 	return toJSON(sample)
 }
 
+// TrafficTotals 是累计收发字节，不是速率。速率必须由前端按自己的
+// 采样间隔去差分：后端定时算一次再推过去，反而要在两边维护时钟。
+type TrafficTotals struct {
+	Up   int64  `json:"up"`   // 本机发出去
+	Down int64  `json:"down"` // 本机收回来
+	At   string `json:"at"`
+	Err  string `json:"err"` // 非空表示这次采不到（没连上），前端据此断开曲线
+}
+
+// Traffic 采一次累计流量。跟 PingPeer 一样不返回 error：没连上时
+// 曲线只需要知道「这一秒没有数据」，不需要一次弹窗。
+func (s *WeftService) Traffic() (string, error) {
+	out := TrafficTotals{At: time.Now().Format(time.RFC3339)}
+	s.mu.Lock()
+	eng := s.engine
+	s.mu.Unlock()
+	if eng == nil {
+		out.Err = "还没连上"
+		return toJSON(out)
+	}
+	t, ok := eng.(interface {
+		Traffic() (int64, int64, bool)
+	})
+	if !ok {
+		out.Err = "当前引擎不支持流量统计"
+		return toJSON(out)
+	}
+	up, down, live := t.Traffic()
+	if !live {
+		out.Err = "隧道没在跑"
+		return toJSON(out)
+	}
+	out.Up, out.Down = up, down
+	return toJSON(out)
+}
+
 // PeerPorts 列出每台设备上「登记过的服务」——应用书签里的地址、
 // 端口转发规则里的目标端口。
 //

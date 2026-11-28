@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, type State, type AppBookmark, type AuditEvent, type Device, type APIKey, type AuthKey } from '../api'
 import Pick from '../components/Pick.vue'
+import TrafficChart from '../components/TrafficChart.vue'
 import { reloadTick } from '../bus'
 
 const props = defineProps<{ state: State | null }>()
@@ -189,6 +190,59 @@ async function load() {
 onMounted(load)
 watch(() => props.state?.connected, load)
 watch(reloadTick, load)
+
+// ---------- 实时流量 ----------
+// 后端给的是累计字节，速率在这里按两次采样的时间差算。采样只在连接
+// 期间跑：没连上时既没有流量，也没必要两秒打扰一次引擎。
+type TrafficPoint = { up: number; down: number }
+const CAP = 60 // 两秒一个点，最近两分钟
+const traffic = ref<TrafficPoint[]>([])
+let trafficBase: { up: number; down: number; t: number } | null = null
+let trafficTimer: number | undefined
+let trafficBusy = false
+
+async function sampleTraffic() {
+  if (trafficBusy) return
+  if (!props.state?.connected) {
+    if (traffic.value.length) traffic.value = []
+    trafficBase = null
+    return
+  }
+  trafficBusy = true
+  try {
+    const t = await api.traffic()
+    if (t.err) return
+    const now = performance.now()
+    const base = trafficBase
+    trafficBase = { up: t.up, down: t.down, t: now }
+    // 第一次只记基线：没有上一次的数，算不出速率
+    if (!base) return
+    // 重连或引擎重启后累计值会归零。差值变成负数时这一格直接跳过，
+    // 否则曲线上会插一个「凭空往下掉」的尖峰，看着像流量异常。
+    if (t.up < base.up || t.down < base.down) return
+    const dt = (now - base.t) / 1000
+    if (dt < 0.3) return
+    const next = traffic.value.concat({
+      up: (t.up - base.up) / dt,
+      down: (t.down - base.down) / dt,
+    })
+    if (next.length > CAP) next.splice(0, next.length - CAP)
+    traffic.value = next
+  } catch {
+    // 采不到就丢这一格，下一轮再试。曲线断一格比弹一个错窗口好
+  } finally {
+    trafficBusy = false
+  }
+}
+
+onMounted(() => {
+  sampleTraffic()
+  trafficTimer = window.setInterval(sampleTraffic, 2000)
+})
+onUnmounted(() => {
+  window.clearInterval(trafficTimer)
+  trafficTimer = undefined
+})
 
 // Connect() 返回时只是 TUN 建好了，节点上线还要几秒。
 // 加载态必须撑到真正连通，否则按钮一闪就恢复，看着像没生效。
@@ -445,6 +499,17 @@ async function fetchAuth() {
           {{ keyExpires || '未读取到有效期' }}
         </div>
       </div>
+    </div>
+
+    <!-- 隧道流量：上面几张卡都是快照，只有这张回答「现在到底在传东西吗」。
+         上下行分开画，做转发的机器一眼就能看出是收得多还是发得多 -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="spread" style="margin-bottom:10px">
+        <h3 class="sec" style="margin:0">实时流量</h3>
+        <span class="faint" style="font-size:10.5px">与所有设备的合计</span>
+      </div>
+      <TrafficChart :samples="traffic" :capacity="CAP"
+                    :idle="state?.connected ? '正在采样…' : '连上之后开始采样'" />
     </div>
 
     <!-- 本节点的信息（主机名、地址、服务端、状态）都在上面那张大卡里，

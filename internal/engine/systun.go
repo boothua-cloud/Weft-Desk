@@ -187,6 +187,22 @@ func (e *systemTUNEngine) Peers() []model.PeerInfo {
 			Relay: RelayLabel(p.Relay), CurAddr: p.CurAddr,
 		})
 	}
+	// st.Peer 是 map，Go 的遍历顺序每次都不一样。界面每三秒刷一次状态，
+	// 不排的话同一批设备会一直在列表里换位置，看着像在乱跳。
+	// 按名字排而不是按在线状态：设备一上线就整列重排，比固定顺序更晃眼。
+	sort.Slice(out, func(i, j int) bool {
+		a, b := strings.ToLower(out[i].Name), strings.ToLower(out[j].Name)
+		if a != b {
+			if a == "" {
+				return false
+			}
+			if b == "" {
+				return true
+			}
+			return a < b
+		}
+		return out[i].IP < out[j].IP
+	})
 	return out
 }
 
@@ -1057,6 +1073,39 @@ func (e *systemTUNEngine) PingPeer(ctx context.Context, ip netip.Addr) (float64,
 		return -1, errors.New(pr.Err)
 	}
 	return pr.LatencySeconds * 1000, nil
+}
+
+// Traffic 返回与所有对端之间的累计收发字节，给总览页的流量曲线做差分。
+//
+// 只读本地节点状态，不打网络，也不去碰系统网卡计数：走 TUN 的流量
+// 本来就都记在 wireguard 的 peer 统计里，还省得处理每个平台不同的
+// 接口名（utun3 / wintun / tailscale0）。
+//
+// 方向按 PeerStatus 的注释：TxBytes 是发给对端（上行），RxBytes 是
+// 从对端收到的（下行）。
+func (e *systemTUNEngine) Traffic() (up, down int64, ok bool) {
+	e.mu.Lock()
+	srv := e.srv
+	running := e.running
+	e.mu.Unlock()
+	if srv == nil || !running {
+		return 0, 0, false
+	}
+	lc, err := srv.LocalClient()
+	if err != nil {
+		return 0, 0, false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	st, err := lc.Status(ctx)
+	if err != nil {
+		return 0, 0, false
+	}
+	for _, p := range st.Peer {
+		up += p.TxBytes
+		down += p.RxBytes
+	}
+	return up, down, true
 }
 
 func (e *systemTUNEngine) dialProbe(ctx context.Context, t DiagTarget, label string,

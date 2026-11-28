@@ -104,6 +104,14 @@ export interface PingSample {
   at: string
   err: string
 }
+// TrafficTotals 是累计收发字节。速率由界面按两次采样的时间差自己算，
+// 后端只负责给一个准数。
+export interface TrafficTotals {
+  up: number
+  down: number
+  at: string
+  err: string
+}
 
 // PolicyVersion 是策略历史里的一版，和 Go 侧 model.go 对应。
 export interface PolicyVersion {
@@ -300,6 +308,8 @@ export const api = {
   peerPorts: () => parse<PeerPort[]>((WeftService as any).PeerPorts()),
   // 单次 disco 探测，给延迟曲线用。失败也走返回值（ms = -1），不抛错
   pingPeer: (ip: string) => parse<PingSample>((WeftService as any).PingPeer(ip)),
+  // 累计收发字节，给总览页的流量曲线做差分
+  traffic: () => parse<TrafficTotals>((WeftService as any).Traffic()),
 
   // 节点
   devices: () => parse<Cached<Device>>(WeftService.ListDevices()),
