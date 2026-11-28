@@ -1192,12 +1192,12 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 18px), transparent 100%);
   mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 18px), transparent 100%);
 }
-/* 高度随表格内容长，最多吃掉 36vh：行少时把空间让给规则区，行多时自己滚 */
+/* 高度随表格内容长，最多吃掉 44vh：行少时把空间让给规则区，行多时自己滚 */
 /* 不做成第二张卡：规则卡是白卡，这里直接坐在页面底色上，只用一条顶线断开。
    否则白卡里再套一个带框表格，两层边框 + 上浮阴影，会读成一块浮起来的板子。 */
 .acl-matrix-pane {
   flex: none; display: flex; flex-direction: column;
-  max-height: 36vh; padding: 2px 0 6px;
+  max-height: 44vh; padding: 2px 0 6px;
   border-top: 1px solid var(--line);
 }
 .acl-matrix-pane.min { max-height: none; }
@@ -1209,8 +1209,8 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
 .mtx-bar-title { font-size: 12.5px; font-weight: 600; color: var(--text); letter-spacing: .01em; }
 .mtx-bar-sub { font-size: 10.5px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mtx-bar-sub.alert { color: var(--warn); font-weight: 600; }
-/* 矩阵自己滚，不把固定区撑高 */
-.mtx-body { flex: 1; min-height: 0; overflow: auto; padding-top: 8px; }
+/* 矩阵自己滚，不把固定区撑高。滚动交给表格框，吸顶表头才有意义 */
+.mtx-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding-top: 8px; }
 .acl-source { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding-top: 10px; }
 .acl-source .codearea { flex: 1; min-height: 160px; height: auto; }
 

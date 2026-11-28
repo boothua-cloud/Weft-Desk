@@ -15,6 +15,16 @@ import InfoDialog from './components/InfoDialog.vue'
 import UpdateDialog from './components/UpdateDialog.vue'
 
 const page = ref('overview')
+// 侧栏折叠：看矩阵这类宽表格时把左边那一条收起来。记在本地，下次打开还是收着的
+const SIDE_KEY = 'weft.side.collapsed'
+function readSide() {
+  try { return localStorage.getItem(SIDE_KEY) === '1' } catch { return false }
+}
+const sideCollapsed = ref(readSide())
+function toggleSide() {
+  sideCollapsed.value = !sideCollapsed.value
+  try { localStorage.setItem(SIDE_KEY, sideCollapsed.value ? '1' : '0') } catch { /* 隐私模式写不了 */ }
+}
 function toggleTheme() {
   setTheme(darkMode.value ? 'light' : 'dark')
 }
@@ -252,7 +262,7 @@ onUnmounted(() => {
 
 <template>
   <div class="app-shell">
-    <aside class="side">
+    <aside class="side" :class="{ collapsed: sideCollapsed }">
       <div class="brand">
         <img class="logo" src="/appicon.png" alt="云栈" draggable="false" />
         <div><b>云栈</b><small>Headscale 桌面端 v{{ state?.appVersion || '' }}</small></div>
@@ -260,12 +270,18 @@ onUnmounted(() => {
       <template v-for="g in nav" :key="g.label">
         <span class="nav-label">{{ g.label }}</span>
         <button v-for="it in g.items" :key="it.key" class="nav-item"
-                :class="{ active: page === it.key }" @click="page = it.key">
+                :class="{ active: page === it.key }" :title="sideCollapsed ? it.label : undefined"
+                @click="page = it.key">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"
                stroke-linecap="round" stroke-linejoin="round"><path :d="icons[it.key]" /></svg>
-          {{ it.label }}
+          <span class="nav-text">{{ it.label }}</span>
         </button>
       </template>
+      <button class="nav-item side-toggle" :title="sideCollapsed ? '展开侧栏' : '收起侧栏'" @click="toggleSide">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>
+        <span class="nav-text">收起侧栏</span>
+      </button>
       <div class="side-foot">
         <span class="dot" :class="state?.connecting ? 'warn pulse' : (state?.connected ? 'ok' : 'off')"></span>
         <div>

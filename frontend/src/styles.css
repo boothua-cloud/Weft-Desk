@@ -135,7 +135,25 @@ button { cursor: pointer; }
   padding: 16px 12px 12px;
   background: var(--surface);
   border-right: 1px solid var(--line);
+  transition: width .18s ease, padding .18s ease;
 }
+/* 收起后只剩图标：宽屏看矩阵时能省出 170px，鼠标悬停有原生提示 */
+.side.collapsed { width: 62px; padding: 16px 8px 12px; }
+.side.collapsed .brand { justify-content: center; padding: 4px 0 14px; }
+.side.collapsed .brand > div { display: none; }
+.side.collapsed .nav-label {
+  height: 1px; padding: 0; margin: 10px 8px 8px;
+  font-size: 0; line-height: 0; overflow: hidden;
+  background: var(--line-soft);
+}
+.side.collapsed .nav-item {
+  width: 40px; height: 36px; padding: 0; margin: 0 auto 2px;
+  justify-content: center;
+}
+.side.collapsed .nav-text { display: none; }
+.side.collapsed .nav-item.active::before { left: -8px; }
+.side.collapsed .side-foot { justify-content: center; padding: 12px 0 4px; }
+.side.collapsed .side-foot > div { display: none; }
 html[data-theme="dark"] .side { background: rgba(11, 17, 24, .72); backdrop-filter: blur(18px); }
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -179,6 +197,10 @@ html[data-theme="dark"] .logo { filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55
   content: ""; position: absolute; left: -12px; top: 50%; transform: translateY(-50%);
   width: 3px; height: 18px; border-radius: 0 3px 3px 0; background: var(--brand);
 }
+.side-toggle { margin-top: 10px; color: var(--faint); }
+.side-toggle svg { transition: transform .18s ease; }
+.side.collapsed .side-toggle svg { transform: rotate(180deg); }
+.side.collapsed .side-toggle { color: var(--faint); }
 
 .side-foot {
   margin-top: auto; padding: 12px 10px 4px;
