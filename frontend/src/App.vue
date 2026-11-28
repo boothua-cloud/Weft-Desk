@@ -277,11 +277,6 @@ onUnmounted(() => {
           <span class="nav-text">{{ it.label }}</span>
         </button>
       </template>
-      <button class="nav-item side-toggle" :title="sideCollapsed ? '展开侧栏' : '收起侧栏'" @click="toggleSide">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
-             stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>
-        <span class="nav-text">收起侧栏</span>
-      </button>
       <div class="side-foot">
         <span class="dot" :class="state?.connecting ? 'warn pulse' : (state?.connected ? 'ok' : 'off')"></span>
         <div>
@@ -289,13 +284,18 @@ onUnmounted(() => {
           <small>{{ state?.message || '读取中…' }}</small>
         </div>
       </div>
+      <!-- 只留一个箭头：位置钉在面板最底部，不跟导航抢注意力 -->
+      <button class="side-toggle" :title="sideCollapsed ? '展开侧栏' : '收起侧栏'" @click="toggleSide">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3.5 5 8l4.5 4.5" /></svg>
+      </button>
     </aside>
 
     <main class="main">
       <header class="page-head">
-        <div>
-          <div class="page-kicker">{{ crumb }}</div>
+        <div class="page-id">
           <h1 class="page-title">{{ title }}</h1>
+          <span class="page-kicker">{{ crumb }}</span>
         </div>
         <div class="page-actions">
           <div class="menu-wrap">

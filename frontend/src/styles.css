@@ -130,19 +130,28 @@ button { cursor: pointer; }
 
 .app-shell { position: relative; z-index: 1; display: flex; height: 100%; }
 
+/* 侧栏不再贴着窗口边切一刀：改成一块浮在画布上的玻璃面板，
+   四周留白、圆角、投影。整页于是是「一张纸上的两片」，
+   不是后台模板那种左栏 + 右栏 */
 .side {
-  width: 232px; flex: none; display: flex; flex-direction: column;
-  padding: 16px 12px 12px;
-  background: var(--surface);
-  border-right: 1px solid var(--line);
-  transition: width .18s ease, padding .18s ease;
+  width: 216px; flex: none; display: flex; flex-direction: column;
+  margin: 10px 0 10px 10px;
+  padding: 14px 10px 8px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  backdrop-filter: blur(22px) saturate(1.5);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  transition: width .2s ease, padding .2s ease;
 }
-/* 收起后只剩图标：宽屏看矩阵时能省出 170px，鼠标悬停有原生提示 */
-.side.collapsed { width: 62px; padding: 16px 8px 12px; }
+/* 收起后只剩图标：宽屏看矩阵时能省出 150px，鼠标悬停有原生提示 */
+.side.collapsed { width: 60px; padding: 14px 8px 8px; }
 .side.collapsed .brand { justify-content: center; padding: 4px 0 14px; }
 .side.collapsed .brand > div { display: none; }
 .side.collapsed .nav-label {
-  height: 1px; padding: 0; margin: 10px 8px 8px;
+  height: 1px; padding: 0; margin: 10px 6px 8px;
   font-size: 0; line-height: 0; overflow: hidden;
   background: var(--line-soft);
 }
@@ -152,13 +161,19 @@ button { cursor: pointer; }
 }
 .side.collapsed .nav-text { display: none; }
 .side.collapsed .nav-item.active::before { left: -8px; }
-.side.collapsed .side-foot { justify-content: center; padding: 12px 0 4px; }
+.side.collapsed .side-foot { justify-content: center; padding: 12px 0 2px; }
 .side.collapsed .side-foot > div { display: none; }
-html[data-theme="dark"] .side { background: rgba(11, 17, 24, .72); backdrop-filter: blur(18px); }
+html[data-theme="dark"] .side { background: rgba(13, 19, 27, .72); }
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
-.content { flex: 1; padding: 8px 28px 28px; overflow: auto; position: relative; scroll-behavior: smooth; }
+.content { flex: 1; padding: 8px 26px 26px; overflow: auto; position: relative; scroll-behavior: smooth; }
+/* 换页时内容轻轻上浮：少一点「整块界面被替换」的硬切感 */
+.content > * { animation: weft-page-in .22s cubic-bezier(.22, .8, .3, 1); }
+@keyframes weft-page-in { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .content > *, .side, .card { animation: none !important; transition: none !important; }
+}
 
 /* ---------------- 品牌 ---------------- */
 
@@ -194,37 +209,68 @@ html[data-theme="dark"] .logo { filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55
 .nav-item.active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
 .nav-item.active svg { opacity: 1; }
 .nav-item.active::before {
-  content: ""; position: absolute; left: -12px; top: 50%; transform: translateY(-50%);
+  content: ""; position: absolute; left: -10px; top: 50%; transform: translateY(-50%);
   width: 3px; height: 18px; border-radius: 0 3px 3px 0; background: var(--brand);
 }
-.side-toggle { margin-top: 10px; color: var(--faint); }
-.side-toggle svg { transition: transform .18s ease; }
+/* 底部那一枚箭头：只有图标，居中，不占一整行文字的位置 */
+.side-toggle {
+  flex: none; width: 30px; height: 30px; margin: 4px auto 2px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 999px; background: transparent;
+  color: var(--faint); transition: background .15s, color .15s;
+}
+.side-toggle:hover { background: var(--surface-3); color: var(--text); }
+.side-toggle svg { width: 14px; height: 14px; transition: transform .2s ease; }
 .side.collapsed .side-toggle svg { transform: rotate(180deg); }
-.side.collapsed .side-toggle { color: var(--faint); }
 
 .side-foot {
-  margin-top: auto; padding: 12px 10px 4px;
-  border-top: 1px solid var(--line-soft);
+  margin-top: auto; padding: 12px 6px 8px;
   display: flex; align-items: center; gap: 9px;
+  border-top: 1px solid var(--line-soft);
 }
 .side-foot b { display: block; font-size: 11.5px; font-weight: 600; }
 .side-foot small { display: block; color: var(--faint); font-size: 10px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
 
 /* ---------------- 页头 ---------------- */
 
+/* 不要那条分隔线和铺底渐变了：标题就浮在画布上，
+   后面跟一个分组小标签，读起来像一份文档的抬头，不像后台的导航条 */
 .page-head {
-  flex: none; display: flex; align-items: flex-end; justify-content: space-between;
-  gap: 20px; padding: 22px 28px 16px;
+  flex: none; display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; padding: 16px 26px 10px;
   position: relative;
-  background: linear-gradient(var(--bg) 72%, transparent);
 }
-.page-head::after {
-  content: ""; position: absolute; left: 28px; right: 28px; bottom: 0; height: 1px;
-  background: linear-gradient(90deg, var(--line), transparent 78%);
+.page-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.page-id::before {
+  content: ""; width: 3px; height: 17px; border-radius: 2px; flex: none;
+  background: linear-gradient(var(--brand), var(--brand-2));
 }
-.page-kicker { font-size: 10.5px; color: var(--faint); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 5px; }
-.page-title { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -.02em; }
-.page-actions { display: flex; align-items: center; gap: 9px; }
+.page-title { margin: 0; font-size: 22px; font-weight: 680; letter-spacing: -.03em; }
+.page-kicker {
+  font-size: 10.5px; color: var(--faint); letter-spacing: .02em;
+  padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line-soft); background: color-mix(in srgb, var(--surface) 70%, transparent);
+  white-space: nowrap;
+}
+/* 右上角收进一枚玻璃胶囊：不再是一排散落的按钮，
+   而是像窗口自带的工具条，跟浮起来的侧栏用同一套材质 */
+.page-actions {
+  display: flex; align-items: center; gap: 3px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: var(--shadow-1);
+}
+.page-actions .icon-btn {
+  border-color: transparent; background: transparent; border-radius: 999px;
+}
+.page-actions .icon-btn:hover { background: var(--surface-3); color: var(--text); }
+.page-actions .icon-btn.active { background: var(--brand-soft); color: var(--brand); }
+.page-actions .chip { border-color: transparent; }
+.page-actions .avatar { border-color: var(--line); background: var(--surface-3); margin-left: 1px; }
 
 .crumb { font-size: 13px; color: var(--muted); }
 .crumb b { color: var(--text); font-weight: 600; }
@@ -304,15 +350,21 @@ html[data-theme="dark"] .chip { background: rgba(255, 255, 255, .02); }
 
 /* ---------------- 卡片 ---------------- */
 
+/* 卡片不再是压在纸上的白积木：略带透明的面，细边、大圆角，
+   和背景的极光透出来一点，整体像一张连续的画布 */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border: 1px solid var(--line-soft);
+  border-radius: 18px;
   padding: 18px;
   box-shadow: var(--shadow-1);
 }
 .card.tight { padding: 14px 16px; }
-html[data-theme="dark"] .card { background: linear-gradient(180deg, rgba(255, 255, 255, .022), transparent 42%), var(--surface); }
+/* 深色下细边几乎和背景同色，边界要靠稍亮的一档补回来 */
+html[data-theme="dark"] .card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .022), transparent 42%), var(--surface);
+  border-color: var(--line);
+}
 
 h3.sec {
   font-size: 12px; font-weight: 600; margin: 0 0 14px;
