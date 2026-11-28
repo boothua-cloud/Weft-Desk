@@ -10,6 +10,7 @@ defineProps<{ state: State | null }>()
 const emit = defineEmits(['notify'])
 
 const view = ref<ForwardView | null>(null)
+const loading = ref(false)
 const busy = ref(false)
 const drawer = ref(false)
 const snippet = ref('')
@@ -29,8 +30,10 @@ const statusMap = computed(() => {
 })
 
 async function load() {
+  loading.value = true
   try { view.value = await api.forwards() }
   catch (err: any) { emit('notify', '加载失败：' + (err?.message ?? err)) }
+  finally { loading.value = false }
 }
 onMounted(load)
 watch(reloadTick, load)
@@ -103,7 +106,9 @@ function fmtBytes(n?: number): string {
     <div class="spread" style="margin-bottom:14px">
       <div class="faint" style="font-size:11.5px">把本地端口映射到 tailnet 目标，外部工具连本机端口即可</div>
       <div class="row">
-        <button class="btn" @click="load">刷新</button>
+        <button class="btn" :disabled="loading" @click="load">
+          <span v-if="loading" class="spinner"></span>{{ loading ? '刷新中…' : '刷新' }}
+        </button>
         <button class="btn primary" @click="edit()">新建规则</button>
       </div>
     </div>

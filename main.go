@@ -175,6 +175,17 @@ func main() {
 	}
 	log.Printf("[ui] 调试快捷键已注册（F12 / Cmd+Alt+I）")
 
+	// 帮助里写着 ⌘R 刷新数据，之前只在菜单上标了字，按下去没反应。
+	// 快捷键在后端注册，前端收到事件后统一刷新状态和当前页。
+	refreshKey := "ctrl+r"
+	if runtime.GOOS == "darwin" {
+		refreshKey = "cmd+r"
+	}
+	app.KeyBinding.Add(refreshKey, func(application.Window) {
+		app.Event.Emit("weft:refresh")
+	})
+	log.Printf("[ui] 刷新快捷键已注册（%s）", refreshKey)
+
 	w := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             "main",
 		Title:            "云栈",

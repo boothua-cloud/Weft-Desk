@@ -173,17 +173,32 @@ async function refresh() {
   catch (e: any) { notify('读取状态失败：' + (e?.message ?? e)) }
 }
 const spinning = ref(false)
+// 刷完之后打个勾。状态本来就每 3 秒轮询一次，点一下看不出区别，
+// 只能靠这个确认「点到了、也回来了」。
+const refreshed = ref(false)
+let refreshFlash: number | undefined
 // 顶栏按钮：既刷新隧道状态，也让当前页面重新拉自己的列表
 async function refreshAll() {
+  if (spinning.value) return
   spinning.value = true
+  refreshed.value = false
   requestReload()
+  const started = Date.now()
   await refresh()
-  window.setTimeout(() => { spinning.value = false }, 400)
+  // 本地服务端二三十毫秒就回来了，转瞬即逝，看着跟没点一样。
+  // 给它走完半秒，页面也有时间把新数据画上去。
+  const rest = 520 - (Date.now() - started)
+  if (rest > 0) await new Promise((r) => window.setTimeout(r, rest))
+  spinning.value = false
+  refreshed.value = true
+  window.clearTimeout(refreshFlash)
+  refreshFlash = window.setTimeout(() => { refreshed.value = false }, 1200)
 }
 // tsnet 节点异步上线（首次授权可能要几分钟），定时刷新状态与登录链接。
 let pollTimer: number | undefined
 let offNavigate: (() => void) | undefined
 let offUpdate: (() => void) | undefined
+let offRefresh: (() => void) | undefined
 // 启动遮罩写在 index.html 里，这里等界面首帧真正绘制完再淡出，
 // 否则会出现「遮罩撤了、页面还没画」的一瞬间空白。
 function dismissBoot() {
@@ -226,6 +241,11 @@ onMounted(async () => {
     })
   } catch { /* 忽略 */ }
 
+  // 帮助里写的 ⌘R 走这里：快捷键在后端注册，前端只负责接
+  try {
+    offRefresh = Events.On('weft:refresh', () => { refreshAll() })
+  } catch { /* 忽略 */ }
+
   // 窗口此刻还是隐藏的：先把窗口叫出来，#boot 已在 DOM 里，第一帧就是启动动画，
   // 用户看不到 WebView 加载期间那块没有任何内容的底色。
   const revealedAt = Date.now()
@@ -258,7 +278,9 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   try { offUpdate?.() } catch { /* 忽略 */ }
+  try { offRefresh?.() } catch { /* 忽略 */ }
   window.clearInterval(pollTimer)
+  window.clearTimeout(refreshFlash)
   offNavigate?.()
   window.clearInterval(pollTimer)
 })
@@ -342,7 +364,8 @@ onUnmounted(() => {
               <path d="M13.5 9.6A5.9 5.9 0 1 1 6.4 2.5a4.7 4.7 0 0 0 7.1 7.1z" />
             </svg>
           </button>
-          <button class="icon-btn" :class="{ spinning }" title="刷新" @click="refreshAll">↻</button>
+          <button class="icon-btn" :class="{ spinning, done: refreshed }"
+                  :title="refreshed ? '已刷新' : '刷新'" @click="refreshAll">{{ refreshed ? '✓' : '↻' }}</button>
           <div class="menu-wrap">
             <button class="icon-btn" :class="{ active: menuOpen }" title="更多" @click.stop="menuOpen = !menuOpen">
               <svg viewBox="0 0 16 16" fill="currentColor" width="15" height="15">
@@ -376,7 +399,9 @@ onUnmounted(() => {
         </div>
       </header>
 
-      <div class="content" :class="{ 'content-fixed': fixedLayout }">
+      <div class="reload-line" :class="{ on: spinning }"><i></i></div>
+
+      <div class="content" :class="{ 'content-fixed': fixedLayout, refreshing: spinning }">
         <Overview v-if="page === 'overview'" :state="state" @refresh="refresh" @notify="notify"
                   @navigate="page = $event" />
         <Manage v-else-if="['devices','users','keys','api'].includes(page)" :tab="manageTab" :state="state"

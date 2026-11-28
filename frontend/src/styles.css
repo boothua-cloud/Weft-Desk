@@ -173,12 +173,23 @@ html[data-theme="dark"] .side { background: rgba(13, 19, 27, .72); }
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
-.content { flex: 1; padding: 8px 26px 26px; overflow: auto; position: relative; scroll-behavior: smooth; }
+.content { flex: 1; padding: 8px 26px 26px; overflow: auto; position: relative; scroll-behavior: smooth; transition: opacity .16s ease; }
+/* 刷新时整块内容淡一点，页头下面再走一条扫描线。
+   只有右上角那个按钮在转的话，页面看着没动 */
+.content.refreshing { opacity: .8; }
+.reload-line { height: 2px; overflow: hidden; flex: none; }
+.reload-line i {
+  display: block; height: 100%; width: 34%; opacity: 0;
+  background: linear-gradient(90deg, transparent, var(--brand), transparent);
+}
+.reload-line.on i { opacity: 1; animation: weft-reload .9s linear infinite; }
+@keyframes weft-reload { from { transform: translateX(-110%); } to { transform: translateX(330%); } }
 /* 换页时内容轻轻上浮：少一点「整块界面被替换」的硬切感 */
 .content > * { animation: weft-page-in .22s cubic-bezier(.22, .8, .3, 1); }
 @keyframes weft-page-in { from { opacity: 0; transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) {
   .content > *, .side, .card { animation: none !important; transition: none !important; }
+  .reload-line.on i { animation: none !important; width: 100%; opacity: .5; }
 }
 
 /* ---------------- 品牌 ---------------- */
@@ -326,6 +337,8 @@ html[data-theme="dark"] .chip { background: rgba(255, 255, 255, .02); }
 }
 .icon-btn:hover { background: var(--surface-3); color: var(--text); border-color: var(--line); }
 .icon-btn.spinning { animation: weft-spin .45s linear; }
+/* 刷新完成：勾一下再退回去，不然轮询本来就在跑，点了跟没点一样 */
+.icon-btn.done { color: var(--brand); background: var(--brand-soft); }
 .icon-btn.active { background: var(--brand-soft); border-color: var(--brand-line); color: var(--brand); }
 
 /* 右上角「更多」菜单 */

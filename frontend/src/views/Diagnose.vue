@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { api, type State, type PeerInfo, type DiagReport, type SelfReport, type PeerPort } from '../api'
+import { reloadTick } from '../bus'
 
 const props = defineProps<{ state: State | null }>()
 const emit = defineEmits(['notify', 'navigate'])
@@ -191,6 +192,13 @@ watch(
     loadPorts()
   },
 )
+
+// 顶栏刷新：这一页原来只认「连接状态变了」，按钮点下去什么都不动。
+// 对端探测是快照，不自动重跑（会一直 ping 别人），只重新自检和刷服务列表。
+watch(reloadTick, () => {
+  runSelf()
+  loadPorts()
+})
 </script>
 
 <template>

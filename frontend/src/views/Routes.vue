@@ -10,6 +10,7 @@ const emit = defineEmits(['notify'])
 
 const devices = ref<Device[]>([])
 const loadErr = ref('')
+const loading = ref(false)
 const busy = ref('')
 const { confirmBox, askConfirm, closeConfirm } = useConfirm()
 
@@ -49,12 +50,15 @@ const pending = computed(() => rows.value.filter((r) => !r.approved).length)
 const approvedCount = computed(() => rows.value.length - pending.value)
 
 async function load() {
+  loading.value = true
   try {
     const v = await api.devices()
     devices.value = v.items ?? []
     loadErr.value = v.error || ''
   } catch (err: any) {
     emit('notify', '读取设备失败：' + (err?.message ?? err))
+  } finally {
+    loading.value = false
   }
 }
 onMounted(load)
@@ -119,7 +123,9 @@ function approveAll() {
         <span class="faint" style="font-size:11.5px">{{ approvedCount }} 条已批准</span>
       </div>
       <div class="row">
-        <button class="btn" @click="load">刷新</button>
+        <button class="btn" :disabled="loading" @click="load">
+          <span v-if="loading" class="spinner"></span>{{ loading ? '刷新中…' : '刷新' }}
+        </button>
         <button class="btn primary" :disabled="!pending" @click="approveAll">全部批准</button>
       </div>
     </div>
