@@ -159,6 +159,9 @@ export interface State {
   nameSyncCount: number
   nameSyncSkipped: string[]
   nameSyncErr: string
+  // 本机真实网卡上的 IPv4（不含回环和 tailnet 的 100.64/10）。
+  // 前后两次比对就知道系统网络换了没有
+  localIPs: string[]
 }
 // UpdateStatus 是「检查更新」的返回，和 Go 侧的 updater.UpdateStatus 对应。
 export interface UpdateStatus {

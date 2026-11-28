@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Events } from '@wailsio/runtime'
 import { api, type State } from './api'
 import { requestReload } from './bus'
+import { diffNetwork } from './netchange'
 import { darkMode, setTheme } from './theme'
 import Overview from './views/Overview.vue'
 import Manage from './views/Manage.vue'
@@ -264,9 +265,35 @@ function notify(msg: string) {
   window.clearTimeout(toastTimer)
   toastTimer = window.setTimeout(() => { toast.value = '' }, 3400)
 }
+// 网络变化提示：只在真的变了时说一句，12 秒内最多一条。换 Wi-Fi 或隧道重新
+// 打洞时，几台设备的路径会在几秒里连着翻，一路刷屏比不提示更烦。
+//
+// 刚连上的头 25 秒不提路径：节点先走 DERP，几秒后才逐个打通直连，
+// 这段时间的「恢复直连」是正常上线过程，不是网络出过事。
+let netToldAt = 0
+let connectedAt = 0
+function announceNetwork(prev: State, next: State) {
+  if (!next.connected) {
+    connectedAt = 0
+    return
+  }
+  const now = Date.now()
+  if (!connectedAt) connectedAt = now
+  const changes = diffNetwork(prev, next).filter(
+    (c) => c.kind === 'net' || now - connectedAt > 25000,
+  )
+  if (!changes.length) return
+  if (now - netToldAt < 12000) return
+  netToldAt = now
+  notify(changes.map((c) => c.text).join('；'))
+}
 async function refresh() {
-  try { state.value = await api.state() }
-  catch (e: any) { notify('读取状态失败：' + (e?.message ?? e)) }
+  try {
+    const next = await api.state()
+    const prev = state.value
+    state.value = next
+    if (prev) announceNetwork(prev, next)
+  } catch (e: any) { notify('读取状态失败：' + (e?.message ?? e)) }
 }
 const spinning = ref(false)
 // 刷完之后打个勾。状态本来就每 3 秒轮询一次，点一下看不出区别，

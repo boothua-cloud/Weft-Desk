@@ -4,7 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
+	"net/netip"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -75,6 +78,7 @@ func (s *WeftService) GetState() (string, error) {
 	if st.SelfIP == "" {
 		st.SelfIP = "—"
 	}
+	st.LocalIPs = localIPv4s()
 	s.fillNameSync(&st)
 	// 顺手在后台确认一下这把钥匙服务端认不认（只在没结论时才发请求）
 	s.ensureAPIKeyProbe()
@@ -160,6 +164,49 @@ func (s *WeftService) ensureAPIKeyProbe() {
 			s.keyProbe = keyProbe{at: time.Now()}
 		}
 	}()
+}
+
+// tailnetCIDR 是 tailscale 的地址段。本机地址列表必须排除它：
+// 那是隧道自己的地址，换 Wi-Fi 也不会变，算进去就判断不出网络切换。
+var tailnetCIDR = netip.MustParsePrefix("100.64.0.0/10")
+
+// localIPv4s 列本机真实网卡上的 IPv4，界面拿两次结果比对就知道系统网络换了没有。
+//
+// 这个函数每次 GetState 都会跑（界面 3 秒一轮），所以只做一次接口枚举，
+// 不发任何请求。回环、链路本地（169.254）和 100.64/10 都排除掉，
+// Docker、虚拟机那些虚拟网卡只要地址不变就不会影响结论。
+func localIPv4s() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, 4)
+	for _, ifi := range ifaces {
+		if ifi.Flags&net.FlagUp == 0 || ifi.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := ifi.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip4 := ipnet.IP.To4()
+			if ip4 == nil {
+				continue
+			}
+			ip := netip.AddrFrom4([4]byte(ip4))
+			if ip.IsLoopback() || ip.IsLinkLocalUnicast() || tailnetCIDR.Contains(ip) {
+				continue
+			}
+			out = append(out, ip.String())
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // formatUptime 把时长写成「2 天 3 小时」这种能直接读的形式。

@@ -111,6 +111,11 @@ type State struct {
 	NameSyncCount   int      `json:"nameSyncCount"`
 	NameSyncSkipped []string `json:"nameSyncSkipped"`
 	NameSyncErr     string   `json:"nameSyncErr"`
+
+	// LocalIPs 是本机真实网卡上的 IPv4（不含回环、链路本地和 tailnet 自己的
+	// 100.64/10）。界面拿它前后两次比对，就能知道系统网络换了没有：换 Wi-Fi、
+	// 插网线、连上另一个 VPN，地址集合都会变。
+	LocalIPs []string `json:"localIPs"`
 }
 
 type Device struct {
