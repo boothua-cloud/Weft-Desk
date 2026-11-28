@@ -56,17 +56,23 @@ func installHelper() error {
 	uid := strconv.Itoa(os.Getuid())
 
 	// TCC 会拦 root 读取 ~/Documents 等受保护目录，install 会报
-	// "Operation not permitted (71)"。先把自身复制到 /tmp 这个 root 可读的位置。
+	// "Operation not permitted (71)"。先把自身复制到 root 可读的临时目录。
+	// 目录 0700，不跟别人共用 /tmp；真正的防线是下面脚本里的校验值。
+	tmpDir, err := os.MkdirTemp("", "weft-helper-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+
 	src, err := os.Open(self)
 	if err != nil {
 		return fmt.Errorf("读取自身可执行文件失败: %w", err)
 	}
 	defer src.Close()
-	tmpBin, err := os.CreateTemp("/tmp", "weft-helper-bin-*")
+	tmpBin, err := os.CreateTemp(tmpDir, "bin-*")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmpBin.Name())
 	if _, err = io.Copy(tmpBin, src); err != nil {
 		_ = tmpBin.Close()
 		return fmt.Errorf("复制助手二进制失败: %w", err)
@@ -95,15 +101,23 @@ func installHelper() error {
 </plist>
 `, helperLabel, helperBinPath, daemonFlag, uid)
 
-	tmpPlist, err := os.CreateTemp("/tmp", "weft-*.plist")
+	tmpPlist, err := os.CreateTemp(tmpDir, "helper-*.plist")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmpPlist.Name())
 	if _, err = tmpPlist.WriteString(plist); err != nil {
 		return err
 	}
 	_ = tmpPlist.Close()
+
+	binSum, err := fileSHA256(tmpBin.Name())
+	if err != nil {
+		return fmt.Errorf("计算助手校验值失败: %w", err)
+	}
+	plistSum, err := fileSHA256(tmpPlist.Name())
+	if err != nil {
+		return fmt.Errorf("计算 plist 校验值失败: %w", err)
+	}
 
 	script := fmt.Sprintf(`#!/bin/sh
 set -e
@@ -111,11 +125,15 @@ LABEL=%s
 BIN=%s
 PLIST=%s
 mkdir -p /Library/PrivilegedHelperTools
+[ "$(%s)" = %q ] || { echo '助手二进制校验失败，已中止' >&2; exit 1; }
+[ "$(%s)" = %q ] || { echo 'plist 校验失败，已中止' >&2; exit 1; }
 launchctl bootout system/$LABEL 2>/dev/null || true
 install -m 544 -o root -g wheel %s "$BIN"
 install -m 644 -o root -g wheel %s "$PLIST"
 launchctl bootstrap system "$PLIST"
 `, helperLabel, helperBinPath, helperPlistPath,
+		shasumCmd(shQuote(tmpBin.Name())), binSum,
+		shasumCmd(shQuote(tmpPlist.Name())), plistSum,
 		shQuote(tmpBin.Name()), shQuote(tmpPlist.Name()))
 
 	if err := runElevatedScript(script); err != nil {

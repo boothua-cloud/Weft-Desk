@@ -9,6 +9,7 @@ import (
 	"html"
 	"log"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,7 +49,29 @@ type WeftService struct {
 	upd *updateState
 	// syncSrv 是应用书签同步的 tailnet 监听，只在开关打开时存在。
 	syncSrv *syncServer
+	// mainWindowID 是主界面窗口的 ID。0 表示还不知道（放行，避免误伤启动流程）。
+	mainWindowID uint
 }
+
+// callerAllowed 给改配置、看凭证、删除这类方法用。
+//
+// 应用内窗口加载的是第三方内网页面，Wails v3.0.0 收到绑定调用时只看
+// 「是不是主 frame」，不校验来源，所以那个页面（或它被 XSS 打穿的版本）
+// 可以直接调到所有后端方法。这里按调用来源窗口再挡一道：
+// 不是主界面发起的，一律不认。
+func (s *WeftService) callerAllowed(ctx context.Context) bool {
+	if s.mainWindowID == 0 {
+		return true
+	}
+	w, ok := ctx.Value(application.WindowKey).(application.Window)
+	if !ok || w == nil {
+		// 托盘、启动流程这类不是从窗口发起的调用
+		return true
+	}
+	return w.ID() == s.mainWindowID
+}
+
+var errNotMainWindow = errors.New("这个操作只能在云栈主界面里做")
 
 // keyProbe 缓存管理 Key 的判定结果。
 // 只有服务端明确回 401/403 才记 bad；网络不通记成「还没结论」，
@@ -258,7 +281,10 @@ func (s *WeftService) GetConfig() (string, error) {
 	return toJSON(c)
 }
 
-func (s *WeftService) SaveConfig(raw string) error {
+func (s *WeftService) SaveConfig(ctx context.Context, raw string) error {
+	if !s.callerAllowed(ctx) {
+		return errNotMainWindow
+	}
 	var c Config
 	if err := json.Unmarshal([]byte(raw), &c); err != nil {
 		return err
@@ -274,6 +300,23 @@ func (s *WeftService) SaveConfig(raw string) error {
 	}
 	if c.SocksPort == 0 {
 		c.SocksPort = 1080
+	}
+	if strings.TrimSpace(c.BaseURL) != "" {
+		base, plain, err := validateBaseURL(c.BaseURL)
+		if err != nil {
+			return err
+		}
+		c.BaseURL = base
+		if plain {
+			log.Printf("[cp] %s 用的是 http，管理密钥会明文过网", base)
+		}
+	}
+	// 导入的配置、老版本留下的配置都可能带着解析不了的 CA。
+	// 这里挡住，不然 reload 之后每次请求都只报一个看不懂的错误。
+	if ca := strings.TrimSpace(c.CACert); ca != "" {
+		if _, err := certPool(ca); err != nil {
+			return err
+		}
 	}
 	// 顶层字段是「当前激活 profile」的副本，改完要写回去，否则切走再切回会丢
 	s.mu.Lock()
@@ -428,7 +471,10 @@ func (s *WeftService) SaveProfile(name string) error {
 }
 
 // DeleteProfile 删掉一个服务端（不能删当前激活的）。
-func (s *WeftService) DeleteProfile(id string) error {
+func (s *WeftService) DeleteProfile(ctx context.Context, id string) error {
+	if !s.callerAllowed(ctx) {
+		return errNotMainWindow
+	}
 	s.mu.Lock()
 	cfg := s.cfg
 	s.mu.Unlock()
@@ -491,8 +537,11 @@ func (s *WeftService) DeleteProfile(id string) error {
 	s.cap = defaultCapabilities()
 	s.mu.Unlock()
 
-	_ = secretSet(secretMain+"."+id, "")
-	_ = secretSet(secretAuth+"."+id, "")
+	// 用 Delete 而不是写空串：钥匙串里不该留一堆空条目。
+	// 服务端那把 Key 不顺手吊销 —— 同一个管理 Key 可能还在别的地方用，
+	// 删本地配置不该把别人的钥匙作废。
+	secretDelete(secretMain + "." + id)
+	secretDelete(secretAuth + "." + id)
 
 	if deletingActive {
 		loadProfileSecrets(next)
@@ -524,7 +573,10 @@ type profileInput struct {
 
 // SaveProfileRaw 新建或更新一个服务端配置，返回它的 ID。
 // 改的是当前激活那个时，会顺手重连，让新地址立刻生效。
-func (s *WeftService) SaveProfileRaw(raw string) (string, error) {
+func (s *WeftService) SaveProfileRaw(ctx context.Context, raw string) (string, error) {
+	if !s.callerAllowed(ctx) {
+		return "", errNotMainWindow
+	}
 	var in profileInput
 	if err := json.Unmarshal([]byte(raw), &in); err != nil {
 		return "", err
@@ -534,8 +586,13 @@ func (s *WeftService) SaveProfileRaw(raw string) (string, error) {
 	if in.Name == "" {
 		return "", fmt.Errorf("给这个服务端起个名字")
 	}
-	if in.BaseURL == "" {
-		return "", fmt.Errorf("服务地址不能为空")
+	base, plain, err := validateBaseURL(in.BaseURL)
+	if err != nil {
+		return "", err
+	}
+	in.BaseURL = base
+	if plain {
+		log.Printf("[cp] 服务端 %s 用的是 http，管理密钥会明文过网", base)
 	}
 
 	s.mu.Lock()
@@ -597,12 +654,12 @@ func (s *WeftService) SaveProfileRaw(raw string) (string, error) {
 	if v := strings.TrimSpace(in.APIKey); v != "" {
 		_ = secretSet(secretMain+"."+id, v)
 	} else if in.ClearAPIKey {
-		_ = secretSet(secretMain+"."+id, "")
+		secretDelete(secretMain + "." + id)
 	}
 	if v := strings.TrimSpace(in.AuthKey); v != "" {
 		_ = secretSet(secretAuth+"."+id, v)
 	} else if in.ClearAuthKey {
-		_ = secretSet(secretAuth+"."+id, "")
+		secretDelete(secretAuth + "." + id)
 	}
 
 	if changedActive {
@@ -726,7 +783,10 @@ func (s *WeftService) SetUIPrefs(raw string) (string, error) {
 }
 
 // SetCredential 单独把服务端凭证写入系统钥匙串，绝不进 SQLite。
-func (s *WeftService) SetCredential(kind, value string) error {
+func (s *WeftService) SetCredential(ctx context.Context, kind, value string) error {
+	if !s.callerAllowed(ctx) {
+		return errNotMainWindow
+	}
 	key := secretMain
 	switch kind {
 	case "auth":
@@ -747,7 +807,10 @@ func (s *WeftService) SetCredential(kind, value string) error {
 
 // RevealCredential 返回某个凭证的明文，供「显示」按钮用。
 // 钥匙串本来就是为了不落明文，所以这里不做缓存，每次现读。
-func (s *WeftService) RevealCredential(kind string) (string, error) {
+func (s *WeftService) RevealCredential(ctx context.Context, kind string) (string, error) {
+	if !s.callerAllowed(ctx) {
+		return "", errNotMainWindow
+	}
 	key := secretMain
 	switch kind {
 	case "auth":
@@ -850,6 +913,20 @@ func (s *WeftService) EnsureAPIKeyFresh(window time.Duration) (bool, error) {
 		return false, fmt.Errorf("创建新密钥失败: %w", err)
 	}
 	if err := secretSet(secretMain, fresh); err != nil {
+		// 新钥匙没存下来就别留着它：服务端那边会变成一把 90 天有效、
+		// 本地没有记录的管理凭据，谁也不知道它属于谁。
+		// 明文本里没有服务端 ID，只能回列表里按前缀认。
+		if keys, kerr := cp.APIKeys(); kerr == nil {
+			for i := range keys {
+				if !keyPrefixMatches(fresh, keys[i].Prefix) {
+					continue
+				}
+				if eerr := cp.ExpireAPIKey(keys[i].Prefix, keys[i].ID); eerr != nil {
+					log.Printf("[keys] 回滚新 API Key 失败，需要手动吊销 %s: %v", keys[i].Prefix, eerr)
+				}
+				break
+			}
+		}
 		return false, fmt.Errorf("保存新密钥失败: %w", err)
 	}
 	// 旧 Key 已经没用了，吊销掉；失败不影响本次续期结果
@@ -953,8 +1030,8 @@ func (s *WeftService) GetLoginURL() (string, error) {
 func (s *WeftService) GetState() (string, error) {
 	s.mu.Lock()
 	cfg, cap, connected, started := s.cfg, s.cap, s.connected, s.started
+	e := s.engine // 和 cfg 一起取：reload 会在锁里换掉它
 	s.mu.Unlock()
-	e := s.engine
 	hasKey, keyWhy := s.apiKeyStatus()
 	st := State{
 		Connected: connected, ControlPlane: cfg.ControlPlane,
@@ -980,7 +1057,7 @@ func (s *WeftService) GetState() (string, error) {
 		st.Routes, st.Skipped, st.NetErr = rr.RouteInfo()
 	}
 	st.Mode = "live"
-	if st1, ok := s.engine.(interface{ Starting() bool }); ok {
+	if st1, ok := e.(interface{ Starting() bool }); ok {
 		st.Connecting = st1.Starting()
 	}
 	s.mu.Lock()
@@ -988,14 +1065,14 @@ func (s *WeftService) GetState() (string, error) {
 		st.Connecting = true
 	}
 	s.mu.Unlock()
-	running, ip, host := s.engine.Status()
+	running, ip, host := e.Status()
 	st.Connected = running
 	st.SelfIP = ip
 	st.Hostname = host
 	// 运行时长以引擎自己的上线时刻为准：自动连接的路径不经过 Connect，
 	// 只记 s.started 会永远是零值（界面上就是一直显示「—」）。
 	since := started
-	if sr, ok := s.engine.(interface{ Since() time.Time }); ok {
+	if sr, ok := e.(interface{ Since() time.Time }); ok {
 		if t := sr.Since(); !t.IsZero() {
 			since = t
 		}
@@ -1223,7 +1300,10 @@ func (s *WeftService) RegisterNode(user, key string) (string, error) {
 	return wrapOne(d)
 }
 
-func (s *WeftService) DeleteDevice(id string) error {
+func (s *WeftService) DeleteDevice(ctx context.Context, id string) error {
+	if !s.callerAllowed(ctx) {
+		return errNotMainWindow
+	}
 	if err := s.cp.DeleteDevice(id); err != nil {
 		return err
 	}
@@ -1264,7 +1344,10 @@ func (s *WeftService) DisableDeviceExpiry(id string) error {
 	return nil
 }
 
-func (s *WeftService) ApproveRoutes(id, routes string) error {
+func (s *WeftService) ApproveRoutes(ctx context.Context, id, routes string) error {
+	if !s.callerAllowed(ctx) {
+		return errNotMainWindow
+	}
 	if err := s.cp.ApproveRoutes(id, splitList(routes)); err != nil {
 		return err
 	}
@@ -1301,7 +1384,10 @@ func (s *WeftService) ListUsers() (string, error) {
 	return cachedList(s.store, s.cacheKey("users"), s.cp.Users)
 }
 
-func (s *WeftService) CreateUser(name, displayName, email, pictureURL string) (string, error) {
+func (s *WeftService) CreateUser(ctx context.Context, name, displayName, email, pictureURL string) (string, error) {
+	if !s.callerAllowed(ctx) {
+		return "", errNotMainWindow
+	}
 	u, err := s.cp.CreateUser(name, displayName, email, pictureURL)
 	if err != nil {
 		return "", err
@@ -1310,7 +1396,10 @@ func (s *WeftService) CreateUser(name, displayName, email, pictureURL string) (s
 	return wrapOne(u)
 }
 
-func (s *WeftService) RenameUser(id, name string) error {
+func (s *WeftService) RenameUser(ctx context.Context, id, name string) error {
+	if !s.callerAllowed(ctx) {
+		return errNotMainWindow
+	}
 	if err := s.cp.RenameUser(id, name); err != nil {
 		return err
 	}
@@ -1318,7 +1407,10 @@ func (s *WeftService) RenameUser(id, name string) error {
 	return nil
 }
 
-func (s *WeftService) DeleteUser(id string) error {
+func (s *WeftService) DeleteUser(ctx context.Context, id string) error {
+	if !s.callerAllowed(ctx) {
+		return errNotMainWindow
+	}
 	if err := s.cp.DeleteUser(id); err != nil {
 		return err
 	}
@@ -1335,7 +1427,10 @@ func (s *WeftService) ListAuthKeys() (string, error) {
 	return cachedList(s.store, s.cacheKey("authkeys"), s.cp.AuthKeys)
 }
 
-func (s *WeftService) CreateAuthKey(user string, reusable, ephemeral bool, days int, tags string) (string, error) {
+func (s *WeftService) CreateAuthKey(ctx context.Context, user string, reusable, ephemeral bool, days int, tags string) (string, error) {
+	if !s.callerAllowed(ctx) {
+		return "", errNotMainWindow
+	}
 	key, err := s.cp.CreateAuthKey(user, reusable, ephemeral, days, normalizeTags(tags))
 	if err != nil {
 		return "", err
@@ -1352,7 +1447,10 @@ func (s *WeftService) ExpireAuthKey(id string) error {
 	return nil
 }
 
-func (s *WeftService) DeleteAuthKey(id string) error {
+func (s *WeftService) DeleteAuthKey(ctx context.Context, id string) error {
+	if !s.callerAllowed(ctx) {
+		return errNotMainWindow
+	}
 	if err := s.cp.DeleteAuthKey(id); err != nil {
 		return err
 	}
@@ -1369,7 +1467,10 @@ func (s *WeftService) ListAPIKeys() (string, error) {
 	return cachedList(s.store, s.cacheKey("apikeys"), s.cp.APIKeys)
 }
 
-func (s *WeftService) CreateAPIKey(days int) (string, error) {
+func (s *WeftService) CreateAPIKey(ctx context.Context, days int) (string, error) {
+	if !s.callerAllowed(ctx) {
+		return "", errNotMainWindow
+	}
 	key, err := s.cp.CreateAPIKey(days)
 	if err != nil {
 		return "", err
@@ -1386,7 +1487,10 @@ func (s *WeftService) ExpireAPIKey(prefix, id string) error {
 	return nil
 }
 
-func (s *WeftService) DeleteAPIKey(prefix, id string) error {
+func (s *WeftService) DeleteAPIKey(ctx context.Context, prefix, id string) error {
+	if !s.callerAllowed(ctx) {
+		return errNotMainWindow
+	}
 	if err := s.cp.DeleteAPIKey(prefix, id); err != nil {
 		return err
 	}
@@ -1404,7 +1508,10 @@ func (s *WeftService) GetPolicy() (string, error) {
 	return wrapOne(p)
 }
 
-func (s *WeftService) SavePolicy(content string) error {
+func (s *WeftService) SavePolicy(ctx context.Context, content string) error {
+	if !s.callerAllowed(ctx) {
+		return errNotMainWindow
+	}
 	// 先把线上现有的策略记下来，再覆盖。历史里存的是「曾经生效过」的版本，
 	// 存新版本没有意义——它就在服务端上。
 	old := ""
@@ -1441,12 +1548,15 @@ func (s *WeftService) GetPolicyVersion(id int64) (string, error) {
 }
 
 // RestorePolicy 把历史版本写回服务端。写之前当前版本会进历史，所以回滚也能后悔。
-func (s *WeftService) RestorePolicy(id int64) error {
+func (s *WeftService) RestorePolicy(ctx context.Context, id int64) error {
+	if !s.callerAllowed(ctx) {
+		return errNotMainWindow
+	}
 	body, err := s.store.GetPolicyVersion(id)
 	if err != nil {
 		return err
 	}
-	if err := s.SavePolicy(body); err != nil {
+	if err := s.SavePolicy(ctx, body); err != nil {
 		return err
 	}
 	s.store.AddAudit("回滚 ACL 策略", fmt.Sprintf("回到第 %d 版", id))
@@ -1582,6 +1692,28 @@ func (s *WeftService) SaveApp(raw string) error {
 func (s *WeftService) DeleteApp(id string) error { return s.store.DeleteApp(id) }
 
 // OpenApp 用 Wails v3 多窗口新开独立 WebView，不走 iframe（会被 X-Frame-Options 拦截）。
+// appTargetURL 校验书签地址并补上协议，只放行 http/https。
+// 书签会从对端同步过来（apps_sync.go），不是纯本地输入；
+// `file://` 会被 WebView 当本地文件打开，`-a Calculator` 这种值
+// 传给 `open` / `rundll32` 会被当成参数而不是网址。
+func appTargetURL(raw string) (string, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "", errors.New("书签地址是空的")
+	}
+	if !strings.Contains(s, "://") {
+		s = "http://" + s
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" {
+		return "", fmt.Errorf("书签地址无效：%s", raw)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("书签只支持 http / https：%s", raw)
+	}
+	return s, nil
+}
+
 func (s *WeftService) OpenApp(id string) error {
 	apps, err := s.store.ListApps()
 	if err != nil {
@@ -1599,7 +1731,11 @@ func (s *WeftService) OpenApp(id string) error {
 		if a.Browser {
 			return s.OpenInBrowser(id)
 		}
-		target, err := s.engine.ResolveURL(a.URL)
+		raw, err := appTargetURL(a.URL)
+		if err != nil {
+			return err
+		}
+		target, err := s.engine.ResolveURL(raw)
 		if err != nil {
 			return err
 		}
@@ -1641,7 +1777,11 @@ func (s *WeftService) OpenInBrowser(id string) error {
 			continue
 		}
 		// 系统浏览器同样走本地代理，避免依赖浏览器自身的路由。
-		openURL, err := s.engine.ResolveURL(a.URL)
+		raw, err := appTargetURL(a.URL)
+		if err != nil {
+			return err
+		}
+		openURL, err := s.engine.ResolveURL(raw)
 		if err != nil {
 			return err
 		}

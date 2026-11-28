@@ -267,9 +267,6 @@ export function ListUsers(): $CancellablePromise<string> {
     return $Call.ByID(2611853321);
 }
 
-/**
- * OpenApp 用 Wails v3 多窗口新开独立 WebView，不走 iframe（会被 X-Frame-Options 拦截）。
- */
 export function OpenApp(id: string): $CancellablePromise<void> {
     return $Call.ByID(3926966466, id);
 }

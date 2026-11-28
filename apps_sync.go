@@ -234,7 +234,7 @@ func (s *WeftService) stopSyncServer() {
 
 func (s *WeftService) syncMux() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/info", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/info", s.guardSync(func(w http.ResponseWriter, r *http.Request) {
 		_, host := s.selfPlace()
 		apps, _ := s.store.ListApps()
 		writeJSON(w, map[string]any{
@@ -244,7 +244,7 @@ func (s *WeftService) syncMux() http.Handler {
 			"count":    len(apps),
 			"enabled":  true,
 		})
-	})
+	}))
 	mux.HandleFunc("/v1/apps", s.guardSync(s.handleSyncApps))
 	return mux
 }
@@ -417,9 +417,15 @@ func (s *WeftService) syncRequest(method, target, token string, body []byte) ([]
 }
 
 // syncURL 补上协议和默认端口。已经带端口的原样用。
+// 显式写了 https 就按 https 走（对端可能挂了反代），不悄悄降级成 http。
 func syncURL(target string) (string, error) {
 	t := strings.TrimSpace(target)
-	t = strings.TrimPrefix(strings.TrimPrefix(t, "http://"), "https://")
+	scheme := "http"
+	if rest, ok := strings.CutPrefix(t, "https://"); ok {
+		scheme, t = "https", rest
+	} else {
+		t = strings.TrimPrefix(t, "http://")
+	}
 	t = strings.TrimRight(t, "/")
 	if t == "" {
 		return "", fmt.Errorf("先选一台设备或填地址")
@@ -430,7 +436,7 @@ func syncURL(target string) (string, error) {
 	if !strings.Contains(t, ":") {
 		t = net.JoinHostPort(t, strconv.Itoa(defaultSyncPort))
 	}
-	return "http://" + t, nil
+	return scheme + "://" + t, nil
 }
 
 // ---------- 合并 ----------
@@ -487,9 +493,10 @@ func mergeApps(local, incoming []AppBookmark) (out []AppBookmark, added, updated
 			updated++
 			continue
 		}
-		if in.ID == "" {
-			in.ID = fmt.Sprintf("app-%d", time.Now().UnixNano()+int64(added))
-		}
+		// ID 一律在本机生成。对端的 ID 只说明它自己库里的那条，
+		// 直接沿用的话，两台设备撞上同一个 ID 就会把本机另一条覆盖掉
+		// （合并、复制数据库、早期版本的固定 ID 都可能撞）。
+		in.ID = fmt.Sprintf("app-%d", time.Now().UnixNano()+int64(added))
 		out = append(out, in)
 		index[k] = len(out) - 1
 		added++

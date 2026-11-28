@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net"
@@ -19,16 +22,28 @@ import (
 // 需要回到 Go 侧执行，走一个只听 127.0.0.1 的小控制端点。
 
 var (
-	ctrlOnce sync.Once
-	ctrlPort int
+	ctrlOnce  sync.Once
+	ctrlPort  int
+	ctrlToken string
 )
 
+// ensureControlServer 起一个只听 127.0.0.1 的小端点，给应用窗口里的浮动菜单用。
+// 端点能关窗口，端口是随机的，但同机任何进程都能扫到，所以再加一道随机 token：
+// 只有我们注入进去的那段脚本知道它。
 func ensureControlServer(svc *WeftService) int {
 	ctrlOnce.Do(func() {
+		tok, err := randHex(16)
+		if err != nil {
+			log.Printf("[ui] 生成窗口控制令牌失败: %v", err)
+			return
+		}
 		mux := http.NewServeMux()
 		handle := func(action string) http.HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Access-Control-Allow-Origin", "*")
+				if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("t")), []byte(tok)) != 1 {
+					http.Error(w, "forbidden", http.StatusForbidden)
+					return
+				}
 				svc.windowAction(r.URL.Query().Get("w"), action)
 				_, _ = w.Write([]byte("ok"))
 			}
@@ -41,6 +56,7 @@ func ensureControlServer(svc *WeftService) int {
 			return
 		}
 		ctrlPort = ln.Addr().(*net.TCPAddr).Port
+		ctrlToken = tok
 		go func() {
 			if err := http.Serve(ln, mux); err != nil {
 				log.Printf("[ui] 控制端点退出: %v", err)
@@ -48,6 +64,15 @@ func ensureControlServer(svc *WeftService) int {
 		}()
 	})
 	return ctrlPort
+}
+
+// randHex 生成 n 字节的十六进制随机串。
+func randHex(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // windowAction 按窗口 ID 找到目标窗口再执行动作。
@@ -74,7 +99,7 @@ func (s *WeftService) attachOverlay(w *application.WebviewWindow) {
 	if port <= 0 || w == nil {
 		return
 	}
-	js := appOverlayJS(port, w.ID())
+	js := appOverlayJS(port, ctrlToken, w.ID())
 	stop := make(chan struct{})
 	w.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		select {
@@ -100,11 +125,11 @@ func (s *WeftService) attachOverlay(w *application.WebviewWindow) {
 
 // appOverlayJS 生成注入脚本。全部内联，样式带前缀并 !important，
 // 避免被目标页面的样式覆盖；脚本自身幂等，重复注入不会叠加按钮。
-func appOverlayJS(port int, winID uint) string {
+func appOverlayJS(port int, token string, winID uint) string {
 	tpl := `(function(){
 if(window.__weftBar)return;window.__weftBar=1;
-var base='http://127.0.0.1:{{PORT}}',id='{{ID}}';
-function act(a){try{fetch(base+'/'+a+'?w='+id,{mode:'no-cors'})}catch(e){}}
+var base='http://127.0.0.1:{{PORT}}',id='{{ID}}',tk='{{TOKEN}}';
+function act(a){try{fetch(base+'/'+a+'?w='+id+'&t='+encodeURIComponent(tk),{mode:'no-cors'})}catch(e){}}
 var css='.__weft_wrap{position:fixed!important;top:10px!important;right:10px!important;z-index:2147483647!important;font:12px/1.4 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif!important;text-align:left!important}'
 +'.__weft_btn{width:28px!important;height:28px!important;border-radius:8px!important;border:1px solid rgba(0,0,0,.14)!important;background:rgba(255,255,255,.94)!important;color:#3c4250!important;cursor:pointer!important;box-shadow:0 2px 8px rgba(0,0,0,.14)!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:15px!important;line-height:1!important;padding:0!important;margin:0!important}'
 +'.__weft_btn:hover{background:#fff!important;color:#111!important}'
@@ -130,5 +155,6 @@ wrap.appendChild(btn);wrap.appendChild(menu);
 (document.body||document.documentElement).appendChild(wrap);
 })();`
 	js := strings.ReplaceAll(tpl, "{{PORT}}", strconv.Itoa(port))
+	js = strings.ReplaceAll(js, "{{TOKEN}}", token)
 	return strings.ReplaceAll(js, "{{ID}}", strconv.FormatUint(uint64(winID), 10))
 }

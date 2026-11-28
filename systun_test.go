@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -98,7 +99,12 @@ func TestFDTransferRoundTrip(t *testing.T) {
 	}
 	defer ln.Close()
 
+	// 发送端读的是 src，测试返回时 src 会被 defer 关掉，
+	// 不收尾的话关闭和 sendFD 里的读会撞在一起。
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		c, derr := net.Dial("unix", sock)
 		if derr != nil {
 			return
@@ -111,6 +117,7 @@ func TestFDTransferRoundTrip(t *testing.T) {
 		_ = sendFD(uc, src)
 		_ = c.Close()
 	}()
+	defer wg.Wait()
 
 	conn, err := ln.Accept()
 	if err != nil {

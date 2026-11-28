@@ -4,6 +4,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +14,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -97,7 +100,7 @@ func (r *unixRouter) Prepare() (wgtun.Device, error) {
 	if err != nil {
 		_ = ln.Close()
 		_ = os.Remove(sockPath)
-		detail := readTail("/tmp/weft-elevate.log", 900)
+		detail := readTail(elevateLogPath(), 900)
 		if detail == "" {
 			return nil, fmt.Errorf("没有等到管理员助手连回来（授权可能被取消）。可在设置页安装常驻助手，之后不再需要每次授权")
 		}
@@ -388,14 +391,26 @@ func launchElevated(sockPath string) error {
 
 	if isDarwin() {
 		// 与安装助手同样的 TCC 问题：root 无法执行 ~/Documents 下的二进制，
-		// 先复制到 /tmp 再执行，否则脚本会以 Operation not permitted 退出。
-		runSelf, err := copySelfToTemp()
+		// 先复制到一个私有临时目录再执行，否则脚本会以 Operation not permitted 退出。
+		tmpDir, err := os.MkdirTemp("", "weft-elevate-")
+		if err != nil {
+			return fmt.Errorf("创建临时目录失败: %w", err)
+		}
+		defer os.RemoveAll(tmpDir)
+		runSelf, err := copySelfToTemp(tmpDir)
 		if err != nil {
 			return fmt.Errorf("准备助手二进制失败: %w", err)
 		}
-		script := fmt.Sprintf("#!/bin/sh\nexec %s %s --sock %s --uid %s\n",
+		// root 执行之前先对一遍 hash：从「文件写好」到「root 复制它」之间
+		// 有窗口期，光靠目录权限拦不住同用户的进程。
+		sum, err := fileSHA256(runSelf)
+		if err != nil {
+			return fmt.Errorf("计算助手校验值失败: %w", err)
+		}
+		script := fmt.Sprintf("#!/bin/sh\nset -e\n[ \"$(%s)\" = %q ] || { echo '助手二进制校验失败' >&2; exit 1; }\nexec %s %s --sock %s --uid %s\n",
+			shasumCmd(shQuote(runSelf)), sum,
 			shQuote(runSelf), helperFlag, shQuote(sockPath), uid)
-		f, err := os.CreateTemp("/tmp", "weft-elevate-*.sh")
+		f, err := os.CreateTemp(tmpDir, "launch-*.sh")
 		if err != nil {
 			return err
 		}
@@ -407,8 +422,7 @@ func launchElevated(sockPath string) error {
 
 		apple := fmt.Sprintf(`do shell script "/bin/sh %s" with administrator privileges`, shQuote(name))
 		var buf bytes.Buffer
-		logPath := "/tmp/weft-elevate.log"
-		_ = os.Remove(logPath)
+		logPath := elevateLogPath()
 		logFile, _ := os.Create(logPath)
 		cmd := exec.Command("/usr/bin/osascript", "-e", apple)
 		cmd.Stdout, cmd.Stderr = &buf, &buf
@@ -451,10 +465,10 @@ func launchElevated(sockPath string) error {
 	return nil
 }
 
-// copySelfToTemp 把当前可执行文件复制到 /tmp。
+// copySelfToTemp 把当前可执行文件复制到私有临时目录。
 // macOS 的 TCC 会阻止 root 读取/执行 ~/Documents 下的文件，
-// 提权脚本必须先拿到 /tmp 里的副本。
-func copySelfToTemp() (string, error) {
+// 提权脚本必须先拿到这个副本。目录是 0700 的，不跟别人共用 /tmp。
+func copySelfToTemp(dir string) (string, error) {
 	self, err := os.Executable()
 	if err != nil {
 		return "", err
@@ -464,7 +478,7 @@ func copySelfToTemp() (string, error) {
 		return "", err
 	}
 	defer src.Close()
-	f, err := os.CreateTemp("/tmp", "weft-elevate-bin-*")
+	f, err := os.CreateTemp(dir, "bin-*")
 	if err != nil {
 		return "", err
 	}
@@ -475,6 +489,38 @@ func copySelfToTemp() (string, error) {
 	_ = f.Chmod(0o755)
 	_ = f.Close()
 	return f.Name(), nil
+}
+
+// elevateLogPath 授权失败的日志放在用户缓存目录里，而不是 /tmp：
+// 固定路径好回读，0700 目录也不会被换成符号链接让 root 写别处。
+func elevateLogPath() string {
+	if d, err := os.UserCacheDir(); err == nil {
+		p := filepath.Join(d, "Weft")
+		if err := os.MkdirAll(p, 0o700); err == nil {
+			return filepath.Join(p, "elevate.log")
+		}
+	}
+	return filepath.Join(os.TempDir(), "weft-elevate.log")
+}
+
+// fileSHA256 算文件的 sha256，提权脚本用它确认拿到的是自己写的那份。
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// shasumCmd 返回「算出这个文件 sha256」的 shell 片段，结果只有十六进制。
+// macOS 自带 shasum，多数 Linux 只有 sha256sum。
+func shasumCmd(quotedPath string) string {
+	return fmt.Sprintf(`if command -v shasum >/dev/null 2>&1; then shasum -a 256 %[1]s | cut -d' ' -f1; else sha256sum %[1]s | cut -d' ' -f1; fi`, quotedPath)
 }
 
 func readTail(path string, max int) string {

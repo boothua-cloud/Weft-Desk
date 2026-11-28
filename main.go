@@ -205,6 +205,10 @@ func main() {
 
 	// 关窗口只隐藏到托盘，退出必须显式触发；托盘显示与否跟随设置项。
 	mainWindow = w
+	if w != nil {
+		// 记住主窗口：高危绑定方法只认它，应用内窗口加载的第三方页面一律拒绝。
+		svc.mainWindowID = w.ID()
+	}
 	// 截图/自动化用：WEFT_START_PAGE=forwards 启动后自动切到该页
 	if p := strings.TrimSpace(os.Getenv("WEFT_START_PAGE")); p != "" {
 		go func() {

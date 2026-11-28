@@ -5,6 +5,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -50,7 +51,7 @@ func helperStatus() HelperStatus {
 	switch {
 	case elevationPending.Load():
 		st.Note = "已请求管理员授权：请在系统弹窗里点「是」，安装完成后这里会自动变成「运行中」"
-	case st.Installed && target != "" && !samePath(target, selfExe()):
+	case st.Installed && target != "" && !samePath(target, helperInstallExe()):
 		st.Note = "登录自启指向旧位置（" + target + "），请点「重新安装」"
 	case st.Installed && !st.Running:
 		st.Note = "已配置登录自启（管理员权限）；当前进程不是管理员，连接前会请求一次授权"
@@ -91,16 +92,36 @@ func installHelper() error {
 
 	// /F 覆盖同名任务：程序换了目录之后旧任务还指向老路径，
 	// 不覆盖就会「登录时启动了一个看不见的旧版本」。
+	//
+	// 任务不能直接指向 %LOCALAPPDATA% 里的 exe：那是当前用户可写的位置，
+	// 同用户的任何进程把它换掉，下次登录就以最高权限执行了。
+	// 复制一份到 ProgramData（管理员拥有），任务指向副本。
+	dst := helperInstallExe()
+	if dst == "" {
+		return fmt.Errorf("找不到 ProgramData 目录")
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return fmt.Errorf("创建助手目录失败：%w", err)
+	}
+	if !samePath(exe, dst) {
+		if err := copyFileTo(exe, dst); err != nil {
+			return fmt.Errorf("复制助手到 ProgramData 失败：%w", err)
+		}
+	}
+	// ProgramData 下默认允许 Users 建文件，这里收紧成只读执行
+	_ = hiddenCommand("icacls", filepath.Dir(dst), "/inheritance:r",
+		"/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-32-545:(OI)(CI)RX").Run()
+
 	out, err := hiddenCommand("schtasks", "/Create", "/F",
 		"/TN", winTaskName, "/SC", "ONLOGON", "/RL", "HIGHEST",
-		"/TR", `"`+exe+`"`).CombinedOutput()
+		"/TR", `"`+dst+`"`).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("创建登录自启任务失败：%s", strings.TrimSpace(decodeConsole(out)))
 	}
-	if err := os.WriteFile(helperTargetFile(), []byte(exe), 0o600); err != nil {
+	if err := os.WriteFile(helperTargetFile(), []byte(dst), 0o600); err != nil {
 		log.Printf("[helper] 记录任务指向失败（不影响运行）: %v", err)
 	}
-	log.Printf("[helper] 已创建登录自启任务 %s → %s", winTaskName, exe)
+	log.Printf("[helper] 已创建登录自启任务 %s → %s", winTaskName, dst)
 	return nil
 }
 
@@ -116,6 +137,7 @@ func uninstallHelper() error {
 	if err != nil {
 		return fmt.Errorf("删除登录自启任务失败：%s", strings.TrimSpace(decodeConsole(out)))
 	}
+	_ = os.Remove(helperInstallExe())
 	_ = os.Remove(helperTargetFile())
 	elevationPending.Store(false)
 	log.Printf("[helper] 已移除登录自启任务 %s", winTaskName)
@@ -228,6 +250,50 @@ func samePath(a, b string) bool {
 		return false
 	}
 	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
+}
+
+// helperInstallDir 登录自启所用的那份二进制放在 ProgramData 下。
+// 这个目录由管理员创建，普通用户只读，替换不了。
+func helperInstallDir() string {
+	pd := os.Getenv("ProgramData")
+	if pd == "" {
+		return ""
+	}
+	return filepath.Join(pd, "Weft")
+}
+
+func helperInstallExe() string {
+	d := helperInstallDir()
+	if d == "" {
+		return ""
+	}
+	return filepath.Join(d, "weft-helper.exe")
+}
+
+// copyFileTo 覆盖写入，用来把自身复制到 ProgramData。
+func copyFileTo(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	tmp := dst + ".new"
+	out, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	if _, err = io.Copy(out, in); err != nil {
+		_ = out.Close()
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err = out.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	// 正在运行的那份可能被占用，先删旧的再改名
+	_ = os.Remove(dst)
+	return os.Rename(tmp, dst)
 }
 
 func helperTargetFile() string {

@@ -9,6 +9,8 @@ const emit = defineEmits(['close', 'saved', 'notify'])
 
 const name = ref('')
 const baseURL = ref('')
+// 填成 http:// 时管理密钥会明文过网，界面上要说出来
+const plainHTTP = computed(() => /^http:\/\//i.test(baseURL.value.trim()))
 const hostname = ref('')
 const apiKey = ref('')
 const authKey = ref('')
@@ -137,6 +139,9 @@ async function save() {
         <div class="pf-field">
           <label class="field-label">服务地址 <span class="pf-en">Base URL</span></label>
           <input class="input mono" v-model="baseURL" placeholder="https://headscale.example.com" />
+          <p v-if="plainHTTP" class="pf-hint warn">
+            这是明文 http：管理密钥会以请求头形式在网络上直传。只在完全可信的内网里这么填。
+          </p>
         </div>
       </section>
 

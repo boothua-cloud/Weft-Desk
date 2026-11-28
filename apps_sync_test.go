@@ -43,7 +43,7 @@ func TestSyncURL(t *testing.T) {
 		"100.64.0.7":          "http://100.64.0.7:4160",
 		"nas":                 "http://nas:4160",
 		"http://nas:9000/":    "http://nas:9000",
-		"https://nas/ignored": "http://nas:4160",
+		"https://nas/ignored": "https://nas:4160",
 	}
 	for in, want := range cases {
 		got, err := syncURL(in)
@@ -94,6 +94,10 @@ func TestMergeApps(t *testing.T) {
 	// 本机较新的记录不被旧数据覆盖
 	if out[1].Name != "面板" {
 		t.Errorf("第二条被覆盖了: %+v", out[1])
+	}
+	// 新增的这条用自己的 ID，不能沿用对端的：对端 ID 撞上本机另一条会把它覆盖掉
+	if out[2].ID == "x-3" || out[2].ID == "" {
+		t.Errorf("新增记录应生成自己的 ID: %+v", out[2])
 	}
 }
 

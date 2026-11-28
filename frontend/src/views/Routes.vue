@@ -108,6 +108,9 @@ function approveAll() {
         await load()
         emit('notify', `已批准 ${n} 条`)
       } catch (err: any) {
+        // 中途失败时前面几台已经批了，列表不能停在旧状态，
+        // 不然看上去像「一条都没批」。
+        await load()
         emit('notify', '操作失败：' + (err?.message ?? err))
       }
     },

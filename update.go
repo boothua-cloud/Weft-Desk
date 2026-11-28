@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"log"
 	"net/http"
@@ -338,15 +341,16 @@ func (s *WeftService) DownloadInstaller() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dst := filepath.Join(dir, asset.Name)
+	// 附件名来自远端，取 Base 再拼：带 `../` 的名字不能落到下载目录外面
+	dst := filepath.Join(dir, filepath.Base(asset.Name))
 	onProgress := func(written, total int64, rate float64) {
 		emitUpdateProgress(s.app, written, total, rate)
 	}
-	if err := downloadFile(ctx, asset.BrowserDownloadURL, dst, asset.Size, onProgress); err != nil {
+	if err := downloadFile(ctx, asset.BrowserDownloadURL, dst, asset.Size, asset.Digest, onProgress); err != nil {
 		return "", err
 	}
 	log.Printf("[update] 安装包已下载：%s", dst)
-	if err := openInstaller(dst); err != nil {
+	if err := openInstaller(dst, asset.Digest != ""); err != nil {
 		// 打不开不算失败：文件已经下好了，告诉用户在哪儿。
 		return dst, fmt.Errorf("已下载到 %s，但没能自动打开：%w", dst, err)
 	}
@@ -404,11 +408,17 @@ func openURL(url string) error {
 	}
 }
 
-func openInstaller(path string) error {
+// openInstaller 把下载好的安装包交给系统。
+// verified 表示这个包有发布方的 sha256 且已经比对通过；没有校验值的包在
+// Windows 上不直接执行，只打开所在目录让用户自己决定。
+func openInstaller(path string, verified bool) error {
 	switch runtime.GOOS {
 	case "darwin":
 		return exec.Command("open", path).Start()
 	case "windows":
+		if !verified {
+			return exec.Command("explorer", "/select,"+path).Start()
+		}
 		return exec.Command(path).Start()
 	default:
 		// Linux 发的是 tar.gz，没法「运行」；打开所在目录让用户自己解。
@@ -434,6 +444,9 @@ type ghAsset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
 	Size               int64  `json:"size"`
+	// Digest 是 GitHub 给的 `sha256:xxx`，2025 年之后的 release API 才有，
+	// 没有时是空串，只能退回到大小校验。
+	Digest string `json:"digest"`
 }
 
 type ghRelease struct {
@@ -494,7 +507,9 @@ func pickInstaller(assets []ghAsset) (ghAsset, error) {
 	return ghAsset{}, fmt.Errorf("发布里没有适合 %s/%s 的安装包", runtime.GOOS, runtime.GOARCH)
 }
 
-func downloadFile(ctx context.Context, url, dst string, size int64, onProgress func(written, total int64, rate float64)) error {
+// downloadFile 下载并落到 dst。wantDigest 是发布方给的 `sha256:...`，
+// 非空就必须比对通过；为空只能按字节数判断，调用方需要自己决定敢不敢执行。
+func downloadFile(ctx context.Context, url, dst string, size int64, wantDigest string, onProgress func(written, total int64, rate float64)) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -516,7 +531,13 @@ func downloadFile(ctx context.Context, url, dst string, size int64, onProgress f
 	if err != nil {
 		return err
 	}
-	written, err := copyWithProgress(ctx, f, resp.Body, size, onProgress)
+	var h hash.Hash
+	var out io.Writer = f
+	if wantDigest != "" {
+		h = sha256.New()
+		out = io.MultiWriter(f, h)
+	}
+	written, err := copyWithProgress(ctx, out, resp.Body, size, onProgress)
 	cerr := f.Close()
 	if err != nil {
 		_ = os.Remove(tmp)
@@ -529,6 +550,15 @@ func downloadFile(ctx context.Context, url, dst string, size int64, onProgress f
 	if size > 0 && written != size {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("下载不完整：%d/%d 字节", written, size)
+	}
+	if h != nil {
+		got := "sha256:" + hex.EncodeToString(h.Sum(nil))
+		if !strings.EqualFold(got, strings.TrimSpace(wantDigest)) {
+			_ = os.Remove(tmp)
+			return fmt.Errorf("安装包校验不通过，已丢弃：发布方 %s，实际 %s", wantDigest, got)
+		}
+	} else {
+		log.Printf("[update] 发布信息里没有 sha256，只能按大小校验（%d 字节）", written)
 	}
 	return os.Rename(tmp, dst)
 }

@@ -80,13 +80,35 @@ func tsnetStateDir(c Config) (string, error) {
 		return "", err
 	}
 	// 默认服务端沿用老目录（升级不重注册），其他服务端各自一个目录，避免身份串台
-	suffix := "tsnet-" + c.ControlPlane
+	suffix := "tsnet-" + safeDirPart(c.ControlPlane)
 	if c.ProfileID != "" && c.ProfileID != "default" {
-		suffix += "-" + c.ProfileID
+		suffix += "-" + safeDirPart(c.ProfileID)
 	}
 	dir := filepath.Join(base, "Weft", suffix)
 	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
 	return dir, nil
+}
+
+// safeDirPart 把配置里的字符串压成可以安全当目录名的一段。
+// ControlPlane / ProfileID 都来自前端，`..` 和 `/` 不能直接拼进路径。
+func safeDirPart(s string) string {
+	var b strings.Builder
+	for _, r := range strings.TrimSpace(s) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "default"
+	}
+	if len(out) > 48 {
+		out = out[:48]
+	}
+	return out
 }

@@ -108,13 +108,48 @@ func newHTTPClient(c Config) *http.Client {
 	tr.Proxy = proxyFromSystem
 	switch {
 	case strings.TrimSpace(c.CACert) != "":
-		if pool, err := certPool(c.CACert); err == nil {
-			tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+		pool, err := certPool(c.CACert)
+		if err != nil {
+			// 不能退回系统 CA：用户填了 CA 就是要钉死它，
+			// 静默降级会让人以为连的是自己那台服务端。
+			return &http.Client{Transport: errTransport{err}}
 		}
+		tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 	case c.ControlInsecure:
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}
 	}
 	return &http.Client{Timeout: 15 * time.Second, Transport: tr}
+}
+
+// errTransport 让所有请求都返回同一个错误，用来把「配置本身不合法」
+// 传播到每个调用点，而不是在这里 panic 或者偷偷换个配置继续连。
+type errTransport struct{ err error }
+
+func (t errTransport) RoundTrip(*http.Request) (*http.Response, error) { return nil, t.err }
+
+// validateBaseURL 只放行 http/https 的完整地址。
+// 管理 API Key 是放在 Authorization 头里的，http 意味着它会明文过网，
+// 所以这里不拒绝（自建服务常常就在内网跑 http），但要让调用方知道。
+func validateBaseURL(raw string) (string, bool, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "", false, errors.New("服务地址不能为空")
+	}
+	if !strings.Contains(s, "://") {
+		return "", false, errors.New("服务地址要带协议，比如 https://headscale.example.com")
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" {
+		return "", false, fmt.Errorf("服务地址无效：%s", raw)
+	}
+	switch u.Scheme {
+	case "https":
+		return strings.TrimRight(s, "/"), false, nil
+	case "http":
+		return strings.TrimRight(s, "/"), true, nil
+	default:
+		return "", false, fmt.Errorf("只支持 http 或 https，现在是 %s", u.Scheme)
+	}
 }
 
 // certPool 把粘贴进来的 PEM 转成证书池，读不出来就报错，别静默退回系统 CA。

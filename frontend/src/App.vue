@@ -282,7 +282,6 @@ onUnmounted(() => {
   window.clearInterval(pollTimer)
   window.clearTimeout(refreshFlash)
   offNavigate?.()
-  window.clearInterval(pollTimer)
 })
 </script>
 

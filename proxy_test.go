@@ -5,7 +5,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -43,11 +45,57 @@ func TestProxyHubForward(t *testing.T) {
 	if !strings.HasPrefix(local, "http://127.0.0.1:") {
 		t.Fatalf("未返回本地地址: %s", local)
 	}
+	u, err := url.Parse(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := u.Scheme + "://" + u.Host
 
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
-	resp, err := client.Get(local)
+	noFollow := func(c *http.Client) *http.Client {
+		c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		return c
+	}
+
+	// 不带令牌直接打端口：同机的其它进程扫到了也不能借道
+	bare, err := noFollow(&http.Client{}).Get(host + "/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = bare.Body.Close()
+	if bare.StatusCode != http.StatusForbidden {
+		t.Fatalf("无令牌应被拒，实际 %d", bare.StatusCode)
+	}
+
+	// 令牌不对也一样
+	wrong, err := noFollow(&http.Client{}).Get(host + "/__weft/deadbeef/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = wrong.Body.Close()
+	if wrong.StatusCode != http.StatusForbidden {
+		t.Fatalf("错误令牌应被拒，实际 %d", wrong.StatusCode)
+	}
+
+	// 首次带前缀进来：种 cookie 并跳回真实路径
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withJar := noFollow(&http.Client{Jar: jar})
+	entry, err := withJar.Get(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = entry.Body.Close()
+	if entry.StatusCode != http.StatusFound {
+		t.Fatalf("入口应跳转，实际 %d", entry.StatusCode)
+	}
+	if loc := entry.Header.Get("Location"); loc != "/app" {
+		t.Fatalf("入口跳转地址: %s", loc)
+	}
+
+	// 之后页面里的绝对路径请求（/api、/assets）靠 cookie 放行
+	resp, err := withJar.Get(host + "/app")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,6 +127,33 @@ func TestProxySelfSigned(t *testing.T) {
 
 	dial := (&net.Dialer{Timeout: 5 * time.Second}).DialContext
 
+	// open 模拟窗口里的浏览器：先过令牌门，再按 cookie 取真实页面
+	open := func(local string) (*http.Response, string) {
+		u, err := url.Parse(local)
+		if err != nil {
+			t.Fatal(err)
+		}
+		jar, err := cookiejar.New(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		client := &http.Client{Jar: jar}
+		resp, err := client.Get(local)
+		if err != nil {
+			t.Fatalf("打不开 %s: %v", local, err)
+		}
+		if resp.StatusCode == http.StatusFound {
+			_ = resp.Body.Close()
+			resp, err = client.Get(u.Scheme + "://" + u.Host + "/login")
+			if err != nil {
+				t.Fatalf("跟随后失败: %v", err)
+			}
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return resp, string(body)
+	}
+
 	hub := newProxyHub(dial)
 	defer hub.closeAll()
 	hub.setInsecure(true)
@@ -90,14 +165,9 @@ func TestProxySelfSigned(t *testing.T) {
 	if !strings.HasSuffix(local, "#/login") {
 		t.Fatalf("片段被丢弃: %s", local)
 	}
-	resp, err := http.Get(local)
-	if err != nil {
-		t.Fatalf("开启信任后仍失败: %v", err)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if resp.StatusCode != 200 || !strings.HasPrefix(string(body), "ikua:/login") {
-		t.Fatalf("状态=%d body=%q", resp.StatusCode, body)
+	resp, body := open(local)
+	if resp.StatusCode != 200 || !strings.HasPrefix(body, "ikua:/login") {
+		t.Fatalf("开启信任后仍失败: 状态=%d body=%q", resp.StatusCode, body)
 	}
 
 	strict := newProxyHub(dial)
@@ -108,11 +178,7 @@ func TestProxySelfSigned(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 代理把 TLS 失败转成 502（页面里会显示原因），所以看状态码而不是 err
-	bad, err := http.Get(raw)
-	if err != nil {
-		return
-	}
-	defer bad.Body.Close()
+	bad, _ := open(raw)
 	if bad.StatusCode == 200 {
 		t.Fatal("未开启信任时不应成功，说明代理没有校验证书")
 	}

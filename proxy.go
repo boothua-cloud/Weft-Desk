@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,6 +22,7 @@ type proxyEntry struct {
 	ln     net.Listener
 	server *http.Server
 	local  string
+	token  string
 }
 
 // proxyHub 给每个 tailnet 内地址在 127.0.0.1 上开一个 HTTP 反向代理。
@@ -51,7 +55,7 @@ func (h *proxyHub) resolve(raw string) (string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if e, ok := h.items[key]; ok {
-		return e.local + target.RequestURI() + fragmentOf(target), nil
+		return e.local + entryPrefix(e.token) + strings.TrimPrefix(target.RequestURI(), "/") + fragmentOf(target), nil
 	}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -59,6 +63,12 @@ func (h *proxyHub) resolve(raw string) (string, error) {
 		return "", fmt.Errorf("开启本地端口失败: %w", err)
 	}
 	local := fmt.Sprintf("http://127.0.0.1:%d", ln.Addr().(*net.TCPAddr).Port)
+
+	tok, err := randHex(16)
+	if err != nil {
+		_ = ln.Close()
+		return "", fmt.Errorf("生成访问令牌失败: %w", err)
+	}
 
 	proxy := &httputil.ReverseProxy{
 		Director: func(r *http.Request) {
@@ -81,10 +91,53 @@ func (h *proxyHub) resolve(raw string) (string, error) {
 			http.Error(w, "Weft 无法连接到 "+target.Host+"\n"+err.Error(), http.StatusBadGateway)
 		},
 	}
-	srv := &http.Server{Handler: proxy}
+	// 这个端口只听 127.0.0.1，但同机任何进程都能扫到它，扫到就等于借用了
+	// 你的节点身份去访问内网（ACL 眼里就是你自己在访问）。所以给它一道门：
+	// 首次带 /__weft/<token>/ 进来，种下 cookie 后跳到真实路径，
+	// 之后页面自己的绝对路径请求（/api/...）靠 cookie 放行。
+	ckName, ckValue := entryCookie(tok)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := entryPrefix(tok)
+		if r.URL.Path == p || strings.HasPrefix(r.URL.Path, p) {
+			http.SetCookie(w, &http.Cookie{
+				Name: ckName, Value: ckValue, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode,
+			})
+			dest := strings.TrimPrefix(r.URL.RequestURI(), p)
+			if !strings.HasPrefix(dest, "/") {
+				dest = "/" + dest
+			}
+			http.Redirect(w, r, dest, http.StatusFound)
+			return
+		}
+		c, cerr := r.Cookie(ckName)
+		if cerr != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(ckValue)) != 1 {
+			http.Error(w, "这个本地端口只接受从云栈打开的应用窗口", http.StatusForbidden)
+			return
+		}
+		// 我们自己的 cookie 不往目标服务转发
+		cookies := r.Cookies()
+		r.Header.Del("Cookie")
+		for _, ck := range cookies {
+			if ck.Name == ckName {
+				continue
+			}
+			r.AddCookie(ck)
+		}
+		proxy.ServeHTTP(w, r)
+	})
+	srv := &http.Server{Handler: handler}
 	go func() { _ = srv.Serve(ln) }()
-	h.items[key] = &proxyEntry{ln: ln, server: srv, local: local}
-	return local + target.RequestURI() + fragmentOf(target), nil
+	h.items[key] = &proxyEntry{ln: ln, server: srv, local: local, token: tok}
+	return local + entryPrefix(tok) + strings.TrimPrefix(target.RequestURI(), "/") + fragmentOf(target), nil
+}
+
+func entryPrefix(token string) string { return "/__weft/" + token + "/" }
+
+// entryCookie 用 token 的短摘要做 cookie 名：不同 entry 共用 127.0.0.1，
+// 名字一样会互相覆盖。值只要「对得上」就够，不留明文 token。
+func entryCookie(token string) (string, string) {
+	sum := sha256.Sum256([]byte(token))
+	return "weft_px_" + hex.EncodeToString(sum[:6]), "1"
 }
 
 // fragmentOf 保留 #/login 这类前端路由，RequestURI() 不包含片段。

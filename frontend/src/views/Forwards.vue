@@ -73,6 +73,15 @@ async function showSnippet(r: ForwardRule) {
 }
 async function setBind(bind: string) {
   if (view.value?.bind === bind) return
+  // 本地代理没有认证，监听所有网卡时不能开；先关掉再切，不然这次切换会报错
+  if (bind === '0.0.0.0' && view.value?.socksEnabled) {
+    try {
+      await api.setForwardOptions(view.value.autoForward, false, view.value.socksPort)
+    } catch (err: any) {
+      emit('notify', '先把本地代理关掉才能切换：' + (err?.message ?? err))
+      return
+    }
+  }
   await act(() => api.setForwardBind(bind), bind === '0.0.0.0' ? '已对内网开放' : '已限制为本机')
 }
 
@@ -119,7 +128,9 @@ function fmtBytes(n?: number): string {
         <button class="switch" :class="{ on: view?.power }" @click="act(() => api.setForwardPower(!view?.power), view?.power ? '已停止' : '已启动')"></button>
         <span class="faint">|</span>
         <span style="font-size:11.5px">SOCKS5</span>
-        <button class="switch" :class="{ on: view?.socksEnabled }" @click="setOptions({ socksEnabled: !view?.socksEnabled })"></button>
+        <button class="switch" :class="{ on: view?.socksEnabled }" :disabled="view?.bind === '0.0.0.0'"
+                :title="view?.bind === '0.0.0.0' ? '监听范围是「同网段可达」时不能开：代理没有认证，等于把 tailnet 借给同网段的任何人' : ''"
+                @click="setOptions({ socksEnabled: !view?.socksEnabled })"></button>
         <input class="input" type="number" style="width:90px" :value="view?.socksPort" @change="(e: any) => setOptions({ socksPort: Number(e.target.value) || 1080 })" />
         <span class="faint">|</span>
         <span style="font-size:11.5px">连接后自动启动</span>

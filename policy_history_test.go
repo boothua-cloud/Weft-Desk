@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -54,7 +55,7 @@ func TestSavePolicyKeepsPreviousVersion(t *testing.T) {
 	svc, fake := newPolicyTestService(t, oldBody)
 
 	newBody := "{\n  \"acls\": []\n}\n"
-	if err := svc.SavePolicy(newBody); err != nil {
+	if err := svc.SavePolicy(context.Background(), newBody); err != nil {
 		t.Fatalf("保存失败: %v", err)
 	}
 	if fake.content != newBody {
@@ -80,7 +81,7 @@ func TestSavePolicyKeepsPreviousVersion(t *testing.T) {
 func TestSavePolicySameContentNoHistory(t *testing.T) {
 	body := "{\"acls\":[]}"
 	svc, _ := newPolicyTestService(t, body)
-	if err := svc.SavePolicy(body); err != nil {
+	if err := svc.SavePolicy(context.Background(), body); err != nil {
 		t.Fatal(err)
 	}
 	items, _ := svc.store.ListPolicyHistory(20)
@@ -94,7 +95,7 @@ func TestRestorePolicy(t *testing.T) {
 	svc, fake := newPolicyTestService(t, first)
 
 	// 改成空策略，旧的那版进历史
-	if err := svc.SavePolicy("{\"acls\":[]}"); err != nil {
+	if err := svc.SavePolicy(context.Background(), "{\"acls\":[]}"); err != nil {
 		t.Fatal(err)
 	}
 	items, _ := svc.store.ListPolicyHistory(20)
@@ -103,7 +104,7 @@ func TestRestorePolicy(t *testing.T) {
 	}
 
 	// 回滚
-	if err := svc.RestorePolicy(items[0].ID); err != nil {
+	if err := svc.RestorePolicy(context.Background(), items[0].ID); err != nil {
 		t.Fatalf("回滚失败: %v", err)
 	}
 	if strings.TrimSpace(fake.content) != first {

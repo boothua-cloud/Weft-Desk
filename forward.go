@@ -162,6 +162,12 @@ func (h *forwardHub) startLocked(e *forwardEntry, socks bool) error {
 	// 空 host 表示所有接口：IPv4 与 IPv6 都能连进来，比只绑 0.0.0.0 更实用
 	host := h.bind
 	if host == bindAny {
+		// SOCKS5 没有认证，开到所有网卡就等于把 tailnet 借给同网段的任何人，
+		// 他们用你的节点身份访问内网，ACL 上看起来还是你自己。
+		if socks {
+			e.state, e.err = "error", "本地代理不能对所有网卡开放：它没有认证，同网段谁都能当免费代理用。先把监听范围改回「仅本机」"
+			return fmt.Errorf("%s", e.err)
+		}
 		host = ""
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(e.rule.LocalPort))
