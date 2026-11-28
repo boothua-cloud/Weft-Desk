@@ -277,7 +277,9 @@ Wails 启动时扫 `WeftService` 的公开方法，生成 `frontend/bindings/git
 
 平台差异用文件名后缀分：`foo_darwin.go` / `foo_windows.go` / `foo_linux.go`，公共逻辑放在无后缀的 `foo.go` 里。
 
-测试分两类：`go test ./...` 全部离线可跑；带真实服务端的联调用例（`internal/*/live_test.go`）默认跳过，`WEFT_LIVE=1 go test ./...` 才执行，用的是钥匙串里存的那把管理 Key。
+测试跟着包走：每个包一个 `xxx_test.go`，`go test ./...` 全部离线可跑，不需要网络、服务端或钥匙串。唯一的例外是 `internal/engine/engine_unix_test.go`——文件描述符传递、助手进程这些只在 Unix 上成立，而 build tag 只能作用于整个文件。
+
+Go 的测试只能访问同包的未导出符号，所以没法把所有用例挪进一个独立目录——那样等于把内部函数全变成公开 API，而 `internal/desktop` 上的公开方法会被 Wails 暴露给前端。白盒测试留在各自包里，每个包只保留一个测试文件；根目录那个 `assets_test.go` 测的是 embed 进来的图标，只能留在根包。
 
 ## 已知限制
 
