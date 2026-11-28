@@ -332,10 +332,10 @@ onUnmounted(() => {
           <template v-if="switchOpen">
             <div class="menu-panel">
               <div class="menu-label">切换服务端</div>
-              <button v-for="p in profiles" :key="p.id" class="menu-item" @click="pickProfile(p)">
-                <span style="min-width:0">
-                  <b style="font-weight:600;display:block;font-size:12px">{{ p.name }}</b>
-                  <small style="font-family:inherit">{{ p.baseURL || '未填地址' }}</small>
+              <button v-for="p in profiles" :key="p.id" class="menu-item profile-item" @click="pickProfile(p)">
+                <span class="profile-item-text">
+                  <b>{{ p.name }}</b>
+                  <small>{{ p.baseURL || '未填地址' }}</small>
                 </span>
                 <span v-if="p.id === activeID" class="tag green" style="margin:0">当前</span>
                 <span v-else-if="switching === p.id" class="spinner"></span>
@@ -396,7 +396,7 @@ onUnmounted(() => {
           </template>
         </div>
       </div>
-      <!-- 挂在面板右边缘：平时几乎看不见，鼠标进到面板上才浮出来 -->
+      <!-- 从面板右边缘长出来的把手：跟侧栏同材质，不是浮在面上的按钮 -->
       <button class="side-toggle" :title="sideCollapsed ? '展开侧栏' : '收起侧栏'" @click="toggleSide">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
              stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3.5 5 8l4.5 4.5" /></svg>

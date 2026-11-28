@@ -236,31 +236,33 @@ html[data-theme="dark"] .logo { filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55
   content: ""; position: absolute; left: -10px; top: 50%; transform: translateY(-50%);
   width: 3px; height: 18px; border-radius: 0 3px 3px 0; background: var(--brand);
 }
-/* 收起把手：一根竖着的胶囊，挂在面板右边缘正中。
-   原来那枚 26px 的圆点太小，缩进边角里根本注意不到 */
+/* 收起把手：从侧栏右边缘长出来的一块，跟侧栏同底色、同一层模糊，
+   看起来是面板自己鼓出来的一截，而不是贴上去的一枚按钮。
+   所以去掉投影和四周描边，只留右边缘那条线和右侧圆角 */
 .side-toggle {
-  position: absolute; right: -11px; top: 50%;
+  position: absolute; right: -12px; top: 50%;
   transform: translateY(-50%);
-  width: 22px; height: 52px; padding: 0;
+  width: 24px; height: 60px; padding: 0;
   display: grid; place-items: center;
-  border: 1px solid var(--line); border-radius: 999px;
-  background: var(--surface); color: var(--muted);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, .08), 0 6px 16px -8px rgba(15, 23, 42, .35);
-  opacity: .55; z-index: 3;
-  transition: opacity .16s ease, color .15s, border-color .15s, background .15s, box-shadow .15s;
+  border: 1px solid var(--line); border-left: 0;
+  border-radius: 0 12px 12px 0;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  backdrop-filter: blur(22px) saturate(1.5);
+  color: var(--faint);
+  opacity: 1; z-index: 3;
+  transition: color .15s, background .15s, border-color .15s;
 }
 .side:hover .side-toggle,
 .side-toggle:focus-visible { opacity: 1; }
-/* 指到把手上：淡蓝底 + 一圈很浅的光环 + 蓝色箭头。
-   实心蓝太跳，像贴了个按钮上去；光靠淡底又看不出能不能点，两样一起给 */
+/* 指到把手上：淡蓝底 + 蓝色箭头。实心蓝太跳，像又贴了个按钮上去 */
 .side-toggle:hover {
   color: var(--brand); border-color: var(--brand-line); background: var(--brand-soft);
-  box-shadow: 0 0 0 3px rgba(58, 95, 208, .12), 0 2px 6px rgba(15, 23, 42, .10);
 }
 .side-toggle:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.side-toggle svg { width: 15px; height: 15px; transition: transform .2s ease; }
+.side-toggle svg { width: 13px; height: 13px; transition: transform .2s ease; }
 .side.collapsed .side-toggle svg { transform: rotate(180deg); }
-html[data-theme="dark"] .side-toggle { background: var(--surface-3); }
+html[data-theme="dark"] .side-toggle { background: rgba(13, 19, 27, .72); }
 
 /* 左下角：一张服务端卡片 + 一排工具。
    原来这些东西散在右上角，离「我连的是谁」最远的地方；
@@ -377,6 +379,20 @@ html[data-theme="dark"] .chip { background: rgba(255, 255, 255, .02); }
 }
 .menu-item:hover { background: var(--surface-3); }
 .menu-item small { color: var(--faint); font-size: 10px; font-family: var(--mono); }
+
+/* 服务端列表：名字和地址可以截断，「当前」这颗标签不行。
+   之前它和长地址挤在一起，两个字被压成了竖排 */
+.profile-item { gap: 8px; }
+.profile-item-text { flex: 1; min-width: 0; }
+.profile-item-text b,
+.profile-item-text small {
+  display: block; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.profile-item-text b { font-weight: 600; font-size: 12px; }
+.profile-item-text small { font-family: inherit; }
+.profile-item > .tag { flex: none; white-space: nowrap; }
+.profile-item > .spinner { flex: none; }
 .menu-sep { height: 1px; background: var(--line-soft); margin: 5px 4px; }
 .menu-label { padding: 6px 10px 4px; font-size: 10px; color: var(--faint); letter-spacing: .08em; text-transform: uppercase; }
 .chip-btn { cursor: pointer; border-style: solid; }
@@ -714,20 +730,25 @@ table.tbl tr:last-child td { border-bottom: 0; }
   scrollbar-gutter: stable;
 }
 /* 滚动条收进圆角内、做细一点，贴着边看着像溢出了 */
-.modal::-webkit-scrollbar { width: 12px; }
-.modal::-webkit-scrollbar-track { background: transparent; }
-.modal::-webkit-scrollbar-thumb {
+.modal::-webkit-scrollbar,
+.help-body::-webkit-scrollbar { width: 12px; }
+.modal::-webkit-scrollbar-track,
+.help-body::-webkit-scrollbar-track { background: transparent; }
+.modal::-webkit-scrollbar-thumb,
+.help-body::-webkit-scrollbar-thumb {
   background: rgba(120, 132, 150, .38);
   border-radius: 999px;
   border: 4px solid transparent;
   background-clip: content-box;
 }
-.modal::-webkit-scrollbar-thumb:hover {
+.modal::-webkit-scrollbar-thumb:hover,
+.help-body::-webkit-scrollbar-thumb:hover {
   background: rgba(120, 132, 150, .62);
   border: 4px solid transparent;
   background-clip: content-box;
 }
-html[data-theme="dark"] .modal::-webkit-scrollbar-thumb {
+html[data-theme="dark"] .modal::-webkit-scrollbar-thumb,
+html[data-theme="dark"] .help-body::-webkit-scrollbar-thumb {
   background: rgba(190, 205, 225, .28);
   border: 4px solid transparent;
   background-clip: content-box;
@@ -739,6 +760,8 @@ html[data-theme="dark"] .modal::-webkit-scrollbar-thumb {
   border: 1px solid var(--line); background: var(--surface-2);
   color: var(--muted); font-size: 12px; font-weight: 700;
   display: grid; place-items: center; cursor: pointer;
+  /* 标题栏有底色，关闭按钮要压在它上面 */
+  z-index: 2;
   transition: background .15s, color .15s, border-color .15s;
 }
 .modal-x:hover {
@@ -786,7 +809,7 @@ html[data-theme="dark"] .modal::-webkit-scrollbar-thumb {
 .upd-progress-line { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; }
 .upd-err { margin: 8px 0 0; font-size: 11.5px; line-height: 1.75; color: var(--muted); word-break: break-word; }
 
-.help-title { margin: 0 0 18px; font-size: 18px; font-weight: 650; }
+.help-title { margin: 0 0 6px; font-size: 18px; font-weight: 650; }
 .help-sec { margin-bottom: 18px; }
 .help-sec h4 { margin: 0 0 8px; font-size: 12.5px; font-weight: 600; color: var(--brand); }
 .help-sec p, .help-sec li { font-size: 11.5px; line-height: 1.95; color: var(--muted); margin: 0; }
@@ -794,9 +817,28 @@ html[data-theme="dark"] .modal::-webkit-scrollbar-thumb {
 .help-sec li { margin-bottom: 4px; }
 .help-sec .mono { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); }
 
-/* 帮助手册：宽版 + 配图 */
-.modal-wide { width: min(760px, 100%); }
-.help-lead { margin: -10px 0 20px; font-size: 11.5px; color: var(--faint); }
+/* 帮助手册：宽版 + 配图。
+   标题栏和正文拆成两块：弹窗本身不滚，只有正文滚，
+   这样滚到第 15 节，标题和右上角的关闭按钮还在原地 */
+.modal.modal-wide {
+  width: min(760px, 100%);
+  max-height: 82vh;
+  display: flex; flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.help-head {
+  flex: none; padding: 24px 28px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 18px 18px 0 0;
+}
+.help-body {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 16px 28px 26px;
+  scrollbar-gutter: stable;
+}
+.help-lead { margin: 0; font-size: 11.5px; color: var(--faint); }
 .help-sec h4 { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .step {
   display: inline-grid; place-items: center; width: 18px; height: 18px;
