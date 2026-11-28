@@ -1570,7 +1570,9 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
   border-left: 1px solid var(--line);
   box-shadow: var(--shadow-pop);
   padding: 20px;
-  z-index: 3;
+  /* 跟全局 .drawer 一样让过遮罩（5），也压过侧栏（4）：
+     窗口窄到抽屉盖到侧栏时，别反过来被侧栏遮住半截 */
+  z-index: 6;
   animation: weft-slide .22s cubic-bezier(.22, .8, .3, 1);
 }
 .hist-note { margin: 6px 0 0; font-size: 11px; color: var(--faint); line-height: 1.7; }
@@ -1653,7 +1655,7 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
   border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: var(--shadow-pop);
-  z-index: 4;
+  z-index: 7;
 }
 .save-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .save-risk {

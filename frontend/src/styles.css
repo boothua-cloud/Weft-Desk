@@ -602,13 +602,21 @@ table.tbl tr:last-child td { border-bottom: 0; }
 .drawer {
   position: fixed; right: 0; top: 0; bottom: 0; width: 360px;
   background: var(--surface); border-left: 1px solid var(--line);
-  box-shadow: var(--shadow-pop); padding: 22px; z-index: 3; overflow: auto;
+  box-shadow: var(--shadow-pop); padding: 22px; z-index: 6; overflow: auto;
   animation: weft-slide .22s cubic-bezier(.22, .8, .3, 1);
 }
 @keyframes weft-slide { from { transform: translateX(18px); opacity: .4; } }
-.mask { position: fixed; inset: 0; background: rgba(8, 12, 18, .32); backdrop-filter: blur(2px); z-index: 2; }
+/* 遮罩要压过侧栏（4）。原来它是 2，侧栏自带 z-index 4，于是抽屉打开时
+   右边压暗、左边还亮着，侧栏那条选中底块一路勾着眼睛。抬到 5 之后整个
+   窗口一起退后，抽屉浮在最上面，层次才顺 */
+.mask { position: fixed; inset: 0; background: rgba(8, 12, 18, .32); backdrop-filter: blur(2px); z-index: 5; }
 /* 抽屉开着的时候正文别再滚，不然背景在遮罩后面滑来滑去 */
 .content:has(.mask) { overflow: hidden; }
+/* 光靠压暗还不够：当前页那条蓝底哪怕暗一档也还是块彩色，在抽屉旁边一直响。
+   抽屉开着时它没有信息价值——你已经不在看导航了 */
+.app-shell:has(.mask) .nav-item.active { background: transparent; color: var(--muted); font-weight: 500; }
+.app-shell:has(.mask) .nav-item.active::before { display: none; }
+.app-shell:has(.mask) .nav-item.active svg { opacity: .82; }
 
 /* 确认框：吊销 / 删除这类不可逆操作先用它挡一下，样式复用 .modal-mask + .modal */
 .modal.modal-confirm { width: min(400px, 100%); padding: 24px; }
