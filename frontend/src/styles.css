@@ -236,25 +236,47 @@ html[data-theme="dark"] .logo { filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55
   content: ""; position: absolute; left: -10px; top: 50%; transform: translateY(-50%);
   width: 3px; height: 18px; border-radius: 0 3px 3px 0; background: var(--brand);
 }
-/* 收起把手：从侧栏右边缘长出来的一块，跟侧栏同底色、同一层模糊，
-   看起来是面板自己鼓出来的一截，而不是贴上去的一枚按钮。
-   所以去掉投影和四周描边，只留右边缘那条线和右侧圆角 */
+/* 收起把手：挂在面板右边缘外侧的一小截，跟面板同底色、同一层模糊。
+   整块都在面板外面，不压住任何菜单项；左边缘压过面板那 1px 描边
+   （right 取 -19px = 宽 20px - 1px），所以看上去是从面板里长出来的，
+   而不是贴在旁边。投影和左侧描边都去掉，只留右侧轮廓 */
 .side-toggle {
-  position: absolute; right: -12px; top: 50%;
+  position: absolute; right: -19px; top: 50%;
   transform: translateY(-50%);
-  width: 24px; height: 60px; padding: 0;
+  width: 20px; height: 52px; padding: 0;
   display: grid; place-items: center;
-  border: 1px solid var(--line); border-left: 0;
-  border-radius: 0 12px 12px 0;
-  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  border: 0; border-right: 1px solid var(--line);
+  border-radius: 0 11px 11px 0;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
   -webkit-backdrop-filter: blur(22px) saturate(1.5);
   backdrop-filter: blur(22px) saturate(1.5);
   color: var(--faint);
-  opacity: 1; z-index: 3;
+  z-index: 3;
   transition: color .15s, background .15s, border-color .15s;
 }
-.side:hover .side-toggle,
-.side-toggle:focus-visible { opacity: 1; }
+/* 上下两个反向圆角：让面板那条竖边拐进把手的横边，
+   轮廓是连着的，不会在把手的上下沿各切一刀 */
+.side-toggle::before,
+.side-toggle::after {
+  content: ""; position: absolute; width: 8px; height: 8px;
+  right: calc(100% - 1px);
+  background: inherit;
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  backdrop-filter: blur(22px) saturate(1.5);
+  pointer-events: none;
+}
+/* 上方：圆心取方块左上角，切出右下角那条月牙 */
+.side-toggle::before {
+  bottom: calc(100% - 1px);
+  -webkit-mask: radial-gradient(circle at 0 0, transparent 7.5px, #000 8px);
+  mask: radial-gradient(circle at 0 0, transparent 7.5px, #000 8px);
+}
+/* 下方：圆心取方块左下角，切出右上角那条月牙 */
+.side-toggle::after {
+  top: calc(100% - 1px);
+  -webkit-mask: radial-gradient(circle at 0 100%, transparent 7.5px, #000 8px);
+  mask: radial-gradient(circle at 0 100%, transparent 7.5px, #000 8px);
+}
 /* 指到把手上：淡蓝底 + 蓝色箭头。实心蓝太跳，像又贴了个按钮上去 */
 .side-toggle:hover {
   color: var(--brand); border-color: var(--brand-line); background: var(--brand-soft);
