@@ -100,7 +100,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
             <section class="help-sec" id="help-s1">
               <h4><span class="step">1</span>填配置，连上第一个服务端</h4>
               <p>
-                「连接设置 → 服务端」点<span class="hl">编辑</span>（或「+ 新增服务端」）打开表单：
+                「更多 → 连接设置 → 服务端」点<span class="hl">编辑</span>（或「+ 新增服务端」）打开表单：
                 填服务端地址，比如 <span class="mono">https://hs.example.com</span>；Hostname 是本机在 tailnet 里的名字，可留空。
               </p>
               <figure class="shot">
@@ -425,7 +425,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
             <section class="help-sec" id="help-s12">
               <h4><span class="step">12</span>连接设置</h4>
               <p>
-                上半部分是服务端列表：可以放多个 Headscale，点「切换」切过去，也支持编辑、重命名、删除。
+                这页在左下角「更多」里。上半部分是服务端列表：可以放多个 Headscale，点「切换」切过去，也支持编辑、重命名、删除。
                 每个服务端有独立的节点身份和凭证，切换时断开隧道再重连，不会把上一个 tailnet 的登录态带过去。
               </p>
               <figure class="shot">
@@ -445,15 +445,20 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
             <section class="help-sec" id="help-s13">
               <h4><span class="step">13</span>左下角那组按钮与快捷键</h4>
               <p>
+                <span class="hl">搜索框</span>在侧栏最上面，点一下打开命令面板。导航只放日常那几页，
+                <span class="hl">连接诊断</span>、<span class="hl">操作记录</span>、<span class="hl">连接设置</span>
+                收在底部「更多」里，跟刷新数据、生成诊断包、切换主题、帮助手册、检查更新放在一起；
+                人停在这三页的时候，「更多」那颗按钮会自己亮起来。
+              </p>
+              <p style="margin-top:8px">
                 侧栏最下面是当前<span class="hl">服务端</span>：名字、绿点（连接状态），点开可以切换服务端，
-                菜单底部是「管理服务端…」。它下面一排三枚按钮——主题、刷新、<span class="hl">更多</span>
-                （命令面板、刷新数据、切换主题、生成诊断包、帮助手册、检查更新、关于云栈）。
+                菜单底部是「管理服务端…」。它下面一排三枚按钮——主题、刷新、<span class="hl">更多</span>。
               </p>
               <p style="margin-top:8px">
-                侧栏收起时只剩状态点和「更多」，刷新和主题都在那个菜单里。
+                侧栏收起时只剩状态点和「更多」，刷新和主题都在那个菜单里，搜索缩成一枚放大镜。
               </p>
               <p style="margin-top:8px">
-                <span class="mono">{{ isMac ? '⌘K' : 'Ctrl+K' }}</span> 打开<span class="hl">命令面板</span>：
+                点搜索框或者按 <span class="mono">{{ isMac ? '⌘K' : 'Ctrl+K' }}</span> 打开<span class="hl">命令面板</span>：
                 一个框里搜页面、设备名、应用书签名，也能直接打「刷新」「连接」「诊断包」「切换主题」。
                 ↑↓ 选，回车执行，esc 关掉。搜到设备会跳到设备页并把名字填进搜索框，省得再打一遍。
               </p>

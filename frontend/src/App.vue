@@ -155,13 +155,20 @@ const nav = computed(() => {
     items: [
       { key: 'apps', label: '应用管理' },
       { key: 'forwards', label: '端口转发' },
-      { key: 'diagnose', label: '连接诊断' },
-      { key: 'audit', label: '操作记录' },
-      { key: 'settings', label: '连接设置' },
     ],
   })
   return groups
 })
+// 诊断、记录、设置这三页不是天天点的，归到「更多」里。侧栏只留日常要用的，
+// 以后再加功能也不至于把导航拉成一长条
+const morePages = [
+  { key: 'diagnose', label: '连接诊断' },
+  { key: 'audit', label: '操作记录' },
+  { key: 'settings', label: '连接设置' },
+]
+// 当前页在「更多」里的时候，那枚按钮自己亮起来，不然侧栏看不出人在哪
+const moreActive = computed(() => morePages.some((p) => p.key === page.value))
+const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent)
 const meta: Record<string, [string, string]> = {
   overview: ['隧道', '总览'], devices: ['服务端管理', '设备管理'],
   routes: ['服务端管理', '子网路由'],
@@ -359,6 +366,15 @@ onUnmounted(() => {
         <img class="logo" src="/appicon.png" alt="云栈" draggable="false" />
         <div><b>云栈</b><small>Headscale 桌面端 v{{ state?.appVersion || '' }}</small></div>
       </div>
+      <!-- ⌘K 藏在「更多」里没人会去找，摆到最上面当入口。
+           不做成真 input：点一下直接开面板，省得焦点在两边跳 -->
+      <button class="side-search" :class="{ on: paletteOpen }" :title="sideCollapsed ? '搜索' : undefined"
+              @click="paletteOpen = true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round"><circle cx="7" cy="7" r="4.3" /><path d="M10.3 10.3 14 14" /></svg>
+        <span class="ss-text">搜索</span>
+        <kbd class="ss-kbd">{{ isMac ? '⌘K' : 'Ctrl K' }}</kbd>
+      </button>
       <div class="side-nav">
         <template v-for="g in nav" :key="g.label">
           <span class="nav-label">{{ g.label }}</span>
@@ -425,25 +441,27 @@ onUnmounted(() => {
               <path d="M13.4 9.2A5.6 5.6 0 1 1 11.7 4.3" /><path d="M13.5 2.2v3.5h-3.5" />
             </svg>
           </button>
-          <button class="icon-btn" :class="{ active: menuOpen }" title="更多" @click.stop="toggleMore">
+          <button class="icon-btn" :class="{ active: menuOpen || moreActive }" title="更多" @click.stop="toggleMore">
             <svg viewBox="0 0 16 16" fill="currentColor" width="15" height="15">
               <circle cx="3" cy="8" r="1.35" /><circle cx="8" cy="8" r="1.35" /><circle cx="13" cy="8" r="1.35" />
             </svg>
           </button>
           <template v-if="menuOpen">
             <div class="menu-panel">
-              <button class="menu-item" @click="menuOpen = false; paletteOpen = true">
-                <span>命令面板</span><small>⌘K</small>
+              <button v-for="p in morePages" :key="p.key" class="menu-item"
+                      :class="{ on: page === p.key }" @click="pickPage(p.key)">
+                <span>{{ p.label }}</span>
               </button>
+              <div class="menu-sep"></div>
               <button class="menu-item" @click="refreshFromMenu">
                 <span>刷新数据</span><small>⌘R</small>
+              </button>
+              <button class="menu-item" @click="exportBundle">
+                <span>生成诊断包</span>
               </button>
               <div class="menu-sep"></div>
               <button class="menu-item" @click="toggleTheme">
                 <span>{{ darkMode ? '切换到亮色' : '切换到暗色' }}</span>
-              </button>
-              <button class="menu-item" @click="exportBundle">
-                <span>生成诊断包</span>
               </button>
               <button class="menu-item" @click="menuOpen = false; info = 'help'">
                 <span>帮助手册</span>

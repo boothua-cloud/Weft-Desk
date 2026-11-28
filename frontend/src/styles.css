@@ -201,7 +201,7 @@ html[data-theme="dark"] .side { background: rgba(13, 19, 27, .72); }
 
 /* ---------------- 品牌 ---------------- */
 
-.brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 18px; }
+.brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 12px; }
 .logo {
   width: 34px; height: 34px; border-radius: 10px; flex: none;
   object-fit: contain; -webkit-user-select: none; user-select: none;
@@ -215,6 +215,29 @@ html[data-theme="dark"] .logo { filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55
 }
 .brand b { display: block; font-size: 15px; letter-spacing: -.01em; }
 .brand small { display: block; color: var(--faint); font-size: 10px; margin-top: 2px; letter-spacing: .04em; }
+
+/* 侧栏搜索：点一下开 ⌘K 面板。做成按钮不做成 input，
+   焦点只在面板里，不会出现两个光标 */
+.side-search {
+  display: flex; align-items: center; gap: 7px;
+  width: 100%; height: 30px; margin: 0 0 2px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface-3); color: var(--faint);
+  font-size: 11.5px; cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.side-search:hover { border-color: var(--brand-line); color: var(--muted); }
+.side-search.on { border-color: var(--brand-line); color: var(--brand); }
+.side-search svg { width: 13px; height: 13px; flex: none; }
+.ss-text { flex: 1; text-align: left; }
+.ss-kbd {
+  flex: none; font: inherit; font-size: 9.5px; line-height: 1.6;
+  color: var(--faint); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 4px;
+}
+/* 收起成图标条时缩成一枚方按钮 */
+.side.collapsed .side-search { width: 40px; height: 34px; padding: 0; margin: 0 auto 2px; justify-content: center; }
+.side.collapsed .ss-text, .side.collapsed .ss-kbd { display: none; }
 
 .nav-label {
   display: block; font-size: 10px; color: var(--faint);
@@ -375,6 +398,8 @@ html[data-theme="dark"] .chip { background: rgba(255, 255, 255, .02); }
   position: absolute; right: 0; top: 36px; z-index: 31; min-width: 196px;
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--r); padding: 6px; box-shadow: var(--shadow-pop);
+  /* 项越加越多，长过窗口就上面几项点不到了 */
+  max-height: calc(100vh - 36px); overflow-y: auto;
   animation: weft-menu .14s cubic-bezier(.22, .8, .3, 1);
 }
 @keyframes weft-menu { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
@@ -401,6 +426,8 @@ html[data-theme="dark"] .chip { background: rgba(255, 255, 255, .02); }
   background: transparent; color: var(--text); font-size: 12px; text-align: left;
 }
 .menu-item:hover { background: var(--surface-3); }
+/* 「更多」里当前正停着的那一页 */
+.menu-item.on { background: var(--brand-soft); color: var(--brand); }
 .menu-item small { color: var(--faint); font-size: 10px; font-family: var(--mono); }
 
 /* 服务端列表：名字和地址可以截断，「当前」这颗标签不行。
