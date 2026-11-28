@@ -218,25 +218,31 @@ html[data-theme="dark"] .logo { filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55
   content: ""; position: absolute; left: -10px; top: 50%; transform: translateY(-50%);
   width: 3px; height: 18px; border-radius: 0 3px 3px 0; background: var(--brand);
 }
-/* 收起按钮挂在面板右边缘、垂直居中：平时只留一点影子，
-   鼠标进到面板上才完整浮出来，不占导航的位置 */
+/* 收起把手：一根竖着的胶囊，挂在面板右边缘正中。
+   原来那枚 26px 的圆点太小，缩进边角里根本注意不到 */
 .side-toggle {
-  position: absolute; right: -13px; top: 50%;
+  position: absolute; right: -11px; top: 50%;
   transform: translateY(-50%);
-  width: 26px; height: 26px; padding: 0;
+  width: 22px; height: 52px; padding: 0;
   display: grid; place-items: center;
-  border: 1px solid var(--line); border-radius: 50%;
+  border: 1px solid var(--line); border-radius: 999px;
   background: var(--surface); color: var(--muted);
-  box-shadow: var(--shadow-1);
-  opacity: .3; z-index: 3;
-  transition: opacity .16s ease, color .15s, border-color .15s;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .08), 0 6px 16px -8px rgba(15, 23, 42, .35);
+  opacity: .55; z-index: 3;
+  transition: opacity .16s ease, color .15s, border-color .15s, background .15s, box-shadow .15s;
 }
 .side:hover .side-toggle,
 .side-toggle:focus-visible { opacity: 1; }
+/* 指到把手上直接给实心蓝：这么小一块地方，靠淡底色根本看不出是不是能点 */
+.side-toggle:hover {
+  color: var(--on-brand); border-color: var(--brand); background: var(--brand);
+  box-shadow: 0 2px 8px rgba(58, 95, 208, .32), 0 12px 24px -12px rgba(58, 95, 208, .6);
+}
 .side-toggle:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.side-toggle:hover { color: var(--text); border-color: var(--faint); }
-.side-toggle svg { width: 12px; height: 12px; transition: transform .2s ease; }
+.side-toggle svg { width: 15px; height: 15px; transition: transform .2s ease; }
 .side.collapsed .side-toggle svg { transform: rotate(180deg); }
+html[data-theme="dark"] .side-toggle { background: var(--surface-3); }
+html[data-theme="dark"] .side-toggle:hover { background: var(--brand); }
 
 .side-foot {
   margin-top: auto; padding: 12px 6px 8px;
