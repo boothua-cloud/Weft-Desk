@@ -126,11 +126,14 @@ func (s *WeftService) ensureAPIKeyProbe() {
 		s.mu.Unlock()
 		return
 	}
-	s.keyProbe = keyProbe{key: p.key, at: time.Now(), busy: true}
-	s.mu.Unlock()
+	// 服务端客户端还没建好（刚启动、还没连上）。这里不能占下 busy 标记：
+	// 占下之后没人会清，之后连上了也再不会去问，管理入口就一直不出现。
 	if cp == nil {
+		s.mu.Unlock()
 		return
 	}
+	s.keyProbe = keyProbe{key: p.key, at: time.Now(), busy: true}
+	s.mu.Unlock()
 	go func() {
 		var err error
 		if kc, ok := cp.(interface{ CheckKey() error }); ok {

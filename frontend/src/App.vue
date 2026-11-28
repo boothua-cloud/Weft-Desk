@@ -50,6 +50,16 @@ const menuOpen = ref(false)
 // 所以遮罩挂到最外层，点页面任何地方都能收起来
 function closeMenus() { switchOpen.value = false; menuOpen.value = false }
 function closeMenu() { menuOpen.value = false }
+// 两个菜单只能开一个：切换服务端和「更多」都在左下角，
+// 同时弹出来会叠在一起，还得挨个点掉
+function toggleSwitch() {
+  menuOpen.value = false
+  switchOpen.value = !switchOpen.value
+}
+function toggleMore() {
+  switchOpen.value = false
+  menuOpen.value = !menuOpen.value
+}
 function pickPage(key: string) { closeMenus(); page.value = key }
 function refreshFromMenu() {
   closeMenu()
@@ -320,7 +330,7 @@ onUnmounted(() => {
         <div class="menu-wrap up">
           <button class="profile-btn" :class="{ active: switchOpen }"
                   :title="`${serverName} · ${statusText}（点击切换服务端）`"
-                  @click.stop="loadProfiles(); switchOpen = !switchOpen">
+                  @click.stop="loadProfiles(); toggleSwitch()">
             <span class="dot" :class="state?.connecting ? 'warn pulse' : (state?.connected ? 'ok' : 'off')"></span>
             <span class="profile-text">
               <b>{{ serverName }}</b>
@@ -368,7 +378,7 @@ onUnmounted(() => {
               <path d="M13.4 9.2A5.6 5.6 0 1 1 11.7 4.3" /><path d="M13.5 2.2v3.5h-3.5" />
             </svg>
           </button>
-          <button class="icon-btn" :class="{ active: menuOpen }" title="更多" @click.stop="menuOpen = !menuOpen">
+          <button class="icon-btn" :class="{ active: menuOpen }" title="更多" @click.stop="toggleMore">
             <svg viewBox="0 0 16 16" fill="currentColor" width="15" height="15">
               <circle cx="3" cy="8" r="1.35" /><circle cx="8" cy="8" r="1.35" /><circle cx="13" cy="8" r="1.35" />
             </svg>

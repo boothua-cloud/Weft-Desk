@@ -27,6 +27,16 @@ const peers = computed(() => props.state?.peers ?? [])
 const hasAPIKey = computed(() => !!props.state?.hasApiKey)
 const online = computed(() => peers.value.filter(p => p.online).length)
 const total = computed(() => peers.value.length)
+// 在线的走直连还是中继，一眼能看出链路好不好。curAddr 空就是全靠 DERP
+const directCount = computed(() => peers.value.filter(p => p.online && p.curAddr).length)
+const relayCount = computed(() => peers.value.filter(p => p.online && !p.curAddr).length)
+// 在线排前面，离线的按名字排，免得每次刷新顺序都在跳
+const peerList = computed(() =>
+  [...peers.value].sort((a, b) => {
+    if (a.online !== b.online) return a.online ? -1 : 1
+    return (a.name || a.ip).localeCompare(b.name || b.ip)
+  }),
+)
 const routes = computed(() => props.state?.routes ?? [])
 const skipped = computed(() => props.state?.skipped ?? [])
 
@@ -310,8 +320,6 @@ async function fetchAuth() {
               <template v-else>
               <span>{{ state?.endpoint || '未配置服务端' }}</span>
               <i class="hero-sep"></i>
-              <span>运行时长 {{ state?.uptime || '—' }}</span>
-              <i class="hero-sep"></i>
               <span>{{ state?.hostname || '—' }}</span>
               </template>
             </div>
@@ -378,7 +386,8 @@ async function fetchAuth() {
               @click="emit('navigate', 'devices')">还有 {{ alerts.length - 6 }} 项</button>
     </div>
 
-    <!-- 指标 -->
+    <!-- 指标：四张卡各答一件事，不跟下面的卡片重复。
+         在线设备这张顺手把直连/中继拆开，比一个总数有用 -->
     <div :class="hasAPIKey ? 'grid4' : 'grid3'" style="margin-bottom:14px">
       <div class="card">
         <div class="metric-top">
@@ -388,12 +397,16 @@ async function fetchAuth() {
           </div>
         </div>
         <div class="stat-num">{{ online }}<span style="font-size:13px;color:var(--faint);font-weight:400"> / {{ total }}</span></div>
-        <div class="stat-sub">tailnet 内对端节点</div>
+        <div class="stat-sub">
+          <template v-if="online">直连 {{ directCount }} · 中继 {{ relayCount }}</template>
+          <template v-else-if="total">全部离线</template>
+          <template v-else>还没有其他设备</template>
+        </div>
       </div>
 
       <div class="card">
         <div class="metric-top">
-          <div class="stat-label" style="margin:0">已接入网段</div>
+          <div class="stat-label" style="margin:0">子网路由</div>
           <div class="metric-ico">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
               <path d="M2 4h12M2 8h12M2 12h7" />
@@ -434,24 +447,39 @@ async function fetchAuth() {
       </div>
     </div>
 
+    <!-- 本节点的信息（主机名、地址、服务端、状态）都在上面那张大卡里，
+         这里不再重复一遍；换成真正查不到的地方：谁在线、链路走的直连还是中继 -->
     <div class="grid2" style="margin-bottom:14px">
       <div class="card">
-        <h3 class="sec">本节点</h3>
-        <div class="kv"><span>主机名</span><b>{{ state?.hostname || '—' }}</b></div>
-        <div class="kv"><span>节点地址</span><b class="mono">{{ state?.selfIP || '—' }}</b></div>
-        <div class="kv"><span>服务端</span><b class="mono" style="font-size:10.5px">{{ state?.endpoint || '—' }}</b></div>
-        <div class="kv">
-          <span>连接状态</span>
-          <b :style="{ color: state?.connected ? 'var(--ok)' : 'var(--faint)' }">
-            {{ connecting ? '连接中…' : state?.connected ? '已连接' : '未连接' }}
-          </b>
+        <div class="spread" style="margin-bottom:2px">
+          <h3 class="sec" style="margin:0">对端节点</h3>
+          <button v-if="peers.length" class="btn ghost sm" @click="emit('navigate', 'diagnose')">看全部</button>
+        </div>
+        <div v-if="peerList.length">
+          <div v-for="p in peerList.slice(0, 5)" :key="p.ip || p.name" class="peer-line">
+            <span class="dot" :class="p.online ? 'ok' : 'off'" style="width:7px;height:7px"></span>
+            <div class="peer-line-id">
+              <b>{{ p.name || p.ip }}</b>
+              <small>{{ p.ip }}<template v-if="p.os"> · {{ p.os }}</template></small>
+            </div>
+            <span v-if="p.online" class="path-pill" :class="p.curAddr ? 'direct' : 'relay'">
+              {{ p.curAddr ? '直连' : '中继' }}
+            </span>
+            <span v-else class="faint" style="font-size:10.5px">{{ p.lastSeen || '离线' }}</span>
+          </div>
+          <div v-if="peerList.length > 5" class="faint" style="font-size:10.5px;margin-top:8px">
+            还有 {{ peerList.length - 5 }} 台，到「连接诊断」看
+          </div>
+        </div>
+        <div v-else class="faint" style="font-size:11.5px;line-height:1.9">
+          还没有其他设备。同一 tailnet 里的设备上线后会出现在这里。
         </div>
       </div>
 
       <div class="card">
-        <h3 class="sec">已接入网段</h3>
+        <h3 class="sec">生效中的网段</h3>
         <div v-if="!routes.length && !skipped.length" class="faint" style="font-size:11.5px;line-height:1.9">
-          还没有子网路由。在 Headscale 批准节点路由后，这里会自动列出。
+          还没有子网路由。在服务端批准节点路由后，这里会自动列出。
         </div>
         <div v-if="routes.length" class="route-list" style="margin-bottom:10px">
           <span v-for="r in routes" :key="r" class="route-pill">{{ r }}</span>

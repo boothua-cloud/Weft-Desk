@@ -573,24 +573,7 @@ watch(reloadTick, () => {
   gap: 6px;
   flex-shrink: 0;
 }
-.path-pill {
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  border: 1px solid var(--line);
-  background: var(--surface-3);
-  color: var(--muted);
-}
-.path-pill.direct {
-  color: var(--brand);
-  border-color: var(--brand-line);
-  background: var(--ok-soft);
-}
-.path-pill.relay {
-  color: var(--warn);
-  border-color: color-mix(in srgb, var(--warn) 25%, transparent);
-  background: var(--warn-soft);
-}
+/* 直连/中继的标签样式在 styles.css 里，总览页那列对端也用同一套 */
 .relay-note { font-size: 10.5px; }
 
 .report {
