@@ -996,12 +996,17 @@ func (e *systemTUNEngine) DiagPeer(ctx context.Context, ip netip.Addr, port uint
 		}
 	}
 
-	// 包过滤规则是 ACL 在客户端的落地结果。只有真的探测过才知道通不通，
-	// 但规则里有没有这条，能区分「ACL 拦了」和「对端服务没开」。
+	// 包过滤规则是 ACL 在客户端的落地结果。只能回答「规则里有没有这一条」，
+	// 算不出来的写法（group:/autogroup:admin）返回 unknown，不伪装成「没放行」。
+	var selfTags []string
+	if st.Self != nil && st.Self.Tags != nil {
+		selfTags = st.Self.Tags.AsSlice()
+	}
 	if self, serr := netip.ParseAddr(selfIP); serr == nil {
 		if rules, rerr := lc.DebugPacketFilterRules(ctx); rerr == nil {
 			rep.ACLChecked = true
-			rep.ACLAllowed = aclAllows(rules, self.Unmap(), ip.Unmap(), port)
+			v := aclEvaluate(rules, self.Unmap(), ip.Unmap(), port, selfTags)
+			rep.ACLState, rep.ACLNote = v.State, v.Note
 		}
 	}
 
@@ -1013,6 +1018,7 @@ func (e *systemTUNEngine) DiagPeer(ctx context.Context, ip netip.Addr, port uint
 	rep.DialMs = float64(time.Since(start).Microseconds()) / 1000
 	if derr != nil {
 		rep.DialErr = derr.Error()
+		rep.DialCode = dialCode(derr)
 	} else {
 		_ = conn.Close()
 	}

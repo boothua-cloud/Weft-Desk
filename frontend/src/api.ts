@@ -36,8 +36,14 @@ export interface DiagReport {
   pingErr: string
   dialMs: number
   dialErr: string
-  aclAllowed: boolean
+  // refused / timeout / noroute / other：拨测失败的类型。
+  // refused 表示对端回了拒绝，包到了，ACL 必然放行。
+  dialCode: string
   aclChecked: boolean
+  // allow / deny / unknown。unknown 是「规则里写了客户端算不出来的表达式」，
+  // 不能当成没放行。
+  aclState: string
+  aclNote: string
   verdict: string
   hints: string[]
   at: string

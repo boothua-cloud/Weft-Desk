@@ -127,6 +127,15 @@ function stepTone(r: { known: boolean; advertised: boolean; approved: boolean; a
 }
 
 // 排查问题时最省事的方式是把这一屏发给别人，所以拼一段纯文本
+// ACL 的三种说法。refused 不查规则表也能定论：包到过对端，就是放行了。
+function aclLabel(r: DiagReport): string {
+  if (r.dialCode === 'refused') return '已放行（对端回了拒绝）'
+  if (!r.aclChecked) return '没读到规则'
+  if (r.aclState === 'allow') return '放行了'
+  if (r.aclState === 'deny') return '规则里没有这条'
+  return '判不了：' + (r.aclNote || '规则里有客户端算不出来的写法')
+}
+
 function diagText(): string {
   const L: string[] = []
   const s = self.value
@@ -153,6 +162,7 @@ function diagText(): string {
     L.push(`  ${r.verdict}`)
     L.push(`  端口 ${r.port} · ${r.path}${r.relay ? ' ' + r.relay : ''} · 握手 ${r.handshake}`)
     L.push(`  探测 ${r.pingMs >= 0 ? Math.round(r.pingMs) + 'ms' : '失败'}（丢 ${r.pingLost}/3） · 拨测 ${r.dialErr ? '失败 ' + r.dialErr : Math.round(r.dialMs) + 'ms'}`)
+    if (r.dialErr) L.push('  ACL ' + aclLabel(r))
     for (const h of r.hints) L.push('  - ' + h)
   }
   return L.join('\n')
@@ -377,14 +387,16 @@ watch(
                 {{ reports[p.ip].dialErr ? '失败' : Math.round(reports[p.ip].dialMs) + ' ms' }}
               </b>
             </div>
-            <!-- ACL 只在没连上的时候才有解释价值：已经连上了就说明放行了，
-                 再去说「规则里没找到这条」只会让人以为出了问题 -->
+            <!-- ACL 只在没连上的时候才有解释价值。已连上就说明放行了，
+                 再去说「规则里没找到这条」只会让人以为出了问题。
+                 refused 更硬：对端回了拒绝，包已经到过对端，ACL 必然放行。 -->
             <div v-if="reports[p.ip].dialErr" class="fact">
               <span>ACL</span>
-              <b v-if="!reports[p.ip].aclChecked" class="faint">没读到</b>
-              <b v-else :class="{ bad: !reports[p.ip].aclAllowed }">
-                {{ reports[p.ip].aclAllowed ? '放行了这个端口' : '没有对应规则' }}
-              </b>
+              <b v-if="reports[p.ip].dialCode === 'refused'" class="ok">已放行</b>
+              <b v-else-if="!reports[p.ip].aclChecked" class="faint">没读到</b>
+              <b v-else-if="reports[p.ip].aclState === 'allow'">放行了这个端口</b>
+              <b v-else-if="reports[p.ip].aclState === 'deny'" class="bad">规则里没有这条</b>
+              <b v-else class="warn" :title="reports[p.ip].aclNote">判不了</b>
             </div>
             <div v-if="reports[p.ip].version" class="fact">
               <span>对端版本</span>
@@ -398,8 +410,11 @@ watch(
 
           <div class="report-foot">
             <span class="faint">检查于 {{ reports[p.ip].at.slice(11, 19) }}</span>
-            <button v-if="state?.hasApiKey && reports[p.ip].dialErr && reports[p.ip].aclChecked && !reports[p.ip].aclAllowed"
-                    class="link-btn" @click="emit('navigate', 'acl')">去改 ACL</button>
+            <!-- 只在「规则里确实没有」且不是对端主动拒绝时才给这个入口。
+                 refused 说明 ACL 没拦，给按钮等于让人去修一条好规则。 -->
+            <button v-if="state?.hasApiKey && reports[p.ip].dialCode !== 'refused'
+                          && reports[p.ip].aclState === 'deny'"
+                    class="link-btn" @click="emit('navigate', 'acl')">去看策略</button>
           </div>
         </div>
       </div>
@@ -610,6 +625,8 @@ watch(
 .fact span { color: var(--faint); }
 .fact b { font-weight: 500; }
 .fact b.bad { color: var(--danger); }
+.fact b.ok { color: var(--ok); }
+.fact b.warn { color: var(--warn); }
 
 .hints {
   margin: 11px 0 0;

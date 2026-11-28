@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"tailscale.com/tailcfg"
@@ -278,41 +279,256 @@ func matchIPSet(spec string, ip netip.Addr) bool {
 	return false
 }
 
-// aclAllows 看包过滤规则里有没有放行 self → dst:port。
-// 这不是完整的规则求值，只回答「ACL 里有没有这一条」：
-// 拨测不通时用它区分「ACL 拦了」和「对端服务没开」。
-func aclAllows(rules []tailcfg.FilterRule, self, dst netip.Addr, port uint16) bool {
+// ACL 判定的三种结果。为什么不是 bool：客户端拿到的规则是控制面下发的
+// 原文，可能写着 `autogroup:member`、`group:ops`、`tag:db` 这类表达式，
+// 其中只有一部分能在客户端算出来。算不出来时判成 deny，就会把
+// 「对端没开服务」说成「ACL 拦了」——这正是最容易误导人的地方。
+const (
+	aclAllow   = "allow"
+	aclDeny    = "deny"
+	aclUnknown = "unknown"
+)
+
+// aclVerdict 是判定结果，note 在 deny/unknown 时说明依据。
+type aclVerdict struct {
+	State string
+	Note  string
+}
+
+// aclEvaluate 判断包过滤规则里有没有放行 self → dst:port。
+//
+// 这不是完整求值：tailscale 的规则是「首条匹配生效」，控制面已经把它编译成
+// 白名单，所以「没有一条匹配」就等于不放行。难点在于规则里的表达式：
+// 能算的（IP/CIDR/区间/*/tag:）照实算，算不出来的（group:/autogroup:admin）
+// 必须返回 unknown，而不是当作不匹配。
+func aclEvaluate(rules []tailcfg.FilterRule, self, dst netip.Addr, port uint16, selfTags []string) aclVerdict {
+	// 空规则不等于「全部拒绝」：客户端还没拿到 netmap 时也是空。
+	// 这时候说「没放行」是纯粹的猜测。
+	if len(rules) == 0 {
+		return aclVerdict{
+			State: aclUnknown,
+			Note:  "客户端还没拿到包过滤规则（netmap 可能没同步完），判断不了",
+		}
+	}
+	var maybe []string
 	for _, r := range rules {
-		// IPProto 为空表示 TCP/UDP/ICMP 全管；带了协议就只认 TCP(6)
-		if len(r.IPProto) > 0 {
-			tcp := false
-			for _, p := range r.IPProto {
-				if p == 6 {
-					tcp = true
-					break
-				}
-			}
-			if !tcp {
-				continue
-			}
+		if !ruleTalksTCP(r) {
+			continue
 		}
-		srcHit := false
-		for _, s := range r.SrcIPs {
-			if matchIPSet(s, self) {
-				srcHit = true
-				break
-			}
+		sHit, sKnown, sWhy := evalSrcSet(r.SrcIPs, self, dst, selfTags)
+		dHit, dKnown, dWhy := evalDstSet(r.DstPorts, dst, port)
+
+		if sHit && dHit {
+			return aclVerdict{State: aclAllow}
 		}
-		if !srcHit {
+		// 有一边确实不匹配，这条规则就不可能放行
+		if sKnown && !sHit {
+			continue
+		}
+		if dKnown && !dHit {
+			continue
+		}
+		// 到这里说明两边都不是「确定不匹配」：要么不确定，要么确定匹配
+		switch {
+		case !sKnown && !dKnown:
+			maybe = append(maybe, "规则里同时用了 "+sWhy+" 和 "+dWhy)
+		case !sKnown:
+			maybe = append(maybe, "规则里用了 "+sWhy)
+		default:
+			maybe = append(maybe, "目标写的是 "+dWhy)
+		}
+	}
+	if len(maybe) > 0 {
+		return aclVerdict{
+			State: aclUnknown,
+			Note:  "客户端算不出这条规则：" + maybe[0] + "。要确认只能在控制面看策略原文",
+		}
+	}
+	return aclVerdict{
+		State: aclDeny,
+		Note:  aclDenyNote(rules, self, dst, port, selfTags),
+	}
+}
+
+// aclDenyNote 把「没有这条」说得更具体：顺带列出规则里对这台设备放行了哪些端口。
+// 只说「没有」用户还得自己去翻策略，说「只放行了 22」他立刻知道要加哪一条。
+func aclDenyNote(rules []tailcfg.FilterRule, self, dst netip.Addr, port uint16, tags []string) string {
+	target := net.JoinHostPort(dst.String(), strconv.Itoa(int(port)))
+	note := fmt.Sprintf("读到的 %d 条规则里，没有一条放行本机到 %s", len(rules), target)
+	if ps := aclPortsFor(rules, self, dst, tags); len(ps) > 0 {
+		note += "；对这台设备，规则里只放行了 " + strings.Join(ps, "、")
+	}
+	return note
+}
+
+// aclPortsFor 列出规则里放行到这台设备的 TCP 端口。
+func aclPortsFor(rules []tailcfg.FilterRule, self, dst netip.Addr, tags []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(s string) {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	for _, r := range rules {
+		if !ruleTalksTCP(r) {
+			continue
+		}
+		// 来源算不出来就不列：宁可不给，也不能报错端口
+		if hit, known, _ := evalSrcSet(r.SrcIPs, self, dst, tags); !known || !hit {
 			continue
 		}
 		for _, d := range r.DstPorts {
-			if matchIPSet(d.IP, dst) && d.Ports.Contains(port) {
-				return true
+			if ok, known := matchDstIP(d.IP, dst); !known || !ok {
+				continue
 			}
+			if d.Ports.First == 0 && d.Ports.Last == 65535 {
+				add("全部端口")
+				continue
+			}
+			if d.Ports.First == d.Ports.Last {
+				add(strconv.Itoa(int(d.Ports.First)))
+				continue
+			}
+			add(fmt.Sprintf("%d-%d", d.Ports.First, d.Ports.Last))
+		}
+	}
+	// 不排序：保持策略里的顺序，「全部端口」通常在最前面，一眼就懂
+	return out
+}
+
+// ruleTalksTCP 判断一条规则是否管 TCP。IPProto 为空表示 TCP/UDP/ICMP 全管。
+func ruleTalksTCP(r tailcfg.FilterRule) bool {
+	if len(r.IPProto) == 0 {
+		return true
+	}
+	for _, p := range r.IPProto {
+		if p == 6 {
+			return true
 		}
 	}
 	return false
+}
+
+// evalSrcSet 求一条规则的来源集合：本机在不在里面。
+// 返回 (命中, 能否确定, 算不出来的表达式)。
+func evalSrcSet(specs []string, self, dst netip.Addr, tags []string) (bool, bool, string) {
+	unknown := ""
+	for _, s := range specs {
+		hit, known := matchSrc(s, self, dst, tags)
+		if !known {
+			if unknown == "" {
+				unknown = s
+			}
+			continue
+		}
+		if hit {
+			return true, true, ""
+		}
+	}
+	if unknown != "" {
+		return false, false, unknown
+	}
+	return false, true, ""
+}
+
+// matchSrc 求单个来源表达式。(命中, 能否确定)。
+//
+// 能算的：*、IP、CIDR、区间、tag:xxx、autogroup:member/tagged/self。
+// 算不出来的：group:xxx、autogroup:admin 之类——成员列表只在服务端。
+func matchSrc(spec string, self, dst netip.Addr, tags []string) (bool, bool) {
+	s := strings.TrimSpace(spec)
+	switch {
+	case s == "":
+		return false, true
+	case s == "*":
+		return true, true
+	case s == "autogroup:member":
+		// tagged 节点不算 member，这是 tailscale 的语义
+		return len(tags) == 0, true
+	case s == "autogroup:tagged":
+		return len(tags) > 0, true
+	case s == "autogroup:self":
+		return self == dst, true
+	case strings.HasPrefix(s, "tag:"):
+		want := strings.TrimPrefix(s, "tag:")
+		for _, t := range tags {
+			if strings.TrimPrefix(t, "tag:") == want {
+				return true, true
+			}
+		}
+		return false, true
+	case strings.HasPrefix(s, "group:"), strings.HasPrefix(s, "autogroup:"):
+		return false, false
+	}
+	return matchIPSet(s, self), true
+}
+
+// evalDstSet 求目标集合：这个地址的这个端口在不在里面。
+func evalDstSet(ranges []tailcfg.NetPortRange, dst netip.Addr, port uint16) (bool, bool, string) {
+	unknown := ""
+	for _, d := range ranges {
+		ipOK, ipKnown := matchDstIP(d.IP, dst)
+		if !ipKnown {
+			if unknown == "" {
+				unknown = d.IP
+			}
+			continue
+		}
+		if !ipOK {
+			continue
+		}
+		if d.Ports.Contains(port) {
+			return true, true, ""
+		}
+	}
+	if unknown != "" {
+		return false, false, unknown
+	}
+	return false, true, ""
+}
+
+// matchDstIP 只认 IP/CIDR/区间/*；autogroup:internet 这类交给 unknown。
+func matchDstIP(spec string, dst netip.Addr) (bool, bool) {
+	s := strings.TrimSpace(spec)
+	if strings.HasPrefix(s, "autogroup:") || strings.HasPrefix(s, "group:") || strings.HasPrefix(s, "tag:") {
+		return false, false
+	}
+	return matchIPSet(s, dst), true
+}
+
+// dialCode 把拨测错误归类。分类比错误文案可靠，因为文案随系统和语言变。
+//
+// refused 是最有价值的一类：对方回了 RST，说明 SYN 已经穿过 tailnet 到达对端，
+// 包过滤（ACL）必然是放行的。此时再指着 ACL 说「没放行」就是错的。
+func dialCode(err error) string {
+	if err == nil {
+		return ""
+	}
+	switch {
+	case errors.Is(err, syscall.ECONNREFUSED), errors.Is(err, syscall.ECONNRESET):
+		return "refused"
+	case errors.Is(err, syscall.EHOSTUNREACH), errors.Is(err, syscall.ENETUNREACH):
+		return "noroute"
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, os.ErrDeadlineExceeded):
+		return "timeout"
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return "timeout"
+	}
+	// 兜底：Windows 的 Errno 有时套在别的包装里，errors.Is 认不出
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "refused"), strings.Contains(msg, "reset by peer"):
+		return "refused"
+	case strings.Contains(msg, "timeout"), strings.Contains(msg, "timed out"):
+		return "timeout"
+	case strings.Contains(msg, "no route"), strings.Contains(msg, "unreachable"):
+		return "noroute"
+	}
+	return "other"
 }
 
 // diagVerdict 把实测结果翻成一句话和几条可能原因。
@@ -368,23 +584,71 @@ func diagVerdict(r DiagReport) (string, []string) {
 		return fmt.Sprintf("链路不通，%s 连不上", target), hints
 	}
 
-	// 链路通、端口不通：这里是 ACL 和服务的分界
-	if r.ACLChecked && !r.ACLAllowed {
-		return fmt.Sprintf("ACL 没放行 %s", target),
+	// 链路通、端口不通。从这里开始按拨测错误类型分：这是唯一能区分
+	// 「没开服务」「ACL 拦了」「路由没装上」的实测证据。
+	switch r.DialCode {
+	case "refused":
+		hints := []string{
+			"对方明确回了「连接被拒绝」，说明包已经到达对端、ACL 放行了，问题不在策略",
+			fmt.Sprintf("在 %s 上确认服务：ss -ltn | grep :%d。只监听 127.0.0.1 也不行，要听 0.0.0.0",
+				orName(r.Name), r.Port),
+			"也可能对端防火墙用 reject 拒绝，同样是「包到了但不让连」",
+		}
+		if r.ACLChecked && r.ACLState != aclAllow {
+			// 规则判断和实测打架时，以实测为准，并且要说出来
+			hints = append(hints, "本机读到的 ACL 规则里没找到这条，但对端都回拒绝了，说明没拦住；多半是规则还没同步到客户端")
+		}
+		return fmt.Sprintf("对端拒绝了 %s：这个端口没开服务", target), hints
+
+	case "noroute":
+		return fmt.Sprintf("本机没有到 %s 的路由", r.IP),
 			[]string{
-				"策略里没有从本机到这个地址、这个端口的规则",
-				"去 ACL 页加一条，保存后立刻生效，不用重连",
+				"这跟 ACL 和对端都无关，是本机路由表没装上",
+				"如果要访问的是子网路由器背后的地址，先去「连接诊断 → 子网路由」看那条路由接受没有",
+				"拨测报错：" + r.DialErr,
 			}
 	}
-	hints := []string{
-		"链路是通的，多半是对端这个端口没开服务，换个常用端口试试",
-		"对端防火墙可能只放行了部分端口",
+
+	// 超时或未知错误：包多半被丢了，但丢在哪一环定不了
+	switch r.ACLState {
+	case aclDeny:
+		hints := []string{}
+		if r.ACLNote != "" {
+			hints = append(hints, r.ACLNote)
+		}
+		return fmt.Sprintf("连不上 %s，ACL 里没有放行这条的规则", target),
+			append(hints,
+				"但也不能百分百确定：ACL 放行、对端防火墙丢包的症状完全一样",
+				fmt.Sprintf("要确认：在对端 tcpdump -ni any tcp port %d，看包到没到", r.Port),
+				"确认是策略问题后，去 ACL 页加一条，保存后立刻生效，不用重连",
+			)
+	case aclUnknown:
+		return fmt.Sprintf("连不上 %s，原因还定不了", target),
+			[]string{
+				r.ACLNote,
+				"现在两种可能并列：策略没放行，或者对端服务/防火墙把包丢了",
+				fmt.Sprintf("要分清：在对端 tcpdump -ni any tcp port %d，包到了就是服务或防火墙的事；没到再查策略", r.Port),
+			}
+	case aclAllow:
+		return fmt.Sprintf("ACL 放行了，但 %s 连不上", target),
+			[]string{
+				"包过滤规则里有这一条，所以问题在对端：服务没起、只监听 127.0.0.1、或者对端防火墙挡了",
+				fmt.Sprintf("在对端跑 ss -ltn | grep :%d 确认；服务要监听 0.0.0.0 而不是 127.0.0.1", r.Port),
+				"拨测报错：" + r.DialErr,
+			}
 	}
-	if r.ACLChecked {
-		hints = append(hints, "ACL 里有放行规则，所以不是策略问题")
+	return fmt.Sprintf("连不上 %s", target),
+		[]string{
+			"没读到包过滤规则（可能刚连上、netmap 还没同步），分不清是 ACL 还是对端服务",
+			"等几秒再检查一次；还读不到就直接看控制面的策略",
+			"拨测报错：" + r.DialErr,
+		}
+}
+
+// orName 给日志和提示用：没有主机名就退回 IP。
+func orName(name string) string {
+	if strings.TrimSpace(name) == "" {
+		return "对端"
 	}
-	if r.DialErr != "" {
-		hints = append(hints, "拨测报错："+r.DialErr)
-	}
-	return fmt.Sprintf("链路通，但 %s 连不上", target), hints
+	return name
 }

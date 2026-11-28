@@ -250,10 +250,16 @@ type DiagReport struct {
 	// TCP 拨测：真的连一次目标端口。通了才算「能用」。
 	DialMs  float64 `json:"dialMs"`
 	DialErr string  `json:"dialErr"`
+	// DialCode 是拨测失败的分类，比错误文案可靠：
+	// refused 表示对端回了 RST（包到了，ACL 一定放行）；timeout 才是「可能被丢」；
+	// noroute 是本机路由没装上，跟 ACL 和对端都无关。
+	DialCode string `json:"dialCode"`
 
-	// ACL 判定：包过滤规则里有没有放行这个地址和端口
-	ACLAllowed bool `json:"aclAllowed"`
-	ACLChecked bool `json:"aclChecked"`
+	// ACL 判定。三态，不是布尔：读到的规则里可能写着 autogroup:/tag:/group:，
+	// 客户端算不出来，这种情况必须说「判不了」，不能默认成「没放行」。
+	ACLChecked bool   `json:"aclChecked"`
+	ACLState   string `json:"aclState"` // allow / deny / unknown，空表示没读到规则
+	ACLNote    string `json:"aclNote"`  // 判不了或被实测推翻时，说明原因
 
 	Verdict string   `json:"verdict"` // 一句话结论
 	Hints   []string `json:"hints"`   // 不通时按可能性排序的原因
