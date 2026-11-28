@@ -1,4 +1,4 @@
-package main
+package desktop
 
 // 应用书签同步的绑定方法。收发逻辑在 internal/appsync，这里只保留
 // 前端能看到的入口与同步码的存取。

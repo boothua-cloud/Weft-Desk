@@ -1,4 +1,4 @@
-package main
+package desktop
 
 import (
 	"encoding/json"
@@ -112,7 +112,7 @@ func TestSelfCheckWithoutEngine(t *testing.T) {
 		t.Skip("没有本地数据库，跳过: ", err)
 	}
 	defer store.Close()
-	svc := NewWeftService(store)
+	svc := New(store)
 	svc.engine = nil
 	raw, err := svc.SelfCheck()
 	if err != nil {

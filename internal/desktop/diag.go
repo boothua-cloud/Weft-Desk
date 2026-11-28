@@ -1,4 +1,4 @@
-package main
+package desktop
 
 import (
 	"context"
@@ -20,8 +20,8 @@ import (
 	"github.com/boothua/weft/internal/store"
 )
 
-// wantsDiag 判断是否是诊断模式：weft --diag [IP...]
-func wantsDiag() bool {
+// WantsDiag 判断是否是诊断模式：weft --diag [IP...]
+func WantsDiag() bool {
 	for _, a := range os.Args[1:] {
 		if a == "--diag" || a == "-diag" {
 			return true
@@ -30,9 +30,9 @@ func wantsDiag() bool {
 	return false
 }
 
-// runDiag 不进 GUI，直接拉起隧道并输出分层诊断。
+// RunDiag 不进 GUI，直接拉起隧道并输出分层诊断。
 // 目的只有一个：用数据定位「包卡在 netmap、magicsock、engine 还是对端」。
-func runDiag() {
+func RunDiag() {
 	targets := diagTargets()
 	store, err := store.Open()
 	if err != nil {
@@ -40,7 +40,7 @@ func runDiag() {
 	}
 	defer store.Close()
 
-	svc := NewWeftService(store)
+	svc := New(store)
 	defer svc.shutdown()
 
 	cfg := svc.cfg

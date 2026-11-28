@@ -214,32 +214,38 @@ Linux 必须带 `gtk3` 标签。Wails 默认走 GTK4 + WebKitGTK 6.0，主流发
 
 ## 代码结构
 
-后端一个 Go module，界面在 `frontend/`。根目录只放入口和前端看得见的那一层：
+后端一个 Go module，界面在 `frontend/`。根目录只剩启动装配和必须留在这里的东西：
 
 ```
-main.go              启动：窗口、托盘、快捷键
-tray.go              托盘菜单、最小化到托盘
-appoverlay.go        应用内窗口的悬浮条与加载页
-diag.go              weft --diag 的终端诊断，不进 GUI
-appname_darwin.*     cgo 改菜单栏名字，必须在根包
-
-weft.go              WeftService：结构体、构造、启动、重连、退出
-weft_config.go       配置与连接档案（Profile）
-weft_credential.go   界面偏好、Auth Key 与管理 Key 的存取、到期续期
-weft_state.go        总览页状态、连接与断开
-weft_nodes.go        设备、路由审批、节点认证
-weft_admin.go        成员、授权 Key、ACL 策略
-weft_apps.go         应用书签
-weft_forwards.go     端口转发与 SOCKS5
-weft_helper.go       系统提权助手
-weft_sync.go         书签同步的绑定方法
-weft_update.go       自动更新的绑定方法
-weft_selfcheck.go    诊断页的本机自检
+main.go            进程入口：单实例、提权分支、--diag 分流，再交给 desktop.Run
+assets.go          embed 前端产物、应用图标、托盘图标
+appname_darwin.*   cgo 改菜单栏名字，链接 Foundation / AppKit，必须在根包
 ```
 
-`weft_*` 全是同一个类型 `WeftService` 的方法，只是按业务域分了文件。这个类型是前端唯一能调到的入口：Wails 启动时扫它的公开方法生成 `frontend/bindings/`，参数和返回值都是 JSON 字符串，所以加接口只动这一层，界面不碰 Go 的 struct。
+`//go:embed` 只能引用本包目录下的文件，而 `frontend/dist` 与 `build/` 都在根，所以资源留在根包，图标再作为变量传给界面层。
 
-实现放在 `internal/`：
+桌面壳层在 `internal/desktop`，前端能调到的只有这里的 `WeftService`：
+
+| 文件 | 管什么 |
+|---|---|
+| `run.go` | `desktop.Run`：建 App、菜单、主窗口、快捷键、事件循环 |
+| `service.go` | 结构体、构造、启动与重连、退出，以及绑定层共用的小工具 |
+| `config.go` | 配置与连接档案（Profile） |
+| `credential.go` | 界面偏好、Auth Key 与管理 Key 的存取、到期续期 |
+| `state.go` | 总览页状态、连接与断开 |
+| `nodes.go` | 设备、路由审批、节点认证 |
+| `admin.go` | 成员、授权 Key、ACL 策略 |
+| `apps.go` | 应用书签与审计 |
+| `forwards.go` | 端口转发与 SOCKS5 |
+| `helper.go` | 系统提权助手 |
+| `sync.go` / `update.go` / `selfcheck.go` | 书签同步、自动更新、本机自检的绑定方法 |
+| `tray.go` | 托盘菜单、关窗收起、状态轮询 |
+| `overlay.go` | 应用内窗口的悬浮条与控制端点 |
+| `diag.go` | `weft --diag` 的终端诊断，不进 GUI |
+
+Wails 启动时扫 `WeftService` 的公开方法，生成 `frontend/bindings/github.com/boothua/weft/internal/desktop/`。参数和返回值都是 JSON 字符串，界面不碰 Go 的 struct，加接口只动这一层。
+
+其余实现按职责放在 `internal/`：
 
 | 包 | 管什么 |
 |---|---|
@@ -253,17 +259,21 @@ weft_selfcheck.go    诊断页的本机自检
 | `netio` | 端口转发与 SOCKS5 |
 | `appsync` | 应用书签的局域网同步 |
 | `update` | 自动更新：检查、下载、校验、替换 |
+| `desktop` | 桌面壳层，见上面的文件表 |
 
 依赖是单向的，`model` 在最底下：
 
 ```
-root (WeftService)
-  ├── store      ├── controlplane   ├── engine
-  ├── netio      ├── appsync        ├── update
-  └──────────────── model ────────────────
+        main.go（进程入口）
+              │
+        desktop（窗口与绑定层）
+   ┌──────┬───┴────┬────────┬────────┐
+ store  controlplane engine appsync update ...
+   └──────┴────┬───┴────────┴────────┘
+             model
 ```
 
-子包不认识 `WeftService`。需要运行时状态的地方（当前引擎、同步码、本机 `100.x` 地址）通过构造函数注入函数，回调不会绕回根包。
+`store`、`controlplane`、`engine` 这些包不认识 `WeftService`。需要运行时状态的地方（当前引擎、同步码、本机 `100.x` 地址）通过构造函数注入函数，回调不会绕回上层。
 
 平台差异用文件名后缀分：`foo_darwin.go` / `foo_windows.go` / `foo_linux.go`，公共逻辑放在无后缀的 `foo.go` 里。
 

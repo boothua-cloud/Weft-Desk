@@ -6,16 +6,18 @@
 
 ## 代码结构
 
-根目录只放入口与界面装配：`main.go`（embed 前端、建窗口、托盘、快捷键）、
-`tray.go`（托盘菜单）、`appoverlay.go`（应用内窗口的悬浮条与加载页）、
-`diag.go`（`--diag` 终端诊断）、`appname_darwin.*`（cgo 改菜单栏名字，必须在根包）。
+根目录只放进程入口与资源：`main.go`（日志、单实例、提权分支、`--diag` 分流，
+再调 `desktop.Run`）、`assets.go`（embed 前端产物与两个图标）、
+`appname_darwin.*`（cgo 改菜单栏名字，必须在根包）。`//go:embed` 只能引用本包目录，而 `frontend/dist` 和 `build/`
+都在根，所以图标留在根包，再作为变量传给界面层。
 
-`WeftService` 的方法按业务域拆在 `weft_*.go`：`weft.go` 只留结构体、构造、
-启动与退出，其余是 `weft_config.go`（配置与 Profile）、`weft_credential.go`
-（偏好与 Key）、`weft_state.go`（状态与连接）、`weft_nodes.go`（设备与节点认证）、
-`weft_admin.go`（成员、授权 Key、ACL）、`weft_apps.go`（书签）、
-`weft_forwards.go`（端口转发）、`weft_helper.go`（提权助手），
-以及几个纯转发的 `weft_sync.go` / `weft_update.go` / `weft_selfcheck.go`。
+桌面壳层整个在 `internal/desktop`：`run.go` 是 `desktop.Run`（建 App、菜单、
+主窗口、快捷键、事件循环），`service.go` 放 `WeftService` 的结构体与
+生命周期，其余按业务域拆成 `config.go`、`credential.go`、`state.go`、
+`nodes.go`、`admin.go`、`apps.go`、`forwards.go`、`helper.go`，加上纯转发的
+`sync.go` / `update.go` / `selfcheck.go`；托盘在 `tray.go`，应用内窗口的悬浮条
+在 `overlay.go`，`--diag` 在 `diag.go`。前端 bindings 生成到
+`frontend/bindings/github.com/boothua/weft/internal/desktop/`。
 
 其余按职责放在 `internal/`：
 
@@ -30,7 +32,8 @@
 | `engine` | 隧道引擎（TUN + tsnet）、提权助手、本地反向代理、单实例、平台路由 |
 | `netio` | 端口转发与 SOCKS5 |
 | `appsync` | 应用书签同步 |
-| `update` | 自动更新（绑定方法在根包的 `weft_update.go` 转发） |
+| `desktop` | 桌面壳层：绑定入口、托盘、应用内窗口、终端诊断 |
+| `update` | 自动更新（绑定方法在 `desktop` 包转发） |
 
 依赖是单向的：`model` 在最底下，`store`、`controlplane`、`engine` 依赖它；
 `WeftService` 在最上层把各部分接起来。子包不认识 `WeftService`，需要运行时

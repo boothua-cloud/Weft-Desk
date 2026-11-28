@@ -1,9 +1,11 @@
-package main
-
-// WeftService 的装配与生命周期：结构体定义、构造、启动、重连、退出，
-// 以及绑定层共用的小工具（JSON 编码、时间格式、缓存键）。
+// Package desktop 是桌面端的壳层：前端唯一入口 WeftService、托盘菜单、
+// 应用内窗口的悬浮条，以及 `--diag` 的终端诊断。
 //
-// 业务方法按域拆在同目录的 weft_*.go 里，都是同一个类型的方法。
+// 前端只能调到 WeftService 上的公开方法，参数和返回值都是 JSON 字符串。
+// 方法按业务域拆在同目录的多个文件里（config、credential、state、nodes、
+// admin、apps、forwards、helper），service.go 只留结构体与生命周期。
+package desktop
+
 import (
 	"context"
 	"encoding/json"
@@ -113,7 +115,7 @@ func (s *WeftService) RevealWindow() error {
 	return nil
 }
 
-func NewWeftService(store *store.Store) *WeftService {
+func New(store *store.Store) *WeftService {
 	cfg, err := store.GetConfig()
 	if err != nil {
 		cfg = model.Config{ControlPlane: "headscale", TunnelEngine: "system", Hostname: appinfo.DefaultHostname(),

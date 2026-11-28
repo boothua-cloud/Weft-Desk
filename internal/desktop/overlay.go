@@ -1,4 +1,4 @@
-package main
+package desktop
 
 import (
 	"crypto/subtle"
@@ -158,8 +158,8 @@ wrap.appendChild(btn);wrap.appendChild(menu);
 func appLoadingHTML(name string) string {
 	safe := html.EscapeString(name)
 	icon := ""
-	if len(appIcon) > 0 {
-		icon = "data:image/png;base64," + base64.StdEncoding.EncodeToString(appIcon)
+	if len(Icon) > 0 {
+		icon = "data:image/png;base64," + base64.StdEncoding.EncodeToString(Icon)
 	}
 	return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><style>
 html,body{margin:0;height:100%;background:#F4F6F9;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",system-ui,sans-serif;-webkit-font-smoothing:antialiased}

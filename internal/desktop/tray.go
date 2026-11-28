@@ -1,7 +1,6 @@
-package main
+package desktop
 
 import (
-	_ "embed"
 	"log"
 	"runtime"
 	"strings"
@@ -32,9 +31,6 @@ type appUI struct {
 	stopOnce     sync.Once
 	stop         chan struct{}
 }
-
-//go:embed build/tray-icon.png
-var trayIcon []byte
 
 // bootAt 记录进程内初始化起点，用来度量「点开图标 → 窗口出现」花了多久。
 var bootAt = time.Now()
@@ -136,7 +132,7 @@ func (u *appUI) applyTray(on bool) {
 
 	tray := u.app.SystemTray.New()
 	// 直接用应用图标：和 Dock / 关于窗口保持一致，不再另画一个符号
-	tray.SetIcon(trayIcon)
+	tray.SetIcon(TrayIcon)
 	tray.SetTooltip("云栈")
 
 	menu := application.NewMenu()

@@ -1,4 +1,4 @@
-package main
+package desktop
 
 // 自动更新的绑定方法。状态机与下载替换都在 internal/update，
 // 这里只做转发：前端能调到的名字保持不变。

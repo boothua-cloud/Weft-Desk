@@ -1,4 +1,4 @@
-import { WeftService } from '../bindings/github.com/boothua/weft'
+import { WeftService } from '../bindings/github.com/boothua/weft/internal/desktop'
 
 async function parse<T>(p: any): Promise<T> {
   const raw: string = await p

@@ -12,90 +12,90 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as time$0 from "../../../time/models.js";
+import * as time$0 from "../../../../../time/models.js";
 
 export function ApplyUpdate(): $CancellablePromise<void> {
-    return $Call.ByID(405797804);
+    return $Call.ByID(4066642766);
 }
 
 export function ApproveAuth(authID: string): $CancellablePromise<void> {
-    return $Call.ByID(956314926, authID);
+    return $Call.ByID(2147830772, authID);
 }
 
 export function ApproveRoutes(id: string, routes: string): $CancellablePromise<void> {
-    return $Call.ByID(2766598106, id, routes);
+    return $Call.ByID(4193548012, id, routes);
 }
 
 /**
  * BackfillIPs 为历史节点补齐缺失的 IP，返回受影响节点数。
  */
 export function BackfillIPs(confirmed: boolean): $CancellablePromise<number> {
-    return $Call.ByID(1981866277, confirmed);
+    return $Call.ByID(2066106723, confirmed);
 }
 
 /**
  * CheckPolicy 只校验语法，不写入服务端。
  */
 export function CheckPolicy(content: string): $CancellablePromise<void> {
-    return $Call.ByID(3058755207, content);
+    return $Call.ByID(2693448861, content);
 }
 
 export function CheckUpdate(): $CancellablePromise<string> {
-    return $Call.ByID(1663671900);
+    return $Call.ByID(3401865786);
 }
 
 export function Connect(): $CancellablePromise<string> {
-    return $Call.ByID(557111599);
+    return $Call.ByID(2885969597);
 }
 
 export function CreateAPIKey(days: number): $CancellablePromise<string> {
-    return $Call.ByID(3938070000, days);
+    return $Call.ByID(1911693194, days);
 }
 
 export function CreateAuthKey(user: string, reusable: boolean, ephemeral: boolean, days: number, tags: string): $CancellablePromise<string> {
-    return $Call.ByID(359271708, user, reusable, ephemeral, days, tags);
+    return $Call.ByID(3882367210, user, reusable, ephemeral, days, tags);
 }
 
 export function CreateUser(name: string, displayName: string, email: string, pictureURL: string): $CancellablePromise<string> {
-    return $Call.ByID(2041224584, name, displayName, email, pictureURL);
+    return $Call.ByID(1718470598, name, displayName, email, pictureURL);
 }
 
 /**
  * DebugCreateNode 直接建一个调试节点，仅用于联调 ACL / 路由。
  */
 export function DebugCreateNode(user: string, key: string, name: string, routes: string): $CancellablePromise<string> {
-    return $Call.ByID(2992699570, user, key, name, routes);
+    return $Call.ByID(3163006172, user, key, name, routes);
 }
 
 export function DeleteAPIKey(prefix: string, id: string): $CancellablePromise<void> {
-    return $Call.ByID(1624510695, prefix, id);
+    return $Call.ByID(201264241, prefix, id);
 }
 
 export function DeleteApp(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1050742531, id);
+    return $Call.ByID(2713340005, id);
 }
 
 export function DeleteAuthKey(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3702445597, id);
+    return $Call.ByID(1857405987, id);
 }
 
 export function DeleteDevice(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1073623650, id);
+    return $Call.ByID(1177667056, id);
 }
 
 export function DeleteForward(id: string): $CancellablePromise<void> {
-    return $Call.ByID(2107978101, id);
+    return $Call.ByID(2263908499, id);
 }
 
 /**
  * DeleteProfile 删掉一个服务端（不能删当前激活的）。
  */
 export function DeleteProfile(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3179553165, id);
+    return $Call.ByID(2083481235, id);
 }
 
 export function DeleteUser(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1572488747, id);
+    return $Call.ByID(2077173953, id);
 }
 
 /**
@@ -103,26 +103,26 @@ export function DeleteUser(id: string): $CancellablePromise<void> {
  * port 传 0 按 22 算。整个过程最长 45 秒（三次 disco 加一次拨测）。
  */
 export function Diagnose(ip: string, port: number): $CancellablePromise<string> {
-    return $Call.ByID(3264391779, ip, port);
+    return $Call.ByID(3276116841, ip, port);
 }
 
 /**
  * DisableDeviceExpiry 取消密钥到期时间，让节点长期有效。
  */
 export function DisableDeviceExpiry(id: string): $CancellablePromise<void> {
-    return $Call.ByID(205270992, id);
+    return $Call.ByID(3982112966, id);
 }
 
 export function Disconnect(): $CancellablePromise<string> {
-    return $Call.ByID(58482593);
+    return $Call.ByID(215216447);
 }
 
 export function DownloadInstaller(): $CancellablePromise<string> {
-    return $Call.ByID(3955549953);
+    return $Call.ByID(999430343);
 }
 
 export function DownloadUpdate(): $CancellablePromise<string> {
-    return $Call.ByID(2718139518);
+    return $Call.ByID(97254596);
 }
 
 /**
@@ -136,42 +136,42 @@ export function DownloadUpdate(): $CancellablePromise<string> {
  * 失败不会抛出到界面，只写审计；下次定时器还会再试。
  */
 export function EnsureAPIKeyFresh(window: time$0.Duration): $CancellablePromise<boolean> {
-    return $Call.ByID(1006500886, window);
+    return $Call.ByID(1977277828, window);
 }
 
 export function ExpireAPIKey(prefix: string, id: string): $CancellablePromise<void> {
-    return $Call.ByID(4200389019, prefix, id);
+    return $Call.ByID(1669961577, prefix, id);
 }
 
 export function ExpireAuthKey(id: string): $CancellablePromise<void> {
-    return $Call.ByID(883712729, id);
+    return $Call.ByID(2283956619, id);
 }
 
 export function ExpireDevice(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1574998718, id);
+    return $Call.ByID(351642920, id);
 }
 
 export function ForwardSnippet(id: string): $CancellablePromise<string> {
-    return $Call.ByID(2430741445, id);
+    return $Call.ByID(3109869535, id);
 }
 
 export function GetConfig(): $CancellablePromise<string> {
-    return $Call.ByID(3882508791);
+    return $Call.ByID(2372608825);
 }
 
 export function GetDevice(id: string): $CancellablePromise<string> {
-    return $Call.ByID(473477635, id);
+    return $Call.ByID(1850463585, id);
 }
 
 export function GetHealth(): $CancellablePromise<string> {
-    return $Call.ByID(3723639839);
+    return $Call.ByID(862477165);
 }
 
 /**
  * GetHelperStatus 让前端知道「打开就能连」是否已经成立。
  */
 export function GetHelperStatus(): $CancellablePromise<string> {
-    return $Call.ByID(1212634503);
+    return $Call.ByID(4018818793);
 }
 
 /**
@@ -180,97 +180,97 @@ export function GetHelperStatus(): $CancellablePromise<string> {
  * 不用让用户猜是服务端没回还是界面没刷新。
  */
 export function GetLoginURL(): $CancellablePromise<string> {
-    return $Call.ByID(4151808203);
+    return $Call.ByID(2105451737);
 }
 
 export function GetPolicy(): $CancellablePromise<string> {
-    return $Call.ByID(3281717999);
+    return $Call.ByID(1971585869);
 }
 
 /**
  * GetPolicyVersion 取某一版原文，用于查看和对比。
  */
 export function GetPolicyVersion(id: number): $CancellablePromise<string> {
-    return $Call.ByID(2371860945, id);
+    return $Call.ByID(3994618719, id);
 }
 
 export function GetState(): $CancellablePromise<string> {
-    return $Call.ByID(745931622);
+    return $Call.ByID(2557329900);
 }
 
 /**
  * GetSync 返回同步状态。同步码只在本机界面出现。
  */
 export function GetSync(): $CancellablePromise<string> {
-    return $Call.ByID(2328110154);
+    return $Call.ByID(3459382812);
 }
 
 /**
  * InstallHelper 安装常驻助手：一次授权，之后连接零弹窗。
  */
 export function InstallHelper(): $CancellablePromise<string> {
-    return $Call.ByID(3404290830);
+    return $Call.ByID(693549636);
 }
 
 export function ListAPIKeys(): $CancellablePromise<string> {
-    return $Call.ByID(641865841);
+    return $Call.ByID(528232295);
 }
 
 export function ListApps(): $CancellablePromise<string> {
-    return $Call.ByID(1421751199);
+    return $Call.ByID(3110390845);
 }
 
 export function ListAudit(): $CancellablePromise<string> {
-    return $Call.ByID(2068419306);
+    return $Call.ByID(1647058456);
 }
 
 export function ListAuthKeys(): $CancellablePromise<string> {
-    return $Call.ByID(1288219109);
+    return $Call.ByID(1547308015);
 }
 
 export function ListDevices(): $CancellablePromise<string> {
-    return $Call.ByID(930170254);
+    return $Call.ByID(2377212784);
 }
 
 /**
  * ListDevicesByUser 支持按成员过滤（对应 ?user=）。
  */
 export function ListDevicesByUser(user: string): $CancellablePromise<string> {
-    return $Call.ByID(4139603252, user);
+    return $Call.ByID(2405615370, user);
 }
 
 export function ListForwards(): $CancellablePromise<string> {
-    return $Call.ByID(3971275841);
+    return $Call.ByID(4123086747);
 }
 
 /**
  * ListPolicyHistory 返回最近保存前的版本，新的在前。
  */
 export function ListPolicyHistory(): $CancellablePromise<string> {
-    return $Call.ByID(1282318943);
+    return $Call.ByID(1519653041);
 }
 
 export function ListUsers(): $CancellablePromise<string> {
-    return $Call.ByID(2611853321);
+    return $Call.ByID(1508020035);
 }
 
 export function OpenApp(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3926966466, id);
+    return $Call.ByID(3482258332, id);
 }
 
 /**
  * OpenDevTools 供界面里的「更多」菜单调用。
  */
 export function OpenDevTools(): $CancellablePromise<void> {
-    return $Call.ByID(3704897433);
+    return $Call.ByID(4094868223);
 }
 
 export function OpenInBrowser(id: string): $CancellablePromise<void> {
-    return $Call.ByID(144421748, id);
+    return $Call.ByID(562376354, id);
 }
 
 export function OpenReleasePage(): $CancellablePromise<void> {
-    return $Call.ByID(2253741431);
+    return $Call.ByID(3570071733);
 }
 
 /**
@@ -282,58 +282,58 @@ export function OpenReleasePage(): $CancellablePromise<void> {
  * 「我那台机器上的 nginx 能不能访问」。
  */
 export function PeerPorts(): $CancellablePromise<string> {
-    return $Call.ByID(1321802501);
+    return $Call.ByID(2765060823);
 }
 
 /**
  * ProfilesView 返回服务端列表和当前激活项，前端用来做切换器。
  */
 export function ProfilesView(): $CancellablePromise<string> {
-    return $Call.ByID(736922312);
+    return $Call.ByID(3614373310);
 }
 
 /**
  * PullAppsFrom 从另一台设备拉取书签并合并进本机。
  */
 export function PullAppsFrom(target: string, token: string): $CancellablePromise<string> {
-    return $Call.ByID(3577125972, target, token);
+    return $Call.ByID(2223915530, target, token);
 }
 
 /**
  * PushAppsTo 把本机书签推到另一台，由对方合并。
  */
 export function PushAppsTo(target: string, token: string): $CancellablePromise<string> {
-    return $Call.ByID(2096072470, target, token);
+    return $Call.ByID(220944048, target, token);
 }
 
 export function RegisterAuth(user: string, authID: string): $CancellablePromise<string> {
-    return $Call.ByID(2738706196, user, authID);
+    return $Call.ByID(545760162, user, authID);
 }
 
 /**
  * RegisterNode 用 Auth Key 手动注册一个节点（对应 POST /node/register）。
  */
 export function RegisterNode(user: string, key: string): $CancellablePromise<string> {
-    return $Call.ByID(2437963146, user, key);
+    return $Call.ByID(897789792, user, key);
 }
 
 export function RejectAuth(authID: string): $CancellablePromise<void> {
-    return $Call.ByID(3153436590, authID);
+    return $Call.ByID(1793667688, authID);
 }
 
 export function RenameDevice(id: string, name: string): $CancellablePromise<void> {
-    return $Call.ByID(4160838143, id, name);
+    return $Call.ByID(997811309, id, name);
 }
 
 /**
  * RenameProfile 只改显示名，不动连接参数，不会触发重连。
  */
 export function RenameProfile(id: string, name: string): $CancellablePromise<void> {
-    return $Call.ByID(2995630722, id, name);
+    return $Call.ByID(1763048760, id, name);
 }
 
 export function RenameUser(id: string, name: string): $CancellablePromise<void> {
-    return $Call.ByID(2364800702, id, name);
+    return $Call.ByID(2053468788, id, name);
 }
 
 /**
@@ -341,14 +341,14 @@ export function RenameUser(id: string, name: string): $CancellablePromise<void> 
  * days 是新的有效期，<=0 时按 90 天算。
  */
 export function RenewAPIKey(days: number): $CancellablePromise<void> {
-    return $Call.ByID(3992832443, days);
+    return $Call.ByID(2476097525, days);
 }
 
 /**
  * RestorePolicy 把历史版本写回服务端。写之前当前版本会进历史，所以回滚也能后悔。
  */
 export function RestorePolicy(id: number): $CancellablePromise<void> {
-    return $Call.ByID(2906725965, id);
+    return $Call.ByID(2380742551, id);
 }
 
 /**
@@ -356,7 +356,7 @@ export function RestorePolicy(id: number): $CancellablePromise<void> {
  * 钥匙串本来就是为了不落明文，所以这里不做缓存，每次现读。
  */
 export function RevealCredential(kind: string): $CancellablePromise<string> {
-    return $Call.ByID(505997083, kind);
+    return $Call.ByID(156650405, kind);
 }
 
 /**
@@ -364,37 +364,37 @@ export function RevealCredential(kind: string): $CancellablePromise<string> {
  * 主窗口创建时是隐藏的，这样用户不会先看到一块空白底色。
  */
 export function RevealWindow(): $CancellablePromise<void> {
-    return $Call.ByID(3181970530);
+    return $Call.ByID(2332519688);
 }
 
 /**
  * RotateSyncToken 换一个同步码，已经配对过的设备要重新输。
  */
 export function RotateSyncToken(): $CancellablePromise<string> {
-    return $Call.ByID(1371404528);
+    return $Call.ByID(1334311242);
 }
 
 export function SaveApp(raw: string): $CancellablePromise<void> {
-    return $Call.ByID(278467997, raw);
+    return $Call.ByID(3918778559, raw);
 }
 
 export function SaveConfig(raw: string): $CancellablePromise<void> {
-    return $Call.ByID(3102860400, raw);
+    return $Call.ByID(883584234, raw);
 }
 
 export function SaveForward(raw: string): $CancellablePromise<void> {
-    return $Call.ByID(2239408635, raw);
+    return $Call.ByID(3564298977, raw);
 }
 
 export function SavePolicy(content: string): $CancellablePromise<void> {
-    return $Call.ByID(91717592, content);
+    return $Call.ByID(4181749942, content);
 }
 
 /**
  * SaveProfile 把当前连接配置另存为一个新的服务端条目，并立即切过去。
  */
 export function SaveProfile(name: string): $CancellablePromise<void> {
-    return $Call.ByID(141669563, name);
+    return $Call.ByID(903680265, name);
 }
 
 /**
@@ -402,7 +402,7 @@ export function SaveProfile(name: string): $CancellablePromise<void> {
  * 改的是当前激活那个时，会顺手重连，让新地址立刻生效。
  */
 export function SaveProfileRaw(raw: string): $CancellablePromise<string> {
-    return $Call.ByID(1456708043, raw);
+    return $Call.ByID(3444997173, raw);
 }
 
 /**
@@ -413,18 +413,18 @@ export function SaveProfileRaw(raw: string): $CancellablePromise<string> {
  * 服务端不可达，还是 UDP 被挡只能走 DERP，都能从这几个字段看出来。
  */
 export function SelfCheck(): $CancellablePromise<string> {
-    return $Call.ByID(4108694167);
+    return $Call.ByID(188851317);
 }
 
 /**
  * SetCredential 单独把服务端凭证写入系统钥匙串，绝不进 SQLite。
  */
 export function SetCredential(kind: string, value: string): $CancellablePromise<void> {
-    return $Call.ByID(3244816396, kind, value);
+    return $Call.ByID(4010328310, kind, value);
 }
 
 export function SetDeviceTags(id: string, tags: string): $CancellablePromise<void> {
-    return $Call.ByID(1384641818, id, tags);
+    return $Call.ByID(435384944, id, tags);
 }
 
 /**
@@ -432,35 +432,35 @@ export function SetDeviceTags(id: string, tags: string): $CancellablePromise<voi
  * 切换会重建所有监听器，已经建立的连接会断。
  */
 export function SetForwardBind(bind: string): $CancellablePromise<void> {
-    return $Call.ByID(4006964373, bind);
+    return $Call.ByID(3178140131, bind);
 }
 
 /**
  * SetForwardOptions 一次保存三个全局开关，避免多次写库。
  */
 export function SetForwardOptions(autoForward: boolean, socksEnabled: boolean, socksPort: number): $CancellablePromise<void> {
-    return $Call.ByID(2403762552, autoForward, socksEnabled, socksPort);
+    return $Call.ByID(2474807858, autoForward, socksEnabled, socksPort);
 }
 
 /**
  * SetForwardPower 是「启动 / 停止转发」总开关，不影响引擎连接状态。
  */
 export function SetForwardPower(on: boolean): $CancellablePromise<void> {
-    return $Call.ByID(2537402727, on);
+    return $Call.ByID(4265814229, on);
 }
 
 /**
  * SetSync 开关同步并立即生效。端口改了会重启监听。
  */
 export function SetSync(enabled: boolean, port: number): $CancellablePromise<string> {
-    return $Call.ByID(2732710630, enabled, port);
+    return $Call.ByID(835687096, enabled, port);
 }
 
 /**
  * SetUIPrefs 只改偏好开关，不动 BaseURL / 引擎等需要重连的字段。
  */
 export function SetUIPrefs(raw: string): $CancellablePromise<string> {
-    return $Call.ByID(353519571, raw);
+    return $Call.ByID(73427033, raw);
 }
 
 /**
@@ -468,11 +468,11 @@ export function SetUIPrefs(raw: string): $CancellablePromise<string> {
  * 每个服务端在本地有独立的节点身份目录，不会把上一个 tailnet 的登录态带过去。
  */
 export function SwitchProfile(id: string): $CancellablePromise<void> {
-    return $Call.ByID(652351124, id);
+    return $Call.ByID(3572193470, id);
 }
 
 export function TestConnection(): $CancellablePromise<string> {
-    return $Call.ByID(1157023175);
+    return $Call.ByID(3210042205);
 }
 
 /**
@@ -480,17 +480,17 @@ export function TestConnection(): $CancellablePromise<string> {
  * 也可以指定 netstack 走进程内栈，用来区分「TUN 层不通」和「网络层不通」。
  */
 export function TestPeer(host: string, port: number, via: string): $CancellablePromise<string> {
-    return $Call.ByID(345738831, host, port, via);
+    return $Call.ByID(1426428485, host, port, via);
 }
 
 export function ToggleForward(id: string, enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(4134353324, id, enabled);
+    return $Call.ByID(475188822, id, enabled);
 }
 
 export function UninstallHelper(): $CancellablePromise<string> {
-    return $Call.ByID(1503772403);
+    return $Call.ByID(4087897565);
 }
 
 export function UpdateInfo(): $CancellablePromise<string> {
-    return $Call.ByID(2842617570);
+    return $Call.ByID(994107508);
 }
