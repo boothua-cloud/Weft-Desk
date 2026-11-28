@@ -167,8 +167,15 @@ button { cursor: pointer; }
 }
 .side.collapsed .nav-text { display: none; }
 .side.collapsed .nav-item.active::before { left: -8px; }
-.side.collapsed .side-foot { justify-content: center; padding: 12px 0 2px; }
-.side.collapsed .side-foot > div { display: none; }
+.side.collapsed .side-foot { padding: 8px 0 0; gap: 4px; }
+.side.collapsed .profile-btn { justify-content: center; padding: 6px 0; }
+.side.collapsed .profile-text,
+.side.collapsed .profile-btn .chev { display: none; }
+/* 收起只剩图标：主题和刷新并进「更多」，那里本来就各有一份 */
+.side.collapsed .side-tools .wide-only { display: none; }
+/* 收起后那颗状态点单看像个装饰，给它一圈淡边，看得出是个能点的按钮 */
+.side.collapsed .profile-btn { border-color: var(--line-soft); }
+.side.collapsed .profile-btn:hover { border-color: var(--line); }
 html[data-theme="dark"] .side { background: rgba(13, 19, 27, .72); }
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -255,13 +262,39 @@ html[data-theme="dark"] .logo { filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55
 .side.collapsed .side-toggle svg { transform: rotate(180deg); }
 html[data-theme="dark"] .side-toggle { background: var(--surface-3); }
 
+/* 左下角：一张服务端卡片 + 一排工具。
+   原来这些东西散在右上角，离「我连的是谁」最远的地方；
+   挪到底部之后，视线从导航的落点直接滑到状态上。
+   卡片和菜单都朝上展开，下面就是窗口边缘 */
 .side-foot {
-  margin-top: auto; padding: 12px 6px 8px;
-  display: flex; align-items: center; gap: 9px;
+  margin-top: auto; padding: 10px 0 0;
   border-top: 1px solid var(--line-soft);
+  display: flex; flex-direction: column; gap: 6px;
 }
-.side-foot b { display: block; font-size: 11.5px; font-weight: 600; }
-.side-foot small { display: block; color: var(--faint); font-size: 10px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+.profile-btn {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 8px 9px; border-radius: 10px; text-align: left;
+  border: 1px solid transparent; background: transparent; color: var(--text);
+  transition: background .15s, border-color .15s;
+}
+.profile-btn:hover { background: var(--surface-3); border-color: var(--line-soft); }
+.profile-btn.active { background: var(--brand-soft); border-color: var(--brand-line); }
+.profile-text { min-width: 0; flex: 1; }
+.profile-btn b { display: block; font-size: 11.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-btn small { display: block; color: var(--faint); font-size: 10px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-btn .chev { width: 10px; height: 10px; flex: none; color: var(--faint); transition: transform .16s ease; }
+.profile-btn.active .chev { transform: rotate(180deg); }
+
+/* 工具排成三等分：比三枚小圆钮更好点，也不会参差不齐 */
+.side-tools { position: relative; display: flex; gap: 4px; }
+.side-tools .icon-btn {
+  flex: 1; width: auto; height: 28px; border-radius: 8px;
+  border-color: transparent; background: transparent;
+}
+.side-tools .icon-btn:hover { background: var(--surface-3); }
+.side-tools .icon-btn.done { background: var(--brand-soft); border-color: transparent; }
+.side-tools .icon-btn.active { background: var(--brand-soft); border-color: transparent; }
+.side-tools svg { width: 15px; height: 15px; }
 
 /* ---------------- 页头 ---------------- */
 
@@ -271,8 +304,7 @@ html[data-theme="dark"] .side-toggle { background: var(--surface-3); }
   flex: none; display: flex; align-items: center; justify-content: space-between;
   gap: 20px; padding: 16px 26px 10px;
   position: relative;
-  /* 页头里挂着下拉菜单，必须压在内容之上，否则菜单会被下面的卡片切掉 */
-  z-index: 5;
+  z-index: 1;
 }
 .page-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .page-id::before {
@@ -286,49 +318,16 @@ html[data-theme="dark"] .side-toggle { background: var(--surface-3); }
   border: 1px solid var(--line-soft); background: color-mix(in srgb, var(--surface) 70%, transparent);
   white-space: nowrap;
 }
-/* 右上角收进一枚玻璃胶囊：不再是一排散落的按钮，
-   而是像窗口自带的工具条，跟浮起来的侧栏用同一套材质。
-   注意这里不能用 backdrop-filter：它会给自身建一个层叠上下文，
-   里面的下拉菜单和遮罩就跳不出这枚胶囊，菜单会被内容盖住 */
-.page-actions {
-  display: flex; align-items: center; gap: 3px;
-  padding: 3px;
-  border-radius: 999px;
-  border: 1px solid var(--line-soft);
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-  box-shadow: var(--shadow-1);
-}
-.page-actions .icon-btn {
-  border-color: transparent; background: transparent; border-radius: 999px;
-}
-.page-actions .icon-btn:hover { background: var(--surface-3); color: var(--text); }
-.page-actions .icon-btn.active { background: var(--brand-soft); color: var(--brand); }
-.page-actions .chip { border-color: transparent; }
-.page-actions .avatar { border-color: var(--line); background: var(--surface-3); margin-left: 1px; }
-/* 胶囊自身有 3px 内边距，菜单默认的 36px 会贴着胶囊底，这里再放下来一点 */
-.page-actions .menu-panel { top: 40px; }
-
-.crumb { font-size: 13px; color: var(--muted); }
-.crumb b { color: var(--text); font-weight: 600; }
-.top-right { display: flex; align-items: center; gap: 10px; }
-
 /* ---------------- 通用控件 ---------------- */
 
+/* 诊断页那种可选中的小标签 */
 .chip {
   display: inline-flex; align-items: center; gap: 7px;
   border: 1px solid var(--line); background: var(--surface);
   border-radius: 999px; padding: 6px 12px; font-size: 11px; color: var(--muted);
   max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.chip.brand { background: var(--brand-soft); border-color: var(--brand-line); color: var(--brand); font-weight: 500; }
 html[data-theme="dark"] .chip { background: rgba(255, 255, 255, .02); }
-
-.avatar {
-  width: 30px; height: 30px; border-radius: 50%;
-  background: var(--surface-3); color: var(--muted);
-  display: grid; place-items: center; font-size: 11px; font-weight: 600;
-  border: 1px solid var(--line);
-}
 .icon-btn {
   width: 30px; height: 30px; border: 1px solid var(--line);
   border-radius: var(--r-sm); display: grid; place-items: center;
@@ -343,7 +342,10 @@ html[data-theme="dark"] .chip { background: rgba(255, 255, 255, .02); }
 
 /* 右上角「更多」菜单 */
 .menu-wrap { position: relative; }
-.menu-mask { position: fixed; inset: 0; z-index: 30; }
+/* 遮罩挂在 app-shell 下：侧栏带 backdrop-filter，会在内部建一个
+   定位上下文，遮罩留在侧栏里就只盖得住侧栏自己。
+   层级压在侧栏（4）之下，否则连菜单本身都点不到 */
+.menu-mask { position: fixed; inset: 0; z-index: 3; }
 .menu-panel {
   position: absolute; right: 0; top: 36px; z-index: 31; min-width: 196px;
   background: var(--surface); border: 1px solid var(--line);
@@ -351,6 +353,23 @@ html[data-theme="dark"] .chip { background: rgba(255, 255, 255, .02); }
   animation: weft-menu .14s cubic-bezier(.22, .8, .3, 1);
 }
 @keyframes weft-menu { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+/* 左下角那两处朝上展开：下面就是窗口边缘，往下开会被切掉 */
+.menu-wrap.up { width: 100%; }
+.menu-wrap.up .menu-panel {
+  top: auto; bottom: calc(100% + 6px); left: 0; right: 0; min-width: 0;
+  animation-name: weft-menu-up;
+}
+.side-tools .menu-panel {
+  top: auto; bottom: calc(100% + 6px); left: auto; right: 0;
+  animation-name: weft-menu-up;
+}
+@keyframes weft-menu-up { from { opacity: 0; transform: translateY(4px) scale(.98); } }
+/* 侧栏收起时只剩一条窄边，没有向上摊开的地方：改挂在右边往外弹 */
+.side.collapsed .menu-panel {
+  top: auto; bottom: 0; left: calc(100% + 16px); right: auto; min-width: 208px;
+  animation-name: weft-menu-right;
+}
+@keyframes weft-menu-right { from { opacity: 0; transform: translateX(-5px) scale(.98); } }
 .menu-item {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
   width: 100%; padding: 8px 10px; border: 0; border-radius: 7px;
@@ -671,9 +690,6 @@ table.tbl tr:last-child td { border-bottom: 0; }
 .tl-body b { font-size: 11.5px; font-weight: 600; }
 .tl-body span { font-size: 10px; color: var(--faint); font-family: var(--mono); flex: none; }
 .tl-detail { font-size: 10.5px; color: var(--faint); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* 主题切换按钮：亮色显示月亮，暗色显示太阳 */
-.theme-toggle svg { width: 15px; height: 15px; }
 
 @media (max-width: 1080px) {
   .grid4 { grid-template-columns: repeat(2, 1fr); }

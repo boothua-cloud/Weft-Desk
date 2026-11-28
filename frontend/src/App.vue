@@ -23,6 +23,7 @@ function readSide() {
 }
 const sideCollapsed = ref(readSide())
 function toggleSide() {
+  closeMenus()
   sideCollapsed.value = !sideCollapsed.value
   try { localStorage.setItem(SIDE_KEY, sideCollapsed.value ? '1' : '0') } catch { /* 隐私模式写不了 */ }
 }
@@ -30,7 +31,7 @@ function toggleTheme() {
   setTheme(darkMode.value ? 'light' : 'dark')
 }
 
-// 关于 / 帮助 弹窗，托盘菜单和右上角「更多」都能唤起
+// 关于 / 帮助 弹窗，托盘菜单和左下角「更多」都能唤起
 const info = ref<'' | 'about' | 'help'>('')
 
 // 检查更新弹窗；updateHint 表示后台已经发现新版但用户还没点开看过
@@ -43,9 +44,13 @@ function openUpdate() {
   updateOpen.value = true
 }
 
-// 右上角「更多」菜单：把不常用的操作收进来，不占地方
+// 左下角「更多」菜单：把不常用的操作收进来，不占地方
 const menuOpen = ref(false)
+// 侧栏带着 backdrop-filter，遮罩留在里面只能盖住侧栏自己，
+// 所以遮罩挂到最外层，点页面任何地方都能收起来
+function closeMenus() { switchOpen.value = false; menuOpen.value = false }
 function closeMenu() { menuOpen.value = false }
+function pickPage(key: string) { closeMenus(); page.value = key }
 function refreshFromMenu() {
   closeMenu()
   refreshAll()
@@ -154,13 +159,18 @@ async function pickProfile(p: Profile) {
   }
 }
 
-// 顶栏胶囊优先显示服务端名字（用户起的），没有名字才退回地址
+// 左下角那张卡优先显示服务端名字（用户起的），没有名字才退回地址
 const activeProfile = computed(() => profiles.value.find((p) => p.id === activeID.value) || null)
-
-const endpointLabel = computed(() => {
+function hostOf(url: string) {
+  return url.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+}
+const serverHost = computed(() => hostOf(state.value?.endpoint || ''))
+const serverName = computed(() => activeProfile.value?.name || serverHost.value || '未配置服务端')
+const statusText = computed(() => {
   const s = state.value
   if (!s) return '正在读取…'
-  return 'Headscale · ' + (s.endpoint || '未配置')
+  if (s.connecting) return '正在连接…'
+  return s.connected ? '隧道已连接' : '未连接'
 })
 
 function notify(msg: string) {
@@ -297,7 +307,7 @@ onUnmounted(() => {
           <span class="nav-label">{{ g.label }}</span>
           <button v-for="it in g.items" :key="it.key" class="nav-item"
                   :class="{ active: page === it.key }" :title="sideCollapsed ? it.label : undefined"
-                  @click="page = it.key">
+                  @click="pickPage(it.key)">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"
                  stroke-linecap="round" stroke-linejoin="round"><path :d="icons[it.key]" /></svg>
             <span class="nav-text">{{ it.label }}</span>
@@ -305,10 +315,85 @@ onUnmounted(() => {
         </template>
       </div>
       <div class="side-foot">
-        <span class="dot" :class="state?.connecting ? 'warn pulse' : (state?.connected ? 'ok' : 'off')"></span>
-        <div>
-          <b>{{ state?.connecting ? '正在连接…' : (state?.connected ? '隧道已连接' : '已配置服务端') }}</b>
-          <small>{{ state?.message || '读取中…' }}</small>
+        <!-- 服务端与连接状态。原来挂在右上角的那枚胶囊搬到这里，
+             点开是切换器；菜单朝上展开，才不会顶出窗口 -->
+        <div class="menu-wrap up">
+          <button class="profile-btn" :class="{ active: switchOpen }"
+                  :title="`${serverName} · ${statusText}（点击切换服务端）`"
+                  @click.stop="loadProfiles(); switchOpen = !switchOpen">
+            <span class="dot" :class="state?.connecting ? 'warn pulse' : (state?.connected ? 'ok' : 'off')"></span>
+            <span class="profile-text">
+              <b>{{ serverName }}</b>
+              <small>{{ statusText }}</small>
+            </span>
+            <svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 8 6.5l4 4" /></svg>
+          </button>
+          <template v-if="switchOpen">
+            <div class="menu-panel">
+              <div class="menu-label">切换服务端</div>
+              <button v-for="p in profiles" :key="p.id" class="menu-item" @click="pickProfile(p)">
+                <span style="min-width:0">
+                  <b style="font-weight:600;display:block;font-size:12px">{{ p.name }}</b>
+                  <small style="font-family:inherit">{{ p.baseURL || '未填地址' }}</small>
+                </span>
+                <span v-if="p.id === activeID" class="tag green" style="margin:0">当前</span>
+                <span v-else-if="switching === p.id" class="spinner"></span>
+              </button>
+              <div class="menu-sep"></div>
+              <button class="menu-item" @click="switchOpen = false; page = 'settings'">
+                <span>管理服务端…</span>
+              </button>
+            </div>
+          </template>
+        </div>
+
+        <!-- 一排工具。侧栏收起时只留「更多」，刷新和主题在它的菜单里还有一份 -->
+        <div class="side-tools">
+          <button class="icon-btn wide-only" :title="darkMode ? '切换到亮色' : '切换到暗色'" @click="toggleTheme">
+            <svg v-if="darkMode" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
+              <circle cx="8" cy="8" r="3.2" />
+              <path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.2 3.2l1.1 1.1M11.7 11.7l1.1 1.1M12.8 3.2l-1.1 1.1M4.3 11.7l-1.1 1.1" />
+            </svg>
+            <svg v-else viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13.5 9.6A5.9 5.9 0 1 1 6.4 2.5a4.7 4.7 0 0 0 7.1 7.1z" />
+            </svg>
+          </button>
+          <button class="icon-btn wide-only" :class="{ spinning, done: refreshed }"
+                  :title="refreshed ? '已刷新' : '刷新'" @click="refreshAll">
+            <svg v-if="refreshed" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4 6.5 11.7 12.8 4.6" /></svg>
+            <svg v-else viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13.4 9.2A5.6 5.6 0 1 1 11.7 4.3" /><path d="M13.5 2.2v3.5h-3.5" />
+            </svg>
+          </button>
+          <button class="icon-btn" :class="{ active: menuOpen }" title="更多" @click.stop="menuOpen = !menuOpen">
+            <svg viewBox="0 0 16 16" fill="currentColor" width="15" height="15">
+              <circle cx="3" cy="8" r="1.35" /><circle cx="8" cy="8" r="1.35" /><circle cx="13" cy="8" r="1.35" />
+            </svg>
+          </button>
+          <template v-if="menuOpen">
+            <div class="menu-panel">
+              <button class="menu-item" @click="refreshFromMenu">
+                <span>刷新数据</span><small>⌘R</small>
+              </button>
+              <div class="menu-sep"></div>
+              <button class="menu-item" @click="toggleTheme">
+                <span>{{ darkMode ? '切换到亮色' : '切换到暗色' }}</span>
+              </button>
+              <button class="menu-item" @click="menuOpen = false; info = 'help'">
+                <span>帮助手册</span>
+              </button>
+              <button class="menu-item" @click="openUpdate">
+                <span>检查更新<i v-if="updateHint" class="menu-dot"></i></span>
+                <small>v{{ state?.appVersion || '' }}</small>
+              </button>
+              <button class="menu-item" @click="menuOpen = false; info = 'about'">
+                <span>关于云栈</span><small>v{{ state?.appVersion || '' }}</small>
+              </button>
+            </div>
+          </template>
         </div>
       </div>
       <!-- 挂在面板右边缘：平时几乎看不见，鼠标进到面板上才浮出来 -->
@@ -323,78 +408,6 @@ onUnmounted(() => {
         <div class="page-id">
           <h1 class="page-title">{{ title }}</h1>
           <span class="page-kicker">{{ crumb }}</span>
-        </div>
-        <div class="page-actions">
-          <div class="menu-wrap">
-            <button class="chip brand chip-btn" :class="{ active: switchOpen }" :title="endpointLabel"
-                    @click.stop="loadProfiles(); switchOpen = !switchOpen">
-              <span class="dot" :class="state?.connected ? 'ok pulse' : 'off'" style="width:6px;height:6px"></span>
-              {{ activeProfile?.name || endpointLabel }}
-              <svg viewBox="0 0 16 16" width="10" height="10" fill="none"
-                   stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 6.5 8 10.5l4-4" />
-              </svg>
-            </button>
-            <template v-if="switchOpen">
-              <div class="menu-mask" @click="switchOpen = false"></div>
-              <div class="menu-panel" style="min-width:240px">
-                <div class="menu-label">切换服务端</div>
-                <button v-for="p in profiles" :key="p.id" class="menu-item" @click="pickProfile(p)">
-                  <span style="min-width:0">
-                    <b style="font-weight:600;display:block;font-size:12px">{{ p.name }}</b>
-                    <small style="font-family:inherit">{{ p.baseURL || '未填地址' }}</small>
-                  </span>
-                  <span v-if="p.id === activeID" class="tag green" style="margin:0">当前</span>
-                  <span v-else-if="switching === p.id" class="spinner"></span>
-                </button>
-                <div class="menu-sep"></div>
-                <button class="menu-item" @click="switchOpen = false; page = 'settings'">
-                  <span>管理服务端…</span>
-                </button>
-              </div>
-            </template>
-          </div>
-          <button class="icon-btn theme-toggle" :title="darkMode ? '切换到亮色' : '切换到暗色'" @click="toggleTheme">
-            <svg v-if="darkMode" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
-              <circle cx="8" cy="8" r="3.2" />
-              <path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.2 3.2l1.1 1.1M11.7 11.7l1.1 1.1M12.8 3.2l-1.1 1.1M4.3 11.7l-1.1 1.1" />
-            </svg>
-            <svg v-else viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M13.5 9.6A5.9 5.9 0 1 1 6.4 2.5a4.7 4.7 0 0 0 7.1 7.1z" />
-            </svg>
-          </button>
-          <button class="icon-btn" :class="{ spinning, done: refreshed }"
-                  :title="refreshed ? '已刷新' : '刷新'" @click="refreshAll">{{ refreshed ? '✓' : '↻' }}</button>
-          <div class="menu-wrap">
-            <button class="icon-btn" :class="{ active: menuOpen }" title="更多" @click.stop="menuOpen = !menuOpen">
-              <svg viewBox="0 0 16 16" fill="currentColor" width="15" height="15">
-                <circle cx="3" cy="8" r="1.35" /><circle cx="8" cy="8" r="1.35" /><circle cx="13" cy="8" r="1.35" />
-              </svg>
-            </button>
-            <template v-if="menuOpen">
-              <div class="menu-mask" @click="closeMenu"></div>
-              <div class="menu-panel">
-                <button class="menu-item" @click="refreshFromMenu">
-                  <span>刷新数据</span><small>⌘R</small>
-                </button>
-                <div class="menu-sep"></div>
-                <button class="menu-item" @click="toggleTheme">
-                  <span>{{ darkMode ? '切换到亮色' : '切换到暗色' }}</span>
-                </button>
-                <button class="menu-item" @click="menuOpen = false; info = 'help'">
-                  <span>帮助手册</span>
-                </button>
-                <button class="menu-item" @click="openUpdate">
-                  <span>检查更新<i v-if="updateHint" class="menu-dot"></i></span>
-                  <small>v{{ state?.appVersion || '' }}</small>
-                </button>
-                <button class="menu-item" @click="menuOpen = false; info = 'about'">
-                  <span>关于云栈</span><small>v{{ state?.appVersion || '' }}</small>
-                </button>
-              </div>
-            </template>
-          </div>
-          <div class="avatar">云</div>
         </div>
       </header>
 
@@ -413,6 +426,8 @@ onUnmounted(() => {
         <Settings v-else :state="state" @refresh="refresh" @notify="notify" />
       </div>
     </main>
+
+    <div v-if="switchOpen || menuOpen" class="menu-mask" @click="closeMenus"></div>
 
     <InfoDialog v-if="info" :kind="info" :state="state" @close="info = ''"
                 @check-update="openUpdate" />

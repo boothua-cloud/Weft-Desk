@@ -328,7 +328,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
           <p style="margin-top:10px">下面的分组：</p>
           <ul>
             <li><b>系统助手</b>：装一次之后建虚拟网卡、改路由都不再弹管理员密码；不需要就点「移除」，之后恢复每次授权。</li>
-            <li><b>外观主题</b>：跟随系统 / 亮色 / 暗色，顶栏那个太阳/月亮按钮也能切。</li>
+            <li><b>外观主题</b>：跟随系统 / 亮色 / 暗色，左下角那排按钮里的太阳/月亮也能切。</li>
             <li><b>开机自动连接</b>：登录后自动拉起并连上隧道。</li>
             <li><b>断线自动重连</b>：网络恢复后自己重连，不用手动点。</li>
             <li><b>系统托盘显示图标</b>：关窗口不退出，只在托盘常驻。</li>
@@ -336,10 +336,14 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
         </section>
 
         <section class="help-sec">
-          <h4><span class="step">12</span>顶栏、菜单与快捷键</h4>
+          <h4><span class="step">12</span>左下角那组按钮与快捷键</h4>
           <p>
-            顶栏右边依次是：<span class="hl">服务端胶囊</span>（点开切换服务端，底部有「管理服务端…」）、
-            主题按钮、刷新、<span class="hl">更多</span>菜单（刷新数据、切换主题、帮助手册、检查更新、关于云栈）。
+            侧栏最下面是当前<span class="hl">服务端</span>：名字、绿点（连接状态），点开可以切换服务端，
+            菜单底部是「管理服务端…」。它下面一排三枚按钮——主题、刷新、<span class="hl">更多</span>
+            （刷新数据、切换主题、帮助手册、检查更新、关于云栈）。
+          </p>
+          <p style="margin-top:8px">
+            侧栏收起时只剩状态点和「更多」，刷新和主题都在那个菜单里。
           </p>
           <p style="margin-top:8px">
             窗口内 <span class="mono">F12</span> / <span class="mono">⌘⌥I</span> 打开 WebView 调试器。
