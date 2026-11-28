@@ -133,7 +133,19 @@ export interface APIKey {
 }
 export interface PolicyDoc { content: string; updatedAt: string }
 export interface HealthInfo { database: boolean }
-export interface AppBookmark { id: string; name: string; url: string; group: string; icon: string; browser: boolean }
+export interface AppBookmark { id: string; name: string; url: string; group: string; icon: string; browser: boolean; updatedAt: string }
+// SyncInfo 是应用书签同步的当前状态，和 Go 侧 SyncInfo 对应。
+export interface SyncInfo {
+  enabled: boolean
+  port: number
+  token: string
+  listening: boolean
+  selfIP: string
+  hostname: string
+  count: number
+  error: string
+}
+export interface SyncResult { peer: string; added: number; updated: number; skipped: number; total: number }
 export interface AuditEvent { time: string; action: string; detail: string }
 export interface Cached<T> { items: T[]; source: string; updatedAt: string; error?: string }
 export interface HelperStatus {
@@ -223,6 +235,13 @@ export const api = {
   deleteApp: (id: string) => WeftService.DeleteApp(id),
   openApp: (id: string) => WeftService.OpenApp(id),
   openInBrowser: (id: string) => WeftService.OpenInBrowser(id),
+
+  // 应用同步：在本机与同 tailnet 的另一台设备之间传书签
+  syncInfo: () => parse<SyncInfo>(WeftService.GetSync()),
+  setSync: (enabled: boolean, port: number) => parse<SyncInfo>(WeftService.SetSync(enabled, port)),
+  rotateSyncToken: () => parse<SyncInfo>(WeftService.RotateSyncToken()),
+  pullApps: (target: string, token: string) => parse<SyncResult>(WeftService.PullAppsFrom(target, token)),
+  pushApps: (target: string, token: string) => parse<SyncResult>(WeftService.PushAppsTo(target, token)),
 
   // 端口转发
   forwards: () => parse<ForwardView>(WeftService.ListForwards()),

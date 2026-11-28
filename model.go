@@ -23,6 +23,8 @@ type Config struct {
 	SocksPort      int    `json:"socksPort"`    // 默认 1080
 	ForwardBind    string `json:"forwardBind"`  // 本地监听地址：127.0.0.1（仅本机）| 0.0.0.0（同网段可达）
 	AutoForward    bool   `json:"autoForward"`  // 隧道起来后自动拉起已启用的端口映射
+	SyncEnabled    bool   `json:"syncEnabled"`  // 允许同 tailnet 的其他设备拉取应用书签
+	SyncPort       int    `json:"syncPort"`     // 同步端口，默认 4160
 
 	// 多服务端：Profiles 存着每个 Headscale 的连接信息，顶层的 BaseURL/凭证等
 	// 始终是「当前激活那个」的副本，这样其余代码不用关心多套配置。
@@ -164,6 +166,29 @@ type AppBookmark struct {
 	// Browser 为 true 时始终用系统浏览器打开：
 	// 需要浏览器扩展（如密码管理器自动填充）的站点走这条路。
 	Browser bool `json:"browser"`
+	// UpdatedAt 用于设备间同步时判断哪边的改动更新，RFC3339。
+	UpdatedAt string `json:"updatedAt"`
+}
+
+// SyncInfo 是应用同步的当前状态，给本机界面看。
+type SyncInfo struct {
+	Enabled   bool   `json:"enabled"`
+	Port      int    `json:"port"`
+	Token     string `json:"token"` // 同步码，明文只在本机界面出现
+	Listening bool   `json:"listening"`
+	SelfIP    string `json:"selfIP"`
+	Hostname  string `json:"hostname"`
+	Count     int    `json:"count"`
+	Error     string `json:"error"`
+}
+
+// SyncResult 是一次拉取或推送的结果。
+type SyncResult struct {
+	Peer    string `json:"peer"`
+	Added   int    `json:"added"`
+	Updated int    `json:"updated"`
+	Skipped int    `json:"skipped"`
+	Total   int    `json:"total"`
 }
 
 // ForwardRule 一条固定本地端口映射。LocalPort 持久化，重启 App 不变，

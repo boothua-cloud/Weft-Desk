@@ -65,6 +65,10 @@ CREATE TABLE IF NOT EXISTS forwards (
 	}
 	// 老库补列：ALTER 在列已存在时会报错，这里直接忽略。
 	_, _ = s.db.Exec(`ALTER TABLE apps ADD COLUMN browser INTEGER NOT NULL DEFAULT 0`)
+	_, _ = s.db.Exec(`ALTER TABLE apps ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''`)
+	// 空时间当「现在」处理：升级上来的书签默认算本机最新，
+	// 第一次同步不会被对端覆盖掉。
+	_, _ = s.db.Exec(`UPDATE apps SET updated_at=? WHERE updated_at=''`, time.Now().Format(time.RFC3339))
 
 	// 不写入任何示例数据：应用书签与转发规则都由用户自己创建。
 	// 老版本会补种示例，这里做一次性清理，避免删掉后又出现。
@@ -114,9 +118,11 @@ func (s *Store) GetConfig() (Config, error) {
 	if c.ForwardBind != "0.0.0.0" {
 		c.ForwardBind = "127.0.0.1"
 	}
+	if c.SyncPort == 0 {
+		c.SyncPort = defaultSyncPort
+	}
 	// 从单服务端升级上来：把现有配置收成第一个 profile
-	if len(c.Profiles) == 0 {
-		id := "default"
+	if len(c.Profiles) == 0 {		id := "default"
 		c.Profiles = []Profile{{
 			ID:            id,
 			Name:          profileLabel(c.BaseURL, "默认服务端"),
@@ -152,7 +158,7 @@ func (s *Store) SaveConfig(c Config) error {
 }
 
 func (s *Store) ListApps() ([]AppBookmark, error) {
-	rows, err := s.db.Query(`SELECT id,name,url,grp,icon,browser FROM apps ORDER BY sort`)
+	rows, err := s.db.Query(`SELECT id,name,url,grp,icon,browser,updated_at FROM apps ORDER BY sort`)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +167,7 @@ func (s *Store) ListApps() ([]AppBookmark, error) {
 	for rows.Next() {
 		var a AppBookmark
 		var browser int
-		if err = rows.Scan(&a.ID, &a.Name, &a.URL, &a.Group, &a.Icon, &browser); err != nil {
+		if err = rows.Scan(&a.ID, &a.Name, &a.URL, &a.Group, &a.Icon, &browser, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
 		a.Browser = browser != 0
@@ -171,15 +177,21 @@ func (s *Store) ListApps() ([]AppBookmark, error) {
 }
 
 func (s *Store) SaveApp(a AppBookmark) error {
+	a.UpdatedAt = time.Now().Format(time.RFC3339)
+	return s.SaveAppRaw(a)
+}
+
+// SaveAppRaw 写入时不动 UpdatedAt，供同步合并保留对端的修改时间。
+func (s *Store) SaveAppRaw(a AppBookmark) error {
 	browser := 0
 	if a.Browser {
 		browser = 1
 	}
-	_, err := s.db.Exec(`INSERT INTO apps(id,name,url,grp,icon,browser,sort)
-      VALUES(?,?,?,?,?,?, (SELECT COALESCE(MAX(sort),0)+1 FROM apps))
+	_, err := s.db.Exec(`INSERT INTO apps(id,name,url,grp,icon,browser,sort,updated_at)
+      VALUES(?,?,?,?,?,?, (SELECT COALESCE(MAX(sort),0)+1 FROM apps), ?)
       ON CONFLICT(id) DO UPDATE SET name=excluded.name,url=excluded.url,grp=excluded.grp,
-        icon=excluded.icon,browser=excluded.browser`,
-		a.ID, a.Name, a.URL, a.Group, a.Icon, browser)
+        icon=excluded.icon,browser=excluded.browser,updated_at=excluded.updated_at`,
+		a.ID, a.Name, a.URL, a.Group, a.Icon, browser, a.UpdatedAt)
 	return err
 }
 

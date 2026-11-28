@@ -46,6 +46,8 @@ type WeftService struct {
 	keyProbe keyProbe
 	// upd 是自动更新的运行态（框架的 Updater + 最近一次检查结果）。
 	upd *updateState
+	// syncSrv 是应用书签同步的 tailnet 监听，只在开关打开时存在。
+	syncSrv *syncServer
 }
 
 // keyProbe 缓存管理 Key 的判定结果。
@@ -90,7 +92,7 @@ func NewWeftService(store *Store) *WeftService {
 			SocksEnabled: true, SocksPort: 1080, AutoForward: true}
 	}
 	// cap 必须给个初值：零值里 CanCreateUser=false，前端会把写操作按钮全禁掉
-	s := &WeftService{store: store, cfg: cfg, cap: defaultCapabilities(), upd: &updateState{}}
+	s := &WeftService{store: store, cfg: cfg, cap: defaultCapabilities(), upd: &updateState{}, syncSrv: &syncServer{}}
 	s.reload()
 	s.mu.Lock()
 	s.fw = newForwardHub(s.engine.Dialer())
@@ -149,6 +151,7 @@ func (s *WeftService) autoConnect() {
 		if err := s.startForwards(); err != nil {
 			log.Printf("自动拉起端口转发失败: %v", err)
 		}
+		s.startSyncServer()
 	}()
 }
 
@@ -160,6 +163,7 @@ func (s *WeftService) reload() {
 	if fw != nil {
 		fw.closeAll()
 	}
+	s.stopSyncServer() // 旧引擎一关，监听也得跟着撤
 	if old != nil {
 		old.Shutdown()
 	}
@@ -180,6 +184,7 @@ func (s *WeftService) shutdown() {
 	e, fw := s.engine, s.fw
 	s.forwardOn = false
 	s.mu.Unlock()
+	s.stopSyncServer()
 	if fw != nil {
 		fw.closeAll()
 	}
@@ -1114,10 +1119,12 @@ func (s *WeftService) Connect() (string, error) {
 	if err := s.startForwards(); err != nil {
 		log.Printf("拉起端口转发失败: %v", err)
 	}
+	s.startSyncServer()
 	return s.GetState()
 }
 
 func (s *WeftService) Disconnect() (string, error) {
+	s.stopSyncServer()
 	s.stopForwards()
 	if err := s.engine.Down(); err != nil {
 		return "", err

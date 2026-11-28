@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,6 +23,9 @@ type TunnelEngine interface {
 	LoginURL() string
 	// Dialer 给本地端口转发 / SOCKS5 用。
 	Dialer() dialFunc
+	// ListenTailnet 在节点的 100.x 地址上监听端口，只有同账号设备能连上。
+	// 节点没上线时会等，最长 90 秒。
+	ListenTailnet(port int) (net.Listener, error)
 	Shutdown()
 }
 

@@ -14,6 +14,8 @@ const (
 	secretMain   = "control-plane-secret"
 	secretClient = "oauth-client-id"
 	secretAuth   = "tunnel-auth-key"
+	// secretSync 是应用书签同步码，开了同步才生成。
+	secretSync = "apps-sync-token"
 )
 
 func secretSet(key, value string) error { return keyring.Set(serviceName, key, value) }

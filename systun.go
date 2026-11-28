@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -224,6 +225,29 @@ func (e *systemTUNEngine) NetstackDialer() dialFunc {
 func (e *systemTUNEngine) Dialer() dialFunc {
 	d := &net.Dialer{Timeout: 20 * time.Second}
 	return d.DialContext
+}
+
+// ListenTailnet 在节点的 100.x 地址上监听。
+//
+// 不用 tsnet 自带的 Listen：那个走进程内用户态栈，而这里注入的是真实网卡，
+// 入站包直接进内核，把端口绑到网卡地址上才是对的。
+// 节点还没上线就先等，最长 90 秒。
+func (e *systemTUNEngine) ListenTailnet(port int) (net.Listener, error) {
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, ip, _ := e.Status(); ip != "" {
+			ln, err := net.Listen("tcp", net.JoinHostPort(ip, strconv.Itoa(port)))
+			if err != nil {
+				return nil, fmt.Errorf("在 %s:%d 监听失败: %w", ip, port, err)
+			}
+			return ln, nil
+		}
+		if msg := e.LastError(); msg != "" {
+			return nil, errors.New(msg)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return nil, errors.New("等了 90 秒节点还没上线")
 }
 
 func (e *systemTUNEngine) Up(c Config) error {

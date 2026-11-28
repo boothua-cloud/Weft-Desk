@@ -188,6 +188,13 @@ export function GetState(): $CancellablePromise<string> {
 }
 
 /**
+ * GetSync 返回同步状态。同步码只在本机界面出现。
+ */
+export function GetSync(): $CancellablePromise<string> {
+    return $Call.ByID(2328110154);
+}
+
+/**
  * InstallHelper 安装常驻助手：一次授权，之后连接零弹窗。
  */
 export function InstallHelper(): $CancellablePromise<string> {
@@ -261,6 +268,20 @@ export function ProfilesView(): $CancellablePromise<string> {
     return $Call.ByID(736922312);
 }
 
+/**
+ * PullAppsFrom 从另一台设备拉取书签并合并进本机。
+ */
+export function PullAppsFrom(target: string, token: string): $CancellablePromise<string> {
+    return $Call.ByID(3577125972, target, token);
+}
+
+/**
+ * PushAppsTo 把本机书签推到另一台，由对方合并。
+ */
+export function PushAppsTo(target: string, token: string): $CancellablePromise<string> {
+    return $Call.ByID(2096072470, target, token);
+}
+
 export function RegisterAuth(user: string, authID: string): $CancellablePromise<string> {
     return $Call.ByID(2738706196, user, authID);
 }
@@ -313,6 +334,13 @@ export function RevealCredential(kind: string): $CancellablePromise<string> {
  */
 export function RevealWindow(): $CancellablePromise<void> {
     return $Call.ByID(3181970530);
+}
+
+/**
+ * RotateSyncToken 换一个同步码，已经配对过的设备要重新输。
+ */
+export function RotateSyncToken(): $CancellablePromise<string> {
+    return $Call.ByID(1371404528);
 }
 
 export function SaveApp(raw: string): $CancellablePromise<void> {
@@ -377,6 +405,13 @@ export function SetForwardOptions(autoForward: boolean, socksEnabled: boolean, s
  */
 export function SetForwardPower(on: boolean): $CancellablePromise<void> {
     return $Call.ByID(2537402727, on);
+}
+
+/**
+ * SetSync 开关同步并立即生效。端口改了会重启监听。
+ */
+export function SetSync(enabled: boolean, port: number): $CancellablePromise<string> {
+    return $Call.ByID(2732710630, enabled, port);
 }
 
 /**
