@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { api, type State, type AppBookmark, type AuditEvent, type Device, type APIKey } from '../api'
+import { api, type State, type AppBookmark, type AuditEvent, type Device, type APIKey, type AuthKey } from '../api'
 import Pick from '../components/Pick.vue'
 import { reloadTick } from '../bus'
 
 const props = defineProps<{ state: State | null }>()
-const emit = defineEmits(['refresh', 'notify'])
+const emit = defineEmits(['refresh', 'notify', 'navigate'])
 const apps = ref<AppBookmark[]>([])
 const audit = ref<AuditEvent[]>([])
 const devices = ref<Device[]>([])
 const apiKeys = ref<APIKey[]>([])
+const authKeys = ref<AuthKey[]>([])
 const busy = ref(false)
 const opening = ref('')
 
@@ -62,8 +63,96 @@ async function renewAPIKey() {
   } finally { renewing.value = false }
 }
 
-const expiringDevices = computed(() =>
-  devices.value.filter(d => { const n = daysLeft(d.expiry); return n !== Infinity && n <= EXPIRY_WARN_DAYS }))
+// ---------- 巡检 ----------
+
+type Alert = {
+  id: string
+  level: 'warn' | 'bad'
+  text: string
+  sub?: string
+  page: string
+  action?: string
+  renewId?: string
+}
+
+const OFFLINE_DAYS = 7
+const UNUSED_KEY_DAYS = 7
+
+function splitList(v?: string): string[] {
+  return (v || '').split(/[,\s]+/).map((x) => x.trim()).filter(Boolean)
+}
+
+// 服务端给的时间是「2026-11-28 10:00」这种本地时间，直接 new Date 解析不了
+function parseTS(ts?: string): number | null {
+  if (!ts || ts.startsWith('0001') || ts.includes('永不过期')) return null
+  const d = new Date(ts.replace(' ', 'T'))
+  return Number.isNaN(d.getTime()) ? null : d.getTime()
+}
+
+// 四类都要人管：路由批了才能用、密钥到期会掉线、长期离线多半该清、
+// 生成很久没用过的 Key 留着只是风险。
+const alerts = computed<Alert[]>(() => {
+  const out: Alert[] = []
+  const now = Date.now()
+
+  for (const d of devices.value) {
+    const adv = splitList(d.advertisedRoutes)
+    const approved = new Set(splitList(d.approvedRoutes))
+    const pending = adv.filter((r) => !approved.has(r))
+    if (pending.length) {
+      out.push({
+        id: 'route-' + d.id, level: 'warn',
+        text: `${d.name} 有 ${pending.length} 段路由没批准`,
+        sub: pending.join('、'), page: 'devices', action: '去批准',
+      })
+    }
+  }
+
+  for (const d of devices.value) {
+    const n = daysLeft(d.expiry)
+    if (n === Infinity || n > EXPIRY_WARN_DAYS) continue
+    out.push({
+      id: 'exp-' + d.id, level: n <= 0 ? 'bad' : 'warn',
+      text: n <= 0 ? `${d.name} 已过期` : `${d.name} ${n} 天后到期`,
+      sub: d.expiry, page: 'devices', renewId: d.id,
+    })
+  }
+
+  for (const d of devices.value) {
+    if (d.online) continue
+    const seen = parseTS(d.lastSeen)
+    if (seen === null) continue
+    const days = Math.floor((now - seen) / 86400000)
+    if (days >= OFFLINE_DAYS) {
+      out.push({
+        id: 'off-' + d.id, level: 'warn',
+        text: `${d.name} 已离线 ${days} 天`, sub: d.lastSeen, page: 'devices',
+      })
+    }
+  }
+
+  for (const k of authKeys.value) {
+    if (k.used || k.status.includes('过期')) continue
+    const made = parseTS(k.created)
+    if (made === null) continue
+    const days = Math.floor((now - made) / 86400000)
+    if (days >= UNUSED_KEY_DAYS) {
+      out.push({
+        id: 'key-' + k.id, level: 'warn',
+        text: `授权 Key 生成 ${days} 天还没用过`,
+        sub: [k.user, k.key].filter(Boolean).join(' · '), page: 'keys',
+      })
+    }
+  }
+
+  // 已经出问题的排前面，其余按发现顺序
+  return out.sort((a, b) => (a.level === 'bad' ? 0 : 1) - (b.level === 'bad' ? 0 : 1))
+})
+
+function renewById(id?: string) {
+  const d = devices.value.find((x) => x.id === id)
+  if (d) renewDevice(d)
+}
 async function renewDevice(d: Device) {
   try {
     await api.disableDeviceExpiry(d.id)
@@ -81,6 +170,7 @@ async function load() {
     try {
       devices.value = (await api.devices()).items
       apiKeys.value = (await api.apiKeys()).items
+      authKeys.value = (await api.authKeys()).items
     } catch { /* 未配置管理密钥 */ }
   } catch (err: any) {
     emit('notify', '加载总览数据失败：' + (err?.message ?? err))
@@ -230,14 +320,22 @@ function copyLogin() {
       </div>
     </section>
 
-    <div v-if="hasAPIKey && expiringDevices.length" class="card" style="margin-bottom:14px">
-      <h3 class="sec" style="color:var(--warn-text, #b4741a)">节点即将到期</h3>
-      <div class="faint" style="font-size:11px;margin-bottom:8px">到期后节点会从 tailnet 断开，需要重新登录</div>
-      <div v-for="d in expiringDevices" :key="d.id" class="row" style="gap:10px;margin-top:6px">
-        <span class="mono" style="font-size:11px">{{ d.name }}</span>
-        <span class="faint" style="font-size:10.5px">{{ d.expiry }}</span>
-        <button class="btn sm ghost" style="margin-left:auto" @click="renewDevice(d)">取消到期</button>
+    <div v-if="hasAPIKey && alerts.length" class="card" style="margin-bottom:14px">
+      <div class="spread" style="margin-bottom:6px">
+        <h3 class="sec" style="margin:0">需要处理</h3>
+        <span class="faint" style="font-size:10.5px">{{ alerts.length }} 项</span>
       </div>
+      <div v-for="a in alerts.slice(0, 6)" :key="a.id" class="alert-row">
+        <span class="alert-dot" :class="a.level"></span>
+        <div class="alert-text">
+          <div class="alert-title">{{ a.text }}</div>
+          <div v-if="a.sub" class="alert-sub">{{ a.sub }}</div>
+        </div>
+        <button v-if="a.renewId" class="btn sm ghost" @click="renewById(a.renewId)">取消到期</button>
+        <button v-else class="btn sm ghost" @click="emit('navigate', a.page)">{{ a.action || '查看' }}</button>
+      </div>
+      <button v-if="alerts.length > 6" class="link-btn" style="margin-top:8px"
+              @click="emit('navigate', 'devices')">还有 {{ alerts.length - 6 }} 项</button>
     </div>
 
     <!-- 指标 -->

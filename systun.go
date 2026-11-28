@@ -743,6 +743,116 @@ func (e *systemTUNEngine) DiagDump(ctx context.Context, targets []DiagTarget) []
 	return out
 }
 
+// DiagPeer 实测一台对端：握手快照、disco 探测、ACL 放行判断、TCP 拨测。
+// 顺序是有讲究的——先读状态，再探链路，最后拨目标端口，
+// 这样结论里能分清是「链路不通」还是「链路通了但服务/ACL 挡着」。
+func (e *systemTUNEngine) DiagPeer(ctx context.Context, ip netip.Addr, port uint16) (DiagReport, error) {
+	e.mu.Lock()
+	srv := e.srv
+	selfIP := e.selfIP
+	running := e.running
+	e.mu.Unlock()
+	rep := DiagReport{IP: ip.String(), Port: int(port), PingMs: -1, PingWorst: -1}
+	rep.At = time.Now().Format(time.RFC3339)
+	if srv == nil || !running {
+		return rep, errors.New("还没连上，先在总览页连接")
+	}
+	lc, err := srv.LocalClient()
+	if err != nil {
+		return rep, fmt.Errorf("读取本地节点状态失败: %w", err)
+	}
+	st, err := lc.Status(ctx)
+	if err != nil {
+		return rep, fmt.Errorf("读取节点状态失败: %w", err)
+	}
+
+	var peer *ipnstate.PeerStatus
+	for _, p := range st.Peer {
+		if len(p.TailscaleIPs) > 0 && p.TailscaleIPs[0].Unmap() == ip {
+			peer = p
+			break
+		}
+	}
+	if peer == nil {
+		rep.Verdict = "netmap 里没有这台设备"
+		rep.Hints = []string{
+			"控制面还没把对端下发过来，等几秒再试",
+			"对端可能已经从这个控制面退出，或者换了账号",
+		}
+		return rep, nil
+	}
+
+	rep.Name = peer.HostName
+	rep.Online = peer.Online
+	rep.Relay = peer.Relay
+	rep.CurAddr = peer.CurAddr
+	rep.TxBytes, rep.RxBytes = peer.TxBytes, peer.RxBytes
+	rep.Path = "DERP"
+	if peer.CurAddr != "" {
+		rep.Path = "直连"
+	}
+	rep.Handshake = "从未"
+	if !peer.LastHandshake.IsZero() {
+		rep.Handshake = fmt.Sprint(time.Since(peer.LastHandshake).Round(time.Second)) + " 前"
+	}
+	// 对端版本只用于解释「版本差太多导致静默丢包」，拿不到就留空
+	if node, nerr := lc.PeerByID(ctx, peer.NodeID); nerr == nil && node != nil {
+		rep.Version = node.Hostinfo.IPNVersion()
+	}
+
+	// 连发三次 disco 探测。一次通可能只是刚好赶上，三次能看出是否稳定。
+	for i := 0; i < 3; i++ {
+		cctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		pr, perr := lc.Ping(cctx, ip, tailcfg.PingDisco)
+		cancel()
+		if perr != nil || pr == nil || pr.Err != "" {
+			rep.PingLost++
+			if rep.PingErr == "" {
+				switch {
+				case perr != nil:
+					rep.PingErr = perr.Error()
+				case pr != nil && pr.Err != "":
+					rep.PingErr = pr.Err
+				default:
+					rep.PingErr = "没有回应"
+				}
+			}
+			continue
+		}
+		ms := pr.LatencySeconds * 1000
+		if rep.PingMs < 0 || ms < rep.PingMs {
+			rep.PingMs = ms
+		}
+		if ms > rep.PingWorst {
+			rep.PingWorst = ms
+		}
+	}
+
+	// 包过滤规则是 ACL 在客户端的落地结果。只有真的探测过才知道通不通，
+	// 但规则里有没有这条，能区分「ACL 拦了」和「对端服务没开」。
+	if self, serr := netip.ParseAddr(selfIP); serr == nil {
+		if rules, rerr := lc.DebugPacketFilterRules(ctx); rerr == nil {
+			rep.ACLChecked = true
+			rep.ACLAllowed = aclAllows(rules, self.Unmap(), ip.Unmap(), port)
+		}
+	}
+
+	// TCP 拨测走系统栈，和外部 SSH / 数据库工具走的是同一条路。
+	d := &net.Dialer{Timeout: 8 * time.Second}
+	addr := net.JoinHostPort(ip.String(), fmt.Sprint(port))
+	start := time.Now()
+	conn, derr := d.DialContext(ctx, "tcp", addr)
+	rep.DialMs = float64(time.Since(start).Microseconds()) / 1000
+	if derr != nil {
+		rep.DialErr = derr.Error()
+	} else {
+		_ = conn.Close()
+	}
+
+	rep.Verdict, rep.Hints = diagVerdict(rep)
+	return rep, nil
+}
+
 func (e *systemTUNEngine) dialProbe(ctx context.Context, t DiagTarget, label string,
 	dial func(context.Context, string) (net.Conn, error)) string {
 	// 冷启动首个连接要等 wireguard 握手（重试间隔 5 秒），给足余量。

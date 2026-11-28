@@ -19,6 +19,40 @@ export interface PeerInfo {
   name: string; ip: string; os: string; online: boolean
   lastSeen: string; routes: string; allowed: string; relay: string; curAddr: string
 }
+// DiagReport 是一次连通性检查的结果，字段和后端 model.go 对应。
+export interface DiagReport {
+  ip: string
+  name: string
+  port: number
+  online: boolean
+  path: string        // 直连 / DERP
+  relay: string
+  curAddr: string
+  handshake: string
+  txBytes: number
+  rxBytes: number
+  version: string
+  pingMs: number
+  pingWorst: number
+  pingLost: number
+  pingErr: string
+  dialMs: number
+  dialErr: string
+  aclAllowed: boolean
+  aclChecked: boolean
+  verdict: string
+  hints: string[]
+  at: string
+}
+
+// PolicyVersion 是策略历史里的一版，和 Go 侧 model.go 对应。
+export interface PolicyVersion {
+  id: number
+  at: string
+  size: number
+  lines: number
+}
+
 export interface State {
   connected: boolean
   connecting: boolean
@@ -183,6 +217,7 @@ export const api = {
   health: () => parse<HealthInfo>(WeftService.GetHealth()),
   audit: () => parse<AuditEvent[]>(WeftService.ListAudit()),
   testPeer: (host: string, port: number, via: string) => WeftService.TestPeer(host, port, via),
+  diagnose: (ip: string, port: number) => parse<DiagReport>((WeftService as any).Diagnose(ip, port)),
 
   // 节点
   devices: () => parse<Cached<Device>>(WeftService.ListDevices()),
@@ -223,6 +258,11 @@ export const api = {
   createAPIKey: (days: number) => WeftService.CreateAPIKey(days),
   expireAPIKey: (prefix: string, id: string) => WeftService.ExpireAPIKey(prefix, id),
   deleteAPIKey: (prefix: string, id: string) => WeftService.DeleteAPIKey(prefix, id),
+
+  policyHistory: () => parse<PolicyVersion[]>(WeftService.ListPolicyHistory()),
+  policyVersion: (id: number) =>
+    parse<{ content: string; updatedAt: string }>(WeftService.GetPolicyVersion(id)),
+  restorePolicy: (id: number) => WeftService.RestorePolicy(id),
 
   // 策略
   policy: () => parse<PolicyDoc>(WeftService.GetPolicy()),

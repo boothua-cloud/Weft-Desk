@@ -9,6 +9,7 @@ import Manage from './views/Manage.vue'
 import Acl from './views/Acl.vue'
 import Apps from './views/Apps.vue'
 import Forwards from './views/Forwards.vue'
+import Diagnose from './views/Diagnose.vue'
 import Settings from './views/Settings.vue'
 import InfoDialog from './components/InfoDialog.vue'
 import UpdateDialog from './components/UpdateDialog.vue'
@@ -52,6 +53,7 @@ const icons: Record<string, string> = {
   apps: 'M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z',
   settings: 'M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5 13 13M13 3l-1.5 1.5M4.5 11.5 3 13',
   forwards: 'M2 5h8M8 2l3 3-3 3M14 11H6M8 8l-3 3 3 3',
+  diagnose: 'M1 8h3l2-5 3 10 2-5h4',
 }
 // 「服务端管理」这一组页面全靠管理 API Key，没有就整组不显示。
 // 判断以后端为准：空 Key 和节点 Auth Key 都不算（后者管理接口一律 401）。
@@ -81,6 +83,7 @@ const nav = computed(() => {
     items: [
       { key: 'apps', label: '应用管理' },
       { key: 'forwards', label: '端口转发' },
+      { key: 'diagnose', label: '连接诊断' },
       { key: 'settings', label: '连接设置' },
     ],
   })
@@ -91,10 +94,11 @@ const meta: Record<string, [string, string]> = {
   users: ['服务端管理', '人员管理'], keys: ['服务端管理', '密钥管理'],
   api: ['服务端管理', '密钥管理'], acl: ['服务端管理', 'ACL 策略'],
   apps: ['工作台', '应用管理'], forwards: ['工作台', '端口转发'],
+  diagnose: ['工作台', '连接诊断'],
   settings: ['设置', '连接设置'],
 }
 // 这几个页面是列表型：头部与筛选条固定，只有表格自己滚动
-const fixedLayout = computed(() => ['devices', 'users', 'keys', 'api', 'apps', 'acl'].includes(page.value))
+const fixedLayout = computed(() => ['devices', 'users', 'keys', 'api', 'apps', 'acl', 'diagnose'].includes(page.value))
 const crumb = computed(() => meta[page.value]?.[0] ?? '总览')
 const title = computed(() => meta[page.value]?.[1] ?? '总览')
 const manageTab = computed(() => ['devices', 'users', 'keys', 'api'].includes(page.value) ? page.value : 'devices')
@@ -351,12 +355,14 @@ onUnmounted(() => {
       </header>
 
       <div class="content" :class="{ 'content-fixed': fixedLayout }">
-        <Overview v-if="page === 'overview'" :state="state" @refresh="refresh" @notify="notify" />
+        <Overview v-if="page === 'overview'" :state="state" @refresh="refresh" @notify="notify"
+                  @navigate="page = $event" />
         <Manage v-else-if="['devices','users','keys','api'].includes(page)" :tab="manageTab" :state="state"
                 @notify="notify" @navigate="page = $event" />
         <Acl v-else-if="page === 'acl'" :state="state" @notify="notify" />
         <Apps v-else-if="page === 'apps'" :state="state" @notify="notify" />
         <Forwards v-else-if="page === 'forwards'" :state="state" @notify="notify" />
+        <Diagnose v-else-if="page === 'diagnose'" :state="state" @notify="notify" @navigate="page = $event" />
         <Settings v-else :state="state" @refresh="refresh" @notify="notify" />
       </div>
     </main>

@@ -189,11 +189,15 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
           </p>
           <figure class="shot">
             <img src="/help/acl-scope.png" alt="用户组与标签" />
-            <figcaption>用户组与标签：组里填成员，标签填谁能打这个标签</figcaption>
+            <figcaption>用户组与标签：组里填成员，标签填归属，下面是地址别名和自动批准</figcaption>
           </figure>
           <p style="margin-top:10px">
             <span class="hl">用户组与标签</span>：组是一批人，规则里写组名，人员变动只改这里；标签是一批设备，
             服务器、NAS 这类固定角色打上标签，换设备不用改规则。成员名保存时会自动补 <span class="mono">@</span>。
+          </p>
+          <p style="margin-top:8px">
+            下面两张卡：<span class="hl">地址别名</span>给 IP 起名字，规则里就能写 <span class="mono">nas:5000</span>，
+            设备换地址只改这里；<span class="hl">自动批准</span>列出的身份通告子网路由、出口节点后直接生效，不用回设备页点批准。
           </p>
           <figure class="shot">
             <img src="/help/acl.png" alt="规则" />
@@ -215,8 +219,12 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
           </figure>
           <p style="margin-top:10px">
             <span class="hl">源码</span>切过去前会先解析一遍，解析不了就不让切，避免把策略改坏。
-            源码里能写 Grants、Tailscale SSH、autoApprovers 这些表单不碰的字段，保存时原样写回；
+            源码里能写 Grants、Tailscale SSH 这些表单不碰的字段，保存时原样写回；
             用表单保存会把 JSON 注释（HuJSON）去掉。服务端把策略存在文件里（<span class="mono">policy.mode: file</span>）时，这里只能读，页面上会写明改法。
+          </p>
+          <p style="margin-top:8px">
+            顶栏的<span class="hl">历史</span>留着每次保存前的版本，最近 20 版。点一版能看到它和线上差在哪，
+            确认没问题再点「回到这一版」；回滚本身也会把当前版本记进历史，点错了还能回去。
           </p>
         </section>
 
@@ -264,7 +272,31 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
         </section>
 
         <section class="help-sec">
-          <h4><span class="step">10</span>连接设置</h4>
+          <h4><span class="step">10</span>连接诊断</h4>
+          <p>
+            「设备管理」告诉你谁在线上，「连接诊断」告诉你为什么连不上。列表里每台设备一行，
+            右边的胶囊是当前路径：<span class="hl">直连</span>是点对点打通了，<span class="hl">DERP</span> 是没打通、
+            退到中继，能通但慢一截。离线设备不显示路径。
+          </p>
+          <figure class="shot">
+            <img src="/help/diagnose.png" alt="连接诊断" />
+            <figcaption>连接诊断：每台设备实测一次，下面给出结论和原因</figcaption>
+          </figure>
+          <p style="margin-top:10px">
+            点<span class="hl">检查</span>会对这台设备实测一遍：连发三次探测看链路稳不稳，再真的连一次目标端口。
+            上面的「检查端口」默认 22，要测数据库就改成 3306。
+          </p>
+          <p style="margin-top:8px">
+            结果按链路层往上排，先说最根本的：<br>
+            · 设备离线，就不用再往下查了，喊对方开机；<br>
+            · 探测全丢，是链路问题，看 DERP 状态和中继区域，或者对方挡了 UDP；<br>
+            · 探测通了、端口连不上，再看 ACL：规则里没有这一条会直接写「ACL 没放行」，右下角给一个「去改 ACL」；<br>
+            · ACL 也放行了，那就是对端端口没开服务，或者只监听了 <span class="mono">127.0.0.1</span>。
+          </p>
+        </section>
+
+        <section class="help-sec">
+          <h4><span class="step">11</span>连接设置</h4>
           <p>
             上半部分是服务端列表：可以放多个 Headscale，点「切换」切过去，也支持编辑、重命名、删除。
             每个服务端有独立的节点身份和凭证，切换时断开隧道再重连，不会把上一个 tailnet 的登录态带过去。
@@ -284,7 +316,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
         </section>
 
         <section class="help-sec">
-          <h4><span class="step">11</span>顶栏、菜单与快捷键</h4>
+          <h4><span class="step">12</span>顶栏、菜单与快捷键</h4>
           <p>
             顶栏右边依次是：<span class="hl">服务端胶囊</span>（点开切换服务端，底部有「管理服务端…」）、
             主题按钮、刷新、<span class="hl">更多</span>菜单（刷新数据、切换主题、帮助手册、检查更新、关于云栈）。
@@ -297,7 +329,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
         </section>
 
         <section class="help-sec">
-          <h4><span class="step">12</span>托盘和退出</h4>
+          <h4><span class="step">13</span>托盘和退出</h4>
           <p>
             关窗口只是收起，程序还在托盘里跑，隧道不断。托盘菜单从上到下是：当前状态、连接 / 断开连接、显示主窗口、
             帮助手册、设置、关于云栈、退出云栈。要真正退出用「退出云栈」{{ isMac ? '或 ⌘Q' : '' }}。
@@ -305,9 +337,10 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
         </section>
 
         <section class="help-sec">
-          <h4><span class="step">13</span>连不上怎么排查</h4>
+          <h4><span class="step">14</span>连不上怎么排查</h4>
+          <p>连不上先走一遍「连接诊断」：能分清是对端离线、链路不通、ACL 挡了，还是对端没开服务。下面是它管不到的部分。</p>
           <ul>
-            <li>先看总览页大卡片：「上次启动失败：…」那句就是原因。</li>
+            <li>起不来先看总览页大卡片：「上次启动失败：…」那句就是原因。</li>
             <li>确认地址可达、两把 Key 没填反。API Key 用错成 Auth Key 时，管理页会直接提示。</li>
             <li>管理页整块消失或提示没配 Key：说明 API Key 无效或过期，去服务端 <span class="mono">headscale apikeys create</span> 换一把。</li>
             <li>ACL 改完不生效：策略是整份替换，确认没覆盖掉别人的规则；保存前先点「校验」。文件模式的策略只能读，改服务器上的文件后执行 <span class="mono">systemctl reload headscale</span>。</li>
@@ -319,7 +352,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
         </section>
 
         <section class="help-sec">
-          <h4><span class="step">14</span>已知边界</h4>
+          <h4><span class="step">15</span>已知边界</h4>
           <ul>
             <li>只对接 Headscale 的 <span class="mono">/api/v1</span>，不兼容 Tailscale 官方接口。</li>
             <li>不做 MagicDNS（统一用 IP）、不做 Exit Node、不做 Taildrop。</li>

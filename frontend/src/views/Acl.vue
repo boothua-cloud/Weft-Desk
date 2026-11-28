@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { api, type State, type PolicyDoc, type Device, type User } from '../api'
+import { api, type State, type PolicyDoc, type Device, type User, type PolicyVersion } from '../api'
 import { reloadTick } from '../bus'
 import ChipsInput from '../components/ChipsInput.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import PermissionMatrix from '../components/PermissionMatrix.vue'
 import PortField from '../components/PortField.vue'
 import TokenField from '../components/TokenField.vue'
+import { useConfirm } from '../confirm'
+import { diffStat, keepContext, lineDiff, type DiffLine } from '../diff'
 import {
   explainPolicyError,
   flattenDst,
@@ -27,6 +30,7 @@ import {
 
 const props = defineProps<{ state: State | null }>()
 const emit = defineEmits(['notify'])
+const { confirmBox, askConfirm, closeConfirm } = useConfirm()
 
 const doc = ref<PolicyDoc>({ content: '', updatedAt: '' })
 // 源码模式的缓冲区；表单模式以 form 为准
@@ -75,11 +79,9 @@ const users = ref<User[]>([])
 const readOnly = computed(() => props.state?.capabilities?.canManageACL === false)
 // 策略里 hosts 定义的别名。dst 只能写「服务端认得的名字」，
 // 别名和真实设备名一起作为白名单参与校验，也直接列进目标选择器
-const hostAliases = computed<string[]>(() => {
-  const h = form.value?.extra?.hosts
-  if (!h || typeof h !== 'object' || Array.isArray(h)) return []
-  return Object.keys(h as Record<string, unknown>)
-})
+const hostAliases = computed<string[]>(() =>
+  (form.value?.hosts ?? []).map((h) => h.name.trim()).filter(Boolean),
+)
 
 const issues = computed<AclIssue[]>(() =>
   form.value
@@ -151,6 +153,13 @@ const memberNames = computed<string[]>(() => {
 
 // 策略里的人是「用户名@」，界面上的匹配、chip、矩阵都按这个形式走
 const memberTokens = computed(() => memberNames.value.map(userToken))
+
+// 自动批准能写标签、组、成员三种身份，补全里都给出来
+const approverSuggestions = computed(() => [
+  ...(form.value?.tagOwners ?? []).map((t) => tagKey(t.name)).filter(Boolean),
+  ...(form.value?.groups ?? []).map((g) => groupKey(g.name)).filter(Boolean),
+  ...memberTokens.value,
+])
 
 function syncEdits() {
   dstEdits.value = (form.value?.acls ?? []).map((r) => groupDst(r.dst))
@@ -295,6 +304,75 @@ async function save() {
   }
 }
 
+// ---------- 策略历史 ----------
+
+const histOpen = ref(false)
+const hist = ref<PolicyVersion[]>([])
+const histPick = ref<PolicyVersion | null>(null)
+const histDiff = ref<DiffLine[]>([])
+const histBusy = ref(false)
+const histErr = ref('')
+
+const histStat = computed(() => diffStat(histDiff.value))
+
+function fmtWhen(raw: string): string {
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return raw
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+function fmtSize(n: number): string {
+  return n >= 1024 ? (n / 1024).toFixed(1) + ' KB' : `${n} B`
+}
+
+async function openHistory() {
+  histOpen.value = true
+  histErr.value = ''
+  histPick.value = null
+  histDiff.value = []
+  try {
+    hist.value = await api.policyHistory()
+  } catch (err: any) {
+    histErr.value = '读取历史失败：' + (err?.message ?? err)
+  }
+}
+
+async function pickVersion(v: PolicyVersion) {
+  histPick.value = v
+  histDiff.value = []
+  try {
+    const doc = await api.policyVersion(v.id)
+    // 方向是「线上当前 → 这一版」：绿色是回滚后会出现的行，红色是会消失的行
+    histDiff.value = keepContext(lineDiff(baseline.value || currentText.value, doc.content))
+  } catch (err: any) {
+    histErr.value = '读取这一版失败：' + (err?.message ?? err)
+  }
+}
+
+function rollback() {
+  const v = histPick.value
+  if (!v) return
+  askConfirm({
+    title: '回到这一版？',
+    desc: `${fmtWhen(v.at)} 的策略会覆盖线上当前策略。现在这版也会进历史，反悔了还能回来。`,
+    ok: '回滚',
+    action: async () => {
+      histBusy.value = true
+      try {
+        await api.restorePolicy(v.id)
+        emit('notify', '已回滚到 ' + fmtWhen(v.at))
+        histOpen.value = false
+        await load()
+      } catch (err: any) {
+        histErr.value = '回滚失败：' + (err?.message ?? err)
+      } finally {
+        histBusy.value = false
+      }
+    },
+  })
+}
+
 // ---------- 规则操作 ----------
 
 function commitDst(i: number) {
@@ -403,6 +481,7 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
           <span v-if="loading" class="load-hint" style="margin:0 8px 0 0">
             <span class="spinner"></span>读取中…
           </span>
+          <button class="btn" :disabled="loading" @click="openHistory">历史</button>
           <button class="btn" :disabled="loading" @click="load">
             <span v-if="loading" class="spinner"></span>{{ loading ? '刷新中…' : '刷新' }}
           </button>
@@ -671,6 +750,72 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
             + 新建标签
           </button>
         </section>
+
+        <section class="acl-card">
+          <div class="acl-head">
+            <div>
+              <h3 class="sec">地址别名 <span class="acl-count">{{ form.hosts.length }}</span></h3>
+              <div class="acl-sub">
+                给 IP 起个名字，规则里写 <code>nas:5000</code>，不用记地址。设备换 IP 只改这里。
+              </div>
+            </div>
+          </div>
+          <div v-if="!form.hostsEditable" class="acl-empty">
+            原文的 <code>hosts</code> 不是「名字 → 地址」的写法，表单不接。去源码里改。
+          </div>
+          <template v-else>
+            <div v-if="!form.hosts.length" class="acl-empty">
+              还没有别名。目标里也能直接写设备名或 IP。
+            </div>
+            <div v-for="(h, hi) in form.hosts" :key="'h' + hi" class="host-row">
+              <input v-model="h.name" class="input mono" placeholder="nas" spellcheck="false" :disabled="readOnly" />
+              <input v-model="h.addr" class="input mono" placeholder="100.64.0.3" spellcheck="false" :disabled="readOnly" />
+              <button class="acl-del" title="删掉这个别名" :disabled="readOnly" @click="form.hosts.splice(hi, 1)">×</button>
+            </div>
+            <button v-if="!readOnly" type="button" class="link-btn" @click="form.hosts.push({ name: '', addr: '' })">
+              + 新建别名
+            </button>
+          </template>
+        </section>
+
+        <section class="acl-card">
+          <div class="acl-head">
+            <div>
+              <h3 class="sec">自动批准</h3>
+              <div class="acl-sub">
+                这些身份通告的路由、出口节点直接生效，不用到设备页点批准。管理员默认就有这个权限。
+              </div>
+            </div>
+          </div>
+          <div v-if="!form.approversEditable" class="acl-empty">
+            原文的 <code>autoApprovers</code> 写法不认识，表单不接。去源码里改。
+          </div>
+          <template v-else>
+            <div class="approve-row">
+              <span class="rule-label">子网路由</span>
+              <ChipsInput
+                v-model="form.approvers.routes"
+                :suggestions="approverSuggestions"
+                :display="tokenLabel"
+                placeholder="写 tag: 或成员名，回车"
+                :disabled="readOnly"
+              />
+            </div>
+            <div class="approve-row">
+              <span class="rule-label">出口节点</span>
+              <ChipsInput
+                v-model="form.approvers.exitNode"
+                :suggestions="approverSuggestions"
+                :display="tokenLabel"
+                placeholder="写 tag: 或成员名，回车"
+                :disabled="readOnly"
+              />
+            </div>
+            <p class="card-hint">
+              写人和组只对这个人名下的设备生效；写标签对打了这个标签的设备生效。
+            </p>
+          </template>
+        </section>
       </div>
     </div>
 
@@ -683,6 +828,56 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
         可能是 YAML，或结构不是标准写法。改好再点「规则」。
       </div>
     </div>
+    <!-- 策略历史抽屉：放在整条 v-if 链之后，插在中间会让 v-else 断掉 -->
+    <template v-if="histOpen">
+      <div class="mask" @click="histOpen = false"></div>
+      <div class="hist-drawer">
+        <div class="spread">
+          <h3 class="sec" style="margin:0">策略历史</h3>
+          <button class="btn ghost sm" @click="histOpen = false">✕</button>
+        </div>
+        <p class="hist-note">每次保存前的版本留在这里，最近的 20 版。点一版看它跟线上差了什么。</p>
+
+        <div v-if="histErr" class="notice warn" style="margin-top:10px">{{ histErr }}</div>
+        <div v-else-if="!hist.length" class="hist-empty">
+          还没有历史。改一次策略并保存之后，旧的那版会出现在这里。
+        </div>
+
+        <div class="hist-list">
+          <button v-for="v in hist" :key="v.id" type="button" class="hist-item"
+                  :class="{ on: histPick?.id === v.id }" @click="pickVersion(v)">
+            <span class="hist-time">{{ fmtWhen(v.at) }}</span>
+            <span class="faint">{{ v.lines }} 行 · {{ fmtSize(v.size) }}</span>
+          </button>
+        </div>
+
+        <div v-if="histPick" class="hist-detail">
+          <div class="spread hist-detail-head">
+            <span class="faint">回滚后相对现在的变化</span>
+            <span class="diff-stat">
+              <b class="d-add">+{{ histStat.add }}</b>
+              <b class="d-del">−{{ histStat.del }}</b>
+            </span>
+          </div>
+          <div v-if="!histStat.add && !histStat.del" class="hist-empty">
+            这一版和线上完全一样。
+          </div>
+          <div v-else class="diff-box">
+            <div v-for="(l, i) in histDiff" :key="i" class="diff-line" :class="l.kind">
+              <span class="diff-sign">{{ l.kind === 'add' ? '+' : l.kind === 'del' ? '−' : l.kind === 'gap' ? '' : ' ' }}</span>
+              <span class="diff-text">{{ l.kind === 'gap' ? '· · ·' : l.text || ' ' }}</span>
+            </div>
+          </div>
+          <button class="btn primary" style="width:100%;margin-top:12px"
+                  :disabled="histBusy || readOnly" @click="rollback">
+            {{ histBusy ? '回滚中…' : '回到这一版' }}
+          </button>
+          <p v-if="readOnly" class="card-hint" style="margin-top:8px">服务端不让改策略，回滚也不行。</p>
+        </div>
+      </div>
+    </template>
+
+    <ConfirmDialog v-if="confirmBox" v-bind="confirmBox" @close="closeConfirm" />
   </div>
 </template>
 
@@ -1021,15 +1216,207 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
 
 /* 组与标签：两栏并排，各自一列到底 */
 /* 两张卡等高、底部的「+ 新建…」对齐，否则一行之差会显得排列随意 */
-.scope-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch; }
+.scope-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
 .scope-grid .acl-card { margin-bottom: 0; display: flex; flex-direction: column; }
-.scope-grid .acl-card > .link-btn:last-child { margin-top: auto; padding-top: 10px; }
+.scope-grid .acl-card > .link-btn:last-child { margin-top: 10px; }
 .scope-grid .acl-head { margin-bottom: 8px; }
 .acl-item { display: flex; flex-direction: column; gap: 6px; padding: 9px 0; }
 .acl-item + .acl-item { border-top: 1px dashed var(--line-soft); }
 .acl-item-top { display: flex; align-items: center; gap: 6px; }
 .acl-item-top .input { flex: 1; min-width: 0; }
 .acl-item .acl-del { width: 26px; height: 34px; }
+
+.card-hint {
+  margin: 8px 0 0;
+  font-size: 10.5px;
+  color: var(--faint);
+  line-height: 1.7;
+}
+
+.hist-drawer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 480px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow-pop);
+  padding: 20px;
+  z-index: 3;
+  animation: weft-slide .22s cubic-bezier(.22, .8, .3, 1);
+}
+.hist-note { margin: 6px 0 0; font-size: 11px; color: var(--faint); line-height: 1.7; }
+.hist-empty {
+  margin-top: 14px;
+  padding: 22px 0;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.hist-list {
+  margin-top: 10px;
+  flex: 1;
+  min-height: 60px;
+  overflow-y: auto;
+}
+.hist-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  font-size: 11.5px;
+}
+.hist-item:hover { background: var(--surface-3); }
+.hist-item.on {
+  background: var(--surface-3);
+  border-color: var(--line);
+}
+.hist-time { font-family: var(--mono); font-size: 11px; }
+.hist-item + .hist-item { margin-top: 2px; }
+.hist-detail {
+  flex-shrink: 0;
+  max-height: 62%;
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.hist-detail-head { font-size: 11px; margin-bottom: 8px; }
+.diff-stat { display: flex; gap: 10px; font-family: var(--mono); font-size: 11px; }
+.d-add { color: var(--ok); font-weight: 600; }
+.d-del { color: var(--danger); font-weight: 600; }
+.diff-box {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.7;
+}
+.diff-line { display: flex; gap: 6px; padding: 0 8px; white-space: pre; }
+.diff-line.add { background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok); }
+.diff-line.del { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
+.diff-line.gap { color: var(--faint); }
+.diff-sign { flex: none; width: 8px; user-select: none; }
+.diff-text { flex: 1; min-width: 0; }
+
+.host-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 26px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 0;
+}
+.host-row + .card-hint {
+  margin: 8px 0 0;
+  font-size: 10.5px;
+  color: var(--faint);
+  line-height: 1.7;
+}
+
+.hist-drawer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 480px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow-pop);
+  padding: 20px;
+  z-index: 3;
+  animation: weft-slide .22s cubic-bezier(.22, .8, .3, 1);
+}
+.hist-note { margin: 6px 0 0; font-size: 11px; color: var(--faint); line-height: 1.7; }
+.hist-empty {
+  margin-top: 14px;
+  padding: 22px 0;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+.hist-list {
+  margin-top: 10px;
+  flex: 1;
+  min-height: 60px;
+  overflow-y: auto;
+}
+.hist-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  font-size: 11.5px;
+}
+.hist-item:hover { background: var(--surface-3); }
+.hist-item.on {
+  background: var(--surface-3);
+  border-color: var(--line);
+}
+.hist-time { font-family: var(--mono); font-size: 11px; }
+.hist-item + .hist-item { margin-top: 2px; }
+.hist-detail {
+  flex-shrink: 0;
+  max-height: 62%;
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.hist-detail-head { font-size: 11px; margin-bottom: 8px; }
+.diff-stat { display: flex; gap: 10px; font-family: var(--mono); font-size: 11px; }
+.d-add { color: var(--ok); font-weight: 600; }
+.d-del { color: var(--danger); font-weight: 600; }
+.diff-box {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.7;
+}
+.diff-line { display: flex; gap: 6px; padding: 0 8px; white-space: pre; }
+.diff-line.add { background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok); }
+.diff-line.del { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
+.diff-line.gap { color: var(--faint); }
+.diff-sign { flex: none; width: 8px; user-select: none; }
+.diff-text { flex: 1; min-width: 0; }
+
+.host-row { border-top: 1px dashed var(--line-soft); }
+.approve-row { display: flex; flex-direction: column; gap: 5px; padding: 6px 0; }
+.approve-row + .approve-row { border-top: 1px dashed var(--line-soft); }
+.approve-row .rule-label { font-size: 11px; color: var(--muted); }
+.scope-grid .acl-card code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  font-size: 10.5px;
+}
 
 .codearea { min-height: 560px; }
 

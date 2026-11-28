@@ -105,6 +105,14 @@ export function DeleteUser(id: string): $CancellablePromise<void> {
 }
 
 /**
+ * Diagnose 实测一台设备：链路、ACL 放行、目标端口。
+ * port 传 0 按 22 算。整个过程最长 45 秒（三次 disco 加一次拨测）。
+ */
+export function Diagnose(ip: string, port: number): $CancellablePromise<string> {
+    return $Call.ByID(3264391779, ip, port);
+}
+
+/**
  * DisableDeviceExpiry 取消密钥到期时间，让节点长期有效。
  */
 export function DisableDeviceExpiry(id: string): $CancellablePromise<void> {
@@ -183,6 +191,13 @@ export function GetPolicy(): $CancellablePromise<string> {
     return $Call.ByID(3281717999);
 }
 
+/**
+ * GetPolicyVersion 取某一版原文，用于查看和对比。
+ */
+export function GetPolicyVersion(id: number): $CancellablePromise<string> {
+    return $Call.ByID(2371860945, id);
+}
+
 export function GetState(): $CancellablePromise<string> {
     return $Call.ByID(745931622);
 }
@@ -230,6 +245,13 @@ export function ListDevicesByUser(user: string): $CancellablePromise<string> {
 
 export function ListForwards(): $CancellablePromise<string> {
     return $Call.ByID(3971275841);
+}
+
+/**
+ * ListPolicyHistory 返回最近保存前的版本，新的在前。
+ */
+export function ListPolicyHistory(): $CancellablePromise<string> {
+    return $Call.ByID(1282318943);
 }
 
 export function ListUsers(): $CancellablePromise<string> {
@@ -318,6 +340,13 @@ export function RenameUser(id: string, name: string): $CancellablePromise<void> 
  */
 export function RenewAPIKey(days: number): $CancellablePromise<void> {
     return $Call.ByID(3992832443, days);
+}
+
+/**
+ * RestorePolicy 把历史版本写回服务端。写之前当前版本会进历史，所以回滚也能后悔。
+ */
+export function RestorePolicy(id: number): $CancellablePromise<void> {
+    return $Call.ByID(2906725965, id);
 }
 
 /**

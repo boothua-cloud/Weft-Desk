@@ -20,10 +20,29 @@ export interface AclRule {
   extra: Record<string, unknown>
 }
 
+/** hosts 里的一条别名：给 IP 起个名字，规则里就能写 nas:5000 */
+export interface AclHost {
+  name: string
+  addr: string
+}
+
+/** autoApprovers：谁通告的路由 / 出口节点可以直接生效，不用人工批准 */
+export interface AclApprovers {
+  routes: string[]
+  exitNode: string[]
+}
+
 export interface AclForm {
   groups: AclEntry[]
   tagOwners: AclEntry[]
   acls: AclRule[]
+  hosts: AclHost[]
+  /** 原文的 hosts 不是「名字 → 字符串」，表单不接，原样留在 extra 里 */
+  hostsEditable: boolean
+  approvers: AclApprovers
+  /** autoApprovers 里不是 routes / exitNode 的键，原样带回去 */
+  approversRest: Record<string, unknown>
+  approversEditable: boolean
   extra: Record<string, unknown>
   // 原文里有注释 / 尾逗号，保存表单会把它们抹掉，需要提示用户
   hadComments: boolean
@@ -193,11 +212,51 @@ function readRules(raw: unknown, refs: Map<string, string> = new Map()): { rules
   return { rules, hasIP }
 }
 
+// hosts 是「名字 → 地址」，值是字符串。老版本还见过值是数组的写法，
+// 那种表单不接，整段留在 extra 里原样保存。
+function readHosts(raw: unknown): { entries: AclHost[]; editable: boolean } {
+  if (raw === undefined) return { entries: [], editable: true }
+  if (!isObject(raw)) return { entries: [], editable: false }
+  const entries: AclHost[] = []
+  for (const [name, v] of Object.entries(raw)) {
+    if (typeof v !== 'string') return { entries: [], editable: false }
+    entries.push({ name, addr: v })
+  }
+  return { entries, editable: true }
+}
+
+// autoApprovers 只有 routes / exitNode 两个键，其余原样留着
+function readApprovers(raw: unknown): {
+  value: AclApprovers
+  rest: Record<string, unknown>
+  editable: boolean
+} {
+  const empty: AclApprovers = { routes: [], exitNode: [] }
+  if (raw === undefined) return { value: empty, rest: {}, editable: true }
+  if (!isObject(raw)) return { value: empty, rest: {}, editable: false }
+  const value: AclApprovers = { routes: [], exitNode: [] }
+  const rest: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(raw)) {
+    if (k !== 'routes' && k !== 'exitNode') {
+      rest[k] = v
+      continue
+    }
+    if (!isStringArray(v)) return { value: empty, rest: {}, editable: false }
+    value[k === 'routes' ? 'routes' : 'exitNode'] = [...v]
+  }
+  return { value, rest, editable: true }
+}
+
 export function parseAcl(text: string): ParseResult {
   if (!text.trim()) {
     return {
       ok: true,
-      form: { groups: [], tagOwners: [], acls: [], extra: {}, hadComments: false, hasAclsKey: false, hasIPRules: false },
+      form: {
+        groups: [], tagOwners: [], acls: [],
+        hosts: [], hostsEditable: true,
+        approvers: { routes: [], exitNode: [] }, approversRest: {}, approversEditable: true,
+        extra: {}, hadComments: false, hasAclsKey: false, hasIPRules: false,
+      },
     }
   }
   const stripped = stripComments(text)
@@ -216,9 +275,14 @@ export function parseAcl(text: string): ParseResult {
   const rules = readRules(root.acls, groupRefs(groups.entries))
   if (rules.error) return { ok: false, error: rules.error }
 
+  const hosts = readHosts(root.hosts)
+  const approvers = readApprovers(root.autoApprovers)
+
   const extra: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(root)) {
     if (k === 'groups' || k === 'tagOwners' || k === 'acls') continue
+    if (k === 'hosts' && hosts.editable) continue
+    if (k === 'autoApprovers' && approvers.editable) continue
     extra[k] = v
   }
 
@@ -228,6 +292,11 @@ export function parseAcl(text: string): ParseResult {
       groups: groups.entries,
       tagOwners: tagOwners.entries,
       acls: rules.rules,
+      hosts: hosts.entries,
+      hostsEditable: hosts.editable,
+      approvers: approvers.value,
+      approversRest: approvers.rest,
+      approversEditable: approvers.editable,
       extra,
       hadComments: stripped.hadComments,
       hasAclsKey: 'acls' in root,
@@ -253,6 +322,25 @@ export function serializeAcl(form: AclForm): string {
     if (k) tagOwners[k] = t.values.map(userToken)
   }
   if (Object.keys(tagOwners).length) out.tagOwners = tagOwners
+
+  // 别名放规则前面：规则里写 nas，上面得先有个 nas 的定义
+  if (form.hostsEditable) {
+    const hosts: Record<string, string> = {}
+    for (const h of form.hosts) {
+      const n = h.name.trim()
+      const a = h.addr.trim()
+      if (n && a) hosts[n] = a
+    }
+    if (Object.keys(hosts).length) out.hosts = hosts
+  }
+
+  if (form.approversEditable) {
+    const a: Record<string, unknown> = {}
+    if (form.approvers.routes.length) a.routes = [...form.approvers.routes]
+    if (form.approvers.exitNode.length) a.exitNode = [...form.approvers.exitNode]
+    for (const [k, v] of Object.entries(form.approversRest)) a[k] = v
+    if (Object.keys(a).length) out.autoApprovers = a
+  }
 
   const refs = new Map<string, string>()
   for (const k of Object.keys(groups)) {
@@ -318,6 +406,32 @@ export function validateAcl(form: AclForm, ctx: ValidateCtx = {}): AclIssue[] {
     dupTag.add(k)
     if (!t.values.length) issues.push({ level: 'warn', text: `标签「${k}」没有归属` })
   }
+
+  // hosts 别名：名字重复会互相覆盖，地址写错规则就指到别处去
+  const hostNames = new Set<string>()
+  for (const h of form.hosts) {
+    const n = h.name.trim()
+    const a = h.addr.trim()
+    if (!n) { issues.push({ level: 'error', text: '有条别名没填名字' }); continue }
+    if (hostNames.has(n)) issues.push({ level: 'error', text: `别名「${n}」重复定义` })
+    hostNames.add(n)
+    if (!a) issues.push({ level: 'warn', text: `别名「${n}」没填地址` })
+    else if (!IP_LIKE.test(a)) issues.push({ level: 'warn', text: `别名「${n}」的地址「${a}」不像 IP` })
+  }
+
+  // 自动批准里写 tag: 或人名。标签没在 tagOwners 里定义，服务端直接拒
+  const checkApprovers = (values: string[], label: string) => {
+    for (const v of values) {
+      if (v.startsWith('tag:') && !tagNames.has(v)) {
+        issues.push({ level: 'warn', text: `自动批准${label}的 ${v} 没在 tagOwners 里定义` })
+      }
+      if (v.startsWith('group:') && !groupNames.has(v)) {
+        issues.push({ level: 'warn', text: `自动批准${label}的 ${v} 没定义` })
+      }
+    }
+  }
+  checkApprovers(form.approvers.routes, '子网路由')
+  checkApprovers(form.approvers.exitNode, '出口节点')
 
   const members = new Set<string>()
   for (const v of [...(ctx.members ?? []), ...form.groups.flatMap((g) => g.values)]) {

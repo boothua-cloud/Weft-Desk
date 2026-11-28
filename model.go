@@ -157,6 +157,14 @@ type HealthInfo struct {
 }
 
 // Policy 是 ACL 策略文档，Headscale v1 只有内容与更新时间，没有 ETag。
+// PolicyVersion 是策略历史里的一版。内容单取，列表只带摘要。
+type PolicyVersion struct {
+	ID    int64  `json:"id"`
+	At    string `json:"at"`
+	Size  int    `json:"size"`
+	Lines int    `json:"lines"`
+}
+
 type Policy struct {
 	Content   string `json:"content"`
 	UpdatedAt string `json:"updatedAt"`
@@ -220,6 +228,43 @@ type ForwardStatus struct {
 
 // PeerInfo 是节点自己从控制面同步下来的对端视图，不需要任何 API Key。
 // 用来判断「连不上」到底是本机问题还是对端离线。
+// DiagReport 是一次连通性检查的结果。界面只负责把它摆出来，
+// 结论和可能原因都在后端算好：同一份字要给 CLI 和 GUI 用。
+type DiagReport struct {
+	IP   string `json:"ip"`
+	Name string `json:"name"`
+	Port int    `json:"port"`
+
+	Online    bool   `json:"online"`
+	Path      string `json:"path"`      // 直连 / DERP / 未知
+	Relay     string `json:"relay"`     // 当前用的 DERP 区域
+	CurAddr   string `json:"curAddr"`   // 直连地址，空表示全靠 DERP
+	Handshake string `json:"handshake"` // 最近一次握手，多久以前
+	TxBytes   int64  `json:"txBytes"`
+	RxBytes   int64  `json:"rxBytes"`
+	Version   string `json:"version"`
+
+	// disco 探测：走 magicsock，不碰 wireguard 与 IP 层。
+	// 通了说明对端可达、密钥协商没问题；不通就是链路本身的事，跟服务和 ACL 无关。
+	PingMs    float64 `json:"pingMs"`    // 最快一次，-1 表示一次都没通
+	PingWorst float64 `json:"pingWorst"` // 最慢一次，抖动大说明链路不稳
+	PingLost  int     `json:"pingLost"`  // 3 次里丢了几次
+	PingErr   string  `json:"pingErr"`
+
+	// TCP 拨测：真的连一次目标端口。通了才算「能用」。
+	DialMs  float64 `json:"dialMs"`
+	DialErr string  `json:"dialErr"`
+
+	// ACL 判定：包过滤规则里有没有放行这个地址和端口
+	ACLAllowed bool `json:"aclAllowed"`
+	ACLChecked bool `json:"aclChecked"`
+
+	Verdict string   `json:"verdict"` // 一句话结论
+	Hints   []string `json:"hints"`   // 不通时按可能性排序的原因
+	At      string   `json:"at"`
+}
+
+// PeerInfo 是列表里的对端快照。诊断页另有 DiagReport，比它多实测数据。
 type PeerInfo struct {
 	Name     string `json:"name"`
 	IP       string `json:"ip"`

@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -376,4 +377,51 @@ func dataDirDisplay() string {
 		return "~" + strings.TrimPrefix(dir, home)
 	}
 	return dir
+}
+
+// ---------- 策略历史 ----------
+
+// ListPolicyHistory 返回最近的版本，新的在前。只给摘要，内容单取。
+func (s *Store) ListPolicyHistory(limit int) ([]PolicyVersion, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	rows, err := s.db.Query(`SELECT id,created_at,content FROM policy_history ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []PolicyVersion{}
+	for rows.Next() {
+		var v PolicyVersion
+		var body string
+		if err = rows.Scan(&v.ID, &v.At, &body); err != nil {
+			return nil, err
+		}
+		v.Size = len(body)
+		v.Lines = strings.Count(body, "\n") + 1
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// GetPolicyVersion 取某一版的原文。
+func (s *Store) GetPolicyVersion(id int64) (string, error) {
+	var body string
+	err := s.db.QueryRow(`SELECT content FROM policy_history WHERE id=?`, id).Scan(&body)
+	if err != nil {
+		return "", fmt.Errorf("这一版已经不在了")
+	}
+	return body, nil
+}
+
+// PrunePolicyHistory 只留最近 keep 版。策略文件不大，留着占不了多少地方，
+// 但堆到几百版翻起来就废了。
+func (s *Store) PrunePolicyHistory(keep int) error {
+	if keep <= 0 {
+		keep = 20
+	}
+	_, err := s.db.Exec(`DELETE FROM policy_history WHERE id NOT IN (
+      SELECT id FROM policy_history ORDER BY id DESC LIMIT ?)`, keep)
+	return err
 }
