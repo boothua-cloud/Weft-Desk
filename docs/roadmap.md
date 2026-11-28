@@ -16,13 +16,13 @@
 
 | 阶段 | 现在最该做的 |
 |---|---|
-| P0 | 连通性诊断 · 控制面自签证书 · ACL 补 `autoApprovers` 与 `hosts` · 策略历史回滚 |
+| P0 | 连通性诊断 · 服务端自签证书 · ACL 补 `autoApprovers` 与 `hosts` · 策略历史回滚 |
 | P1 | 设备巡检清单 · ACL 风险体检 · 内嵌终端 · 审计页面化 · ⌘K 命令面板 |
 | P2 | 出口节点 · 分流 · 本地名字解析 · MTU 探测 · 文件互传 · 公证与签名 |
 
 ## 两条来自代码的真缺口
 
-- **控制面自签证书没开关**。`sharedHTTP` 用的是默认 Transport，headscale 用 https 加自签证书时，API 直接报 `x509: certificate signed by unknown authority`，界面上无处可改。而 `AllowInsecure` 那个勾选项是给「内网应用自签证书」用的（`model.go` 注释写得很清楚），跟控制面无关。内网自建 headscale 十有八九是自签，这个坑迟早碰到。
+- **服务端自签证书没开关**。`sharedHTTP` 用的是默认 Transport，headscale 用 https 加自签证书时，API 直接报 `x509: certificate signed by unknown authority`，界面上无处可改。而 `AllowInsecure` 那个勾选项是给「内网应用自签证书」用的（`model.go` 注释写得很清楚），跟服务端无关。内网自建 headscale 十有八九是自签，这个坑迟早碰到。
 - **代理只认环境变量**。HTTP 客户端没设 Transport，所以 `HTTPS_PROXY` 生效，但 macOS「系统设置 → 网络 → 代理」里配的不生效——GUI 应用拿不到那份配置。企业网络里访问外部 headscale 时会卡在这里。
 
 ---
@@ -99,7 +99,7 @@
 
 ## 七、工程与发布
 
-- [ ] **控制面自签证书**（小，P0）— 按服务端保存「信任的 CA 或指纹」，替代全局跳过校验；顺手把 `AllowInsecure` 的文案改清楚，现在容易被当成服务端选项。
+- [ ] **服务端自签证书**（小，P0）— 按服务端保存「信任的 CA 或指纹」，替代全局跳过校验；顺手把 `AllowInsecure` 的文案改清楚，现在容易被当成服务端选项。
 - [ ] ★ **读取系统代理设置**（中）— macOS 走 `scutil --proxy`，Windows 走注册表，别只认 `HTTPS_PROXY`。
 - [ ] **macOS 公证 + Windows 代码签名**（中）— 别人下载要绕 Gatekeeper、弹 SmartScreen，这比多两个功能更决定别人愿不愿意装。
 - [ ] **CLI 伴侣**（中）— `weft status` / `weft forward add` / `weft acl diff`。

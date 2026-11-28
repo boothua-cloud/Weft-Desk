@@ -145,7 +145,7 @@ function diagText(): string {
     L.push(`TUN ${s.tun || '未建立'} · 本机 ${s.selfIP || '—'}${s.hostname ? ' (' + s.hostname + ')' : ''}`)
     L.push(`出口 ${s.direct ? '直连' : 'DERP ' + (s.relay || '?')} · 子网接管 ${s.acceptRoutes ? '开' : '关'}`)
     const c = s.control
-    L.push(`控制面 ${c.url || '—'} ${c.ok ? Math.round(c.ms) + 'ms Headscale ' + (c.version || '?') : '不可达：' + c.err}`)
+    L.push(`服务端 ${c.url || '—'} ${c.ok ? Math.round(c.ms) + 'ms Headscale ' + (c.version || '?') : '不可达：' + c.err}`)
     for (const r of s.routes ?? []) L.push(`路由 ${r.prefix} → ${r.peer || r.peerIP}：${r.verdict}`)
     for (const h of s.health ?? []) L.push('健康告警：' + h)
   } else {
@@ -226,7 +226,7 @@ watch(
       </div>
 
       <div v-if="!state?.connected" class="notice warn diag-notice">
-        还没连上。下面这台机器的自检会说清楚卡在哪一步——是没登录、网卡没建起来，还是控制面根本连不上。
+        还没连上。下面这台机器的自检会说清楚卡在哪一步——是没登录、网卡没建起来，还是服务端根本连不上。
       </div>
       <div v-else-if="state?.lastError" class="notice warn diag-notice">
         引擎报告：{{ state.lastError }}
@@ -265,7 +265,7 @@ watch(
             <b class="mono">{{ self.selfIP || '—' }}</b>
           </div>
           <div class="fact">
-            <span>控制面</span>
+            <span>服务端</span>
             <b v-if="self.control.ok">
               {{ Math.round(self.control.ms) }} ms<template v-if="self.control.version"> · {{ self.control.version }}</template>
             </b>

@@ -22,7 +22,7 @@ https://github.com/boothua-cloud/Weft-Desk/releases/tag/v0.1.5
 
 主题：连不上、为什么慢，都要在界面上看得见。
 
-- [x] 控制面自签证书
+- [x] 服务端自签证书
   - `sharedHTTP` 换成按服务端配置构造的 client。CA PEM 或「跳过校验」按服务端存，跟 Key 一样进配置。
   - 结果：`newHTTPClient` 里挂 `tls.Config`，`newControlPlane` 时重建。CA 解析不了的当场报错。
   - 验：`httptest.NewTLSServer` 起自签服务，不配 CA 连不上、配了 CA 能连、勾跳过也能连。

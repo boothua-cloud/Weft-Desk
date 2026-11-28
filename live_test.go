@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 真实控制面联调测试：默认跳过，WEFT_LIVE=1 时用钥匙串里的 API Key 跑一次。
+// 真实服务端联调测试：默认跳过，WEFT_LIVE=1 时用钥匙串里的 API Key 跑一次。
 // 主要防「结构体字段类型与 swagger 不一致导致整表反序列化失败」这类问题。
 func TestLiveDevices(t *testing.T) {
 	if os.Getenv("WEFT_LIVE") == "" {

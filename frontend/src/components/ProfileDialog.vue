@@ -13,7 +13,7 @@ const hostname = ref('')
 const apiKey = ref('')
 const authKey = ref('')
 const allowInsecure = ref(false)
-// 控制面是自签证书：贴了 CA 就只认这份 CA，没贴就跳过校验
+// 服务端是自签证书：贴了 CA 就只认这份 CA，没贴就跳过校验
 const selfSigned = ref(false)
 const caCert = ref('')
 const saving = ref(false)
@@ -193,7 +193,7 @@ async function save() {
       </section>
 
       <section class="pf-sec">
-        <div class="pf-sec-title">控制面证书</div>
+        <div class="pf-sec-title">服务端证书</div>
         <div class="pf-inline" style="padding-top:0;border-top:0">
           <div style="min-width:0">
             <span class="pf-switch-title">服务端用自签证书</span>

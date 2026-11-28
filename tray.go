@@ -257,7 +257,7 @@ func (u *appUI) quit() {
 	u.app.Quit()
 }
 
-// statusLine 是托盘里那行状态文字，尽量短，只放 IP 或控制面主机名。
+// statusLine 是托盘里那行状态文字，尽量短，只放 IP 或服务端主机名。
 func (s *WeftService) statusLine() string {
 	s.mu.Lock()
 	cfg, eng := s.cfg, s.engine

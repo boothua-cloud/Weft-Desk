@@ -193,7 +193,7 @@ func (s *WeftService) shutdown() {
 	}
 }
 
-// cachedList 先请求真实控制面；成功就写 SQLite 缓存，
+// cachedList 先请求真实服务端；成功就写 SQLite 缓存，
 // 失败则回退到上次同步的数据，前端会标注「离线缓存」。
 // cacheKey 给列表缓存加服务端前缀。
 // 之前所有 profile 共用 "devices" 这一个 key，切换服务端后一旦新服务端请求失败，
@@ -725,7 +725,7 @@ func (s *WeftService) SetUIPrefs(raw string) (string, error) {
 	return toJSON(cfg)
 }
 
-// SetCredential 单独把控制面凭证写入系统钥匙串，绝不进 SQLite。
+// SetCredential 单独把服务端凭证写入系统钥匙串，绝不进 SQLite。
 func (s *WeftService) SetCredential(kind, value string) error {
 	key := secretMain
 	switch kind {
@@ -932,7 +932,7 @@ func defaultCapabilities() Capabilities {
 
 // GetLoginURL 主动要一次网页授权链接。
 // 没配授权 Key 时首次连接必须走这条，界面在什么都看不到时给个按钮，
-// 不用让用户猜是控制面没回还是界面没刷新。
+// 不用让用户猜是服务端没回还是界面没刷新。
 func (s *WeftService) GetLoginURL() (string, error) {
 	s.mu.Lock()
 	eng := s.engine

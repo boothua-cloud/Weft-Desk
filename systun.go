@@ -381,7 +381,7 @@ func (e *systemTUNEngine) watchAuthURL(ctx context.Context, srv *tsnet.Server) {
 
 // RequestLogin 主动要一次授权链接。
 // tsnet 只在 NeedsLogin 时自己打日志，界面上什么都没出现时，用户点一下
-// 「获取授权链接」就能重新触发，不用去猜是控制面没响应还是界面没刷新。
+// 「获取授权链接」就能重新触发，不用去猜是服务端没响应还是界面没刷新。
 func (e *systemTUNEngine) RequestLogin(ctx context.Context) (string, error) {
 	e.mu.Lock()
 	srv, cur := e.srv, e.loginURL
@@ -409,7 +409,7 @@ func (e *systemTUNEngine) RequestLogin(ctx context.Context) (string, error) {
 	for {
 		n, err := w.Next()
 		if err != nil {
-			return "", errors.New("没等到授权链接：控制面没响应，或这个账号已经有节点在等授权")
+			return "", errors.New("没等到授权链接：服务端没响应，或这个账号已经有节点在等授权")
 		}
 		if n.BrowseToURL != nil && *n.BrowseToURL != "" {
 			u := cleanAuthURL(*n.BrowseToURL)
@@ -478,7 +478,7 @@ func (e *systemTUNEngine) waitUp(ctx context.Context, srv *tsnet.Server, dev wgt
 		}
 		e.mu.Unlock()
 		markConnected(e.cfg) // 上线成功才写标记，失败的自动连接不会反复触发
-		// 把控制面下发的对端全部打出来：谁在线、谁通告了什么子网。
+		// 把服务端下发的对端全部打出来：谁在线、谁通告了什么子网。
 		// 「连不上」的第一手判据在这里，不用去后台翻。
 		peers := e.Peers()
 		hlog("对端共 %d 个（本机 home DERP 见上）", len(peers))
@@ -507,7 +507,7 @@ func collectRoutes(ctx context.Context, srv *tsnet.Server, dev wgtun.Device) rou
 	all := []netip.Prefix{base}
 
 	if lc, err := srv.LocalClient(); err == nil {
-		// 开启 accept-routes 后控制面会重下发 netmap，轮询等它生效。
+		// 开启 accept-routes 后服务端会重下发 netmap，轮询等它生效。
 		cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		for i := 0; i < 20; i++ {
 			st, serr := lc.Status(cctx)
@@ -760,7 +760,7 @@ func (e *systemTUNEngine) DiagDump(ctx context.Context, targets []DiagTarget) []
 		if !p.LastHandshake.IsZero() {
 			hs = time.Since(p.LastHandshake).Round(time.Second).String() + " ago"
 		}
-		// Cap 是控制面给该节点的能力版本号：>=152 时本机才会用 hybrid
+		// Cap 是服务端给该节点的能力版本号：>=152 时本机才会用 hybrid
 		// 后量子握手，对端若不支持会静默丢弃，表现为「发出去没有回应」。
 		capv, ver := -1, "?"
 		if node, nerr := lc.PeerByID(ctx, p.NodeID); nerr == nil && node != nil {
@@ -870,7 +870,7 @@ func (e *systemTUNEngine) Snapshot(ctx context.Context) (SelfReport, error) {
 		return rep, err
 	}
 	rep.Backend = st.BackendState
-	// AuthURL 非空表示控制面给了个链接在等授权，这时不算登录成功
+	// AuthURL 非空表示服务端给了个链接在等授权，这时不算登录成功
 	rep.LoggedIn = st.AuthURL == "" && st.BackendState != "NeedsLogin" &&
 		st.BackendState != "NeedsMachineAuth"
 	rep.Health = st.Health
@@ -942,8 +942,8 @@ func (e *systemTUNEngine) DiagPeer(ctx context.Context, ip netip.Addr, port uint
 	if peer == nil {
 		rep.Verdict = "netmap 里没有这台设备"
 		rep.Hints = []string{
-			"控制面还没把对端下发过来，等几秒再试",
-			"对端可能已经从这个控制面退出，或者换了账号",
+			"服务端还没把对端下发过来，等几秒再试",
+			"对端可能已经从这个服务端退出，或者换了账号",
 		}
 		return rep, nil
 	}

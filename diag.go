@@ -43,7 +43,7 @@ func runDiag() {
 	defer svc.shutdown()
 
 	cfg := svc.cfg
-	fmt.Printf("== 配置 ==\n控制面=%s 地址=%s 引擎=%s hostname=%s 离线预览=%v\n\n",
+	fmt.Printf("== 配置 ==\n服务端=%s 地址=%s 引擎=%s hostname=%s 离线预览=%v\n\n",
 		cfg.ControlPlane, cfg.BaseURL, cfg.TunnelEngine, cfg.Hostname, cfg.Demo)
 	if cfg.Demo {
 		fmt.Println("离线预览已开启，不会建立任何连接。请先到设置页关闭。")
@@ -251,7 +251,7 @@ func (s *WeftService) PeerPorts() (string, error) {
 }
 
 // matchIPSet 判断地址是否落在规则里的一个 IP 集合中。
-// 控制面下发的写法有四种：*、单个 IP、CIDR、a-b 区间。
+// 服务端下发的写法有四种：*、单个 IP、CIDR、a-b 区间。
 func matchIPSet(spec string, ip netip.Addr) bool {
 	spec = strings.TrimSpace(spec)
 	switch {
@@ -279,7 +279,7 @@ func matchIPSet(spec string, ip netip.Addr) bool {
 	return false
 }
 
-// ACL 判定的三种结果。为什么不是 bool：客户端拿到的规则是控制面下发的
+// ACL 判定的三种结果。为什么不是 bool：客户端拿到的规则是服务端下发的
 // 原文，可能写着 `autogroup:member`、`group:ops`、`tag:db` 这类表达式，
 // 其中只有一部分能在客户端算出来。算不出来时判成 deny，就会把
 // 「对端没开服务」说成「ACL 拦了」——这正是最容易误导人的地方。
@@ -297,7 +297,7 @@ type aclVerdict struct {
 
 // aclEvaluate 判断包过滤规则里有没有放行 self → dst:port。
 //
-// 这不是完整求值：tailscale 的规则是「首条匹配生效」，控制面已经把它编译成
+// 这不是完整求值：tailscale 的规则是「首条匹配生效」，服务端已经把它编译成
 // 白名单，所以「没有一条匹配」就等于不放行。难点在于规则里的表达式：
 // 能算的（IP/CIDR/区间/*/tag:）照实算，算不出来的（group:/autogroup:admin）
 // 必须返回 unknown，而不是当作不匹配。
@@ -542,7 +542,7 @@ func diagVerdict(r DiagReport) (string, []string) {
 	if !r.Online {
 		return "这台设备离线",
 			[]string{
-				"控制面显示它现在不在线，先确认对方开着机、连着网",
+				"服务端显示它现在不在线，先确认对方开着机、连着网",
 				"对方上线后会自动恢复，不用改配置",
 			}
 	}
@@ -582,7 +582,7 @@ func diagVerdict(r DiagReport) (string, []string) {
 			hints = append(hints, "两端可能都挡了 UDP，直连打不通。看总览页的 DERP 状态")
 		}
 		if r.Handshake == "从未" {
-			hints = append(hints, "和对端从来没握过手：先去控制面确认两边在同一账号、同一 tailnet")
+			hints = append(hints, "和对端从来没握过手：先去服务端确认两边在同一账号、同一 tailnet")
 		}
 		return fmt.Sprintf("链路不通，%s 连不上", target), hints
 	}
@@ -643,7 +643,7 @@ func diagVerdict(r DiagReport) (string, []string) {
 	return fmt.Sprintf("连不上 %s", target),
 		[]string{
 			"没读到包过滤规则（可能刚连上、netmap 还没同步），分不清是 ACL 还是对端服务",
-			"等几秒再检查一次；还读不到就直接看控制面的策略",
+			"等几秒再检查一次；还读不到就直接看服务端的策略",
 			"拨测报错：" + r.DialErr,
 		}
 }

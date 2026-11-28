@@ -6,7 +6,7 @@ import (
 	"tailscale.com/tsnet"
 )
 
-// 验证内嵌节点能在没有 tailscaled、没有 root、控制面不可达时完成初始化。
+// 验证内嵌节点能在没有 tailscaled、没有 root、服务端不可达时完成初始化。
 // ControlURL 故意指向本地不可达端口，只看 Start 是否依赖系统服务或提权。
 func TestTSNetStartWithoutDaemon(t *testing.T) {
 	srv := &tsnet.Server{

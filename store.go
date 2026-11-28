@@ -205,7 +205,7 @@ func (s *Store) DeleteApp(id string) error {
 }
 
 // ---------- 列表缓存 ----------
-// 控制面数据落 SQLite：下次打开秒出、断网或 401 时还能看到上次同步到的真实数据。
+// 服务端数据落 SQLite：下次打开秒出、断网或 401 时还能看到上次同步到的真实数据。
 
 func (s *Store) CachePut(key string, v any) error {
 	b, err := json.Marshal(v)

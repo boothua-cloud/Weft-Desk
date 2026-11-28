@@ -12,7 +12,7 @@ import (
 )
 
 // 用本地 httptest 顶替 tailnet 目标，验证 127.0.0.1 代理的转发、
-// Host / Location 重写与端口复用，不需要真实控制面。
+// Host / Location 重写与端口复用，不需要真实服务端。
 func TestProxyHubForward(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != "nas.internal:5000" {

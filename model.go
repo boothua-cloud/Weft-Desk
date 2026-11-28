@@ -23,8 +23,8 @@ type Config struct {
 	SocksPort       int    `json:"socksPort"`       // 默认 1080
 	ForwardBind     string `json:"forwardBind"`     // 本地监听地址：127.0.0.1（仅本机）| 0.0.0.0（同网段可达）
 	AutoForward     bool   `json:"autoForward"`     // 隧道起来后自动拉起已启用的端口映射
-	CACert          string `json:"caCert"`          // 控制面自签证书的 CA（PEM），填了只认它
-	ControlInsecure bool   `json:"controlInsecure"` // 没给 CA 时跳过控制面证书校验
+	CACert          string `json:"caCert"`          // 服务端自签证书的 CA（PEM），填了只认它
+	ControlInsecure bool   `json:"controlInsecure"` // 没给 CA 时跳过服务端证书校验
 	SyncEnabled     bool   `json:"syncEnabled"`     // 允许同 tailnet 的其他设备拉取应用书签
 	SyncPort        int    `json:"syncPort"`        // 同步端口，默认 4160
 
@@ -46,7 +46,7 @@ type Profile struct {
 	AuthMode      string `json:"authMode"`
 	AllowInsecure bool   `json:"allowInsecure"`
 	Hostname      string `json:"hostname"`
-	// 控制面是自签证书时的两选一：给 CA，或者干脆不校验。
+	// 服务端是自签证书时的两选一：给 CA，或者干脆不校验。
 	CACert          string `json:"caCert"`
 	ControlInsecure bool   `json:"controlInsecure"`
 }
@@ -82,7 +82,7 @@ type State struct {
 	Skipped      []string   `json:"skipped"`    // 因与本地网段冲突被跳过的路由
 	NetErr       string     `json:"netErr"`     // 路由配置错误
 	CLIReady     bool       `json:"cliReady"`   // 兼容旧前端：等价于 EngineReady
-	Configured   bool       `json:"configured"` // 是否已填控制面凭证
+	Configured   bool       `json:"configured"` // 是否已填服务端凭证
 	HasAPIKey    bool       `json:"hasApiKey"`  // 是否配了能用的管理 API Key（不是节点 Auth Key）
 	// APIKeyIssue 是「为什么不算配了」：非空时界面要把它显示出来，
 	// 否则入口突然消失会让人以为软件坏了
@@ -293,7 +293,7 @@ type SelfReport struct {
 	Routes   []RouteCheck `json:"routes"`
 }
 
-// ControlStat 是控制面那一次探测的结果。
+// ControlStat 是服务端那一次探测的结果。
 type ControlStat struct {
 	URL     string  `json:"url"`
 	OK      bool    `json:"ok"`
@@ -327,7 +327,7 @@ type PeerPort struct {
 	Kind  string `json:"kind"` // app | forward
 }
 
-// PeerInfo 是节点自己从控制面同步下来的对端视图，不需要任何 API Key。
+// PeerInfo 是节点自己从服务端同步下来的对端视图，不需要任何 API Key。
 // 用来判断「连不上」到底是本机问题还是对端离线。
 type PeerInfo struct {
 	Name     string `json:"name"`
@@ -342,7 +342,7 @@ type PeerInfo struct {
 }
 
 // Cached 是列表接口的统一返回：真实数据 + 来源标记。
-// source=cache 表示控制面请求失败，返回的是 SQLite 里的上次同步结果。
+// source=cache 表示服务端请求失败，返回的是 SQLite 里的上次同步结果。
 type Cached[T any] struct {
 	Items     []T    `json:"items"`
 	Source    string `json:"source"` // live | cache | none

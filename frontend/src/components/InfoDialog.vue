@@ -275,7 +275,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
           <h4><span class="step">10</span>连接诊断</h4>
           <p>
             最上面那块是<span class="hl">本机自检</span>，不看对端，只看自己：引擎在不在跑、网卡建没建起来、
-            节点登录了没有、控制面能不能连上、出口是直连还是 DERP、子网路由有没有接管。
+            节点登录了没有、服务端能不能连上、出口是直连还是 DERP、子网路由有没有接管。
             连不上的时候这块照样有内容——十有八九答案就在这里。
           </p>
           <p style="margin-top:8px">

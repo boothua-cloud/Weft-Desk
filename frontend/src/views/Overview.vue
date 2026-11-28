@@ -271,7 +271,7 @@ async function fetchAuth() {
   authBusy.value = true
   try {
     const u = await api.loginURL()
-    emit('notify', u ? '授权链接已获取，粘到浏览器打开' : '控制面没给链接')
+    emit('notify', u ? '授权链接已获取，粘到浏览器打开' : '服务端没给链接')
     emit('refresh')
   } catch (err: any) {
     emit('notify', String(err?.message ?? err))
@@ -346,7 +346,7 @@ async function fetchAuth() {
           <div style="min-width:0">
             <b style="font-size:12px">这次连接要在浏览器里授权</b>
             <div style="font-size:11px;margin-top:4px;opacity:.85">
-              没填授权 Key 时，节点得在控制面的网页上批准一次。拿链接后粘到浏览器打开即可。
+              没填授权 Key 时，节点得在服务端的网页上批准一次。拿链接后粘到浏览器打开即可。
             </div>
           </div>
           <button class="btn sm" :disabled="authBusy" @click="fetchAuth">

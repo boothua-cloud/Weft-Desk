@@ -190,7 +190,7 @@ export function GetHelperStatus(): $CancellablePromise<string> {
 /**
  * GetLoginURL 主动要一次网页授权链接。
  * 没配授权 Key 时首次连接必须走这条，界面在什么都看不到时给个按钮，
- * 不用让用户猜是控制面没回还是界面没刷新。
+ * 不用让用户猜是服务端没回还是界面没刷新。
  */
 export function GetLoginURL(): $CancellablePromise<string> {
     return $Call.ByID(4151808203);
@@ -429,14 +429,14 @@ export function SaveProfileRaw(raw: string): $CancellablePromise<string> {
  * 
  * 它存在的理由很直接：连不上的时候，原来那一页只会说一句「还没连上」，
  * 什么都不给。可这正是最需要信息的时候——是没登录、TUN 没建、
- * 控制面不可达，还是 UDP 被挡只能走 DERP，都能从这几个字段看出来。
+ * 服务端不可达，还是 UDP 被挡只能走 DERP，都能从这几个字段看出来。
  */
 export function SelfCheck(): $CancellablePromise<string> {
     return $Call.ByID(4108694167);
 }
 
 /**
- * SetCredential 单独把控制面凭证写入系统钥匙串，绝不进 SQLite。
+ * SetCredential 单独把服务端凭证写入系统钥匙串，绝不进 SQLite。
  */
 export function SetCredential(kind: string, value: string): $CancellablePromise<void> {
     return $Call.ByID(3244816396, kind, value);

@@ -15,7 +15,7 @@ import (
 //
 // 它存在的理由很直接：连不上的时候，原来那一页只会说一句「还没连上」，
 // 什么都不给。可这正是最需要信息的时候——是没登录、TUN 没建、
-// 控制面不可达，还是 UDP 被挡只能走 DERP，都能从这几个字段看出来。
+// 服务端不可达，还是 UDP 被挡只能走 DERP，都能从这几个字段看出来。
 func (s *WeftService) SelfCheck() (string, error) {
 	s.mu.Lock()
 	eng, cfg := s.engine, s.cfg
@@ -55,7 +55,7 @@ func (s *WeftService) SelfCheck() (string, error) {
 	rep.Control = probeControl(cfg.BaseURL)
 
 	// 通告与批准只存在服务端，本机 netmap 里只有「已接受」。
-	// 控制面都连不上时别硬等这一次请求，界面会卡住十几秒。
+	// 服务端都连不上时别硬等这一次请求，界面会卡住十几秒。
 	if rep.Control.OK {
 		if hasKey, _ := s.apiKeyStatus(); hasKey {
 			rep.Routes = mergeAdvertised(rep.Routes, s.cp)
@@ -70,7 +70,7 @@ func probeControl(baseURL string) ControlStat {
 	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	st := ControlStat{URL: base}
 	if base == "" {
-		st.Err = "没填控制面地址"
+		st.Err = "没填服务端地址"
 		return st
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
@@ -115,7 +115,7 @@ func tidyNetErr(err error) string {
 	case strings.Contains(msg, "no such host"):
 		return "域名解析不了"
 	case strings.Contains(msg, "certificate"):
-		return "证书校验失败（自建控制面填一下 CA）"
+		return "证书校验失败（自建服务端填一下 CA）"
 	}
 	return msg
 }
@@ -247,8 +247,8 @@ func hasRoute(list, prefix string) bool {
 }
 
 // relayLabel 把 DERP 区域代码翻成一眼能懂的字。headscale 内嵌中继的
-// region code 就叫 "headscale"，原样显示像是控制面地址，
-// 用户会以为「出口」走的是控制面服务器。
+// region code 就叫 "headscale"，原样显示像是服务端地址，
+// 用户会以为「出口」走的是服务端。
 func relayLabel(code string) string {
 	if strings.EqualFold(code, "headscale") {
 		return "自建中继"
@@ -270,7 +270,7 @@ func routeVerdict(r RouteCheck) (string, string) {
 }
 
 // finishSelf 把散落的字段收成一句结论。顺序按「越致命越先说」：
-// 引擎没起来 > 没登录 > TUN 没建 > 控制面不通 > 健康告警。
+// 引擎没起来 > 没登录 > TUN 没建 > 服务端不通 > 健康告警。
 func finishSelf(rep SelfReport) SelfReport {
 	var bad, warn []string
 	if rep.Backend == "未启动" || rep.Backend == "读不到状态" || rep.Backend == "不支持自检" {
@@ -282,7 +282,7 @@ func finishSelf(rep SelfReport) SelfReport {
 		warn = append(warn, "没读到 TUN 接口，流量可能没走隧道")
 	}
 	if rep.Control.Err != "" {
-		bad = append(bad, "控制面连不上："+rep.Control.Err)
+		bad = append(bad, "服务端连不上："+rep.Control.Err)
 	}
 	for _, h := range rep.Health {
 		warn = append(warn, h)

@@ -73,7 +73,7 @@ func cleanAuthURL(u string) string {
 }
 
 // tsnetStateDir 持久化节点私钥与登录态。重开 App 复用同一身份、不重新注册，
-// 这是「关掉再打开连不上」的根治点。按控制面分目录，避免身份串台。
+// 这是「关掉再打开连不上」的根治点。按服务端分目录，避免身份串台。
 func tsnetStateDir(c Config) (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
