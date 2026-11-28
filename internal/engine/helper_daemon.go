@@ -17,11 +17,12 @@ import (
 
 // 常驻助手监听在这里。装在 /Library/PrivilegedHelperTools 的副本由 launchd 拉起，
 // 只在安装时授权一次，之后 App 每次连接直接连这个 socket，不再弹密码。
-const helperSocket = "/var/run/weft.sock"
+// 用变量而不是常量：单测要指到临时 socket，才能真跑一遍助手往返
+var helperSocket = "/var/run/weft.sock"
 
 const daemonFlag = "--weft-daemon"
 
-const helperVersion = "0.2.2"
+const helperVersion = "0.3.0"
 
 // daemonState 是跨连接共享的唯一一套 TUN 与路由。
 // 同一时刻只允许一个连接持有它（主 App 只会建一个），
@@ -213,6 +214,16 @@ func serveHelperConn(conn net.Conn, st *daemonState) {
 			}
 			st.mu.Unlock()
 			_ = enc.Encode(helperResponse{OK: true})
+
+		case "hosts":
+			// 本地名字解析用的 /etc/hosts 区块。和 TUN 无关，也不进共享状态，
+			// 所以不加锁：主 App 每几秒可能来一次，阻塞在 TUN 锁上没意义。
+			applied, skipped, err := writeHostsBlock(req.Hosts)
+			if err != nil {
+				_ = enc.Encode(helperResponse{Error: err.Error()})
+				continue
+			}
+			_ = enc.Encode(helperResponse{OK: true, Applied: applied, Skipped: skipped})
 
 		default:
 			_ = enc.Encode(helperResponse{Error: "未知操作: " + req.Op})

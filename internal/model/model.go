@@ -34,6 +34,9 @@ type Config struct {
 	ControlInsecure bool   `json:"controlInsecure"` // 没给 CA 时跳过服务端证书校验
 	SyncEnabled     bool   `json:"syncEnabled"`     // 允许同 tailnet 的其他设备拉取应用书签
 	SyncPort        int    `json:"syncPort"`        // 同步端口，默认 4160
+	// NameSync 把 tailnet 设备名同步进 /etc/hosts，让 ssh/curl 能用裸名。
+	// 这是全局开关：不同服务端里的设备名本来就会撞。
+	NameSync bool `json:"nameSync"`
 
 	// 多服务端：Profiles 存着每个 Headscale 的连接信息，顶层的 BaseURL/凭证等
 	// 始终是「当前激活那个」的副本，这样其余代码不用关心多套配置。
@@ -101,6 +104,13 @@ type State struct {
 	Uptime       string       `json:"uptime"`
 	Message      string       `json:"message"`
 	Capabilities Capabilities `json:"capabilities"`
+
+	// 本地名字解析的状态：开关、已写入条数、被跳过的名字、最近一次错误。
+	// 放在 State 里是因为设置页每 3 秒轮询一次就能跟着变，不用另开轮询。
+	NameSync        bool     `json:"nameSync"`
+	NameSyncCount   int      `json:"nameSyncCount"`
+	NameSyncSkipped []string `json:"nameSyncSkipped"`
+	NameSyncErr     string   `json:"nameSyncErr"`
 }
 
 type Device struct {

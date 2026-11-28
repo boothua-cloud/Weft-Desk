@@ -8,7 +8,7 @@ import ProfileDialog from '../components/ProfileDialog.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useConfirm } from '../confirm'
 
-defineProps<{ state: State | null }>()
+const props = defineProps<{ state: State | null }>()
 const emit = defineEmits(['refresh', 'notify'])
 
 const cfg = ref<Config>({
@@ -17,6 +17,7 @@ const cfg = ref<Config>({
   allowInsecure: false, authKey: '',
   autoConnect: true, autoReconnect: true, minimizeToTray: true,
   socksEnabled: false, socksPort: 1080, autoForward: false, devTools: false,
+  nameSync: false,
 })
 const secret = ref('')
 const authKey = ref('')
@@ -217,6 +218,23 @@ async function togglePref(key: PrefKey) {
   } finally { prefBusy.value = '' }
 }
 
+// 本地名字解析：开关一拨就真去写 /etc/hosts，失败要把原因说出来，
+// 不能只是把开关弹回去（用户会以为是软件坏了）
+const nameBusy = ref(false)
+async function toggleNameSync() {
+  if (nameBusy.value) return
+  const next = !props.state?.nameSync
+  nameBusy.value = true
+  try {
+    await api.setNameSync(next)
+    emit('refresh')
+    if (!next) emit('notify', '已清掉 /etc/hosts 里的设备名')
+    else emit('notify', props.state?.connected ? '设备名已写进 /etc/hosts' : '已开启，连上隧道后自动写入')
+  } catch (err: any) {
+    emit('notify', '设置失败：' + (err?.message ?? err))
+  } finally { nameBusy.value = false }
+}
+
 async function installHelper() {
   helperBusy.value = true
   try { helper.value = await api.installHelper(); emit('notify', '系统助手已就绪') }
@@ -300,6 +318,31 @@ async function uninstallHelper() {
           {{ helper?.installed ? '重新安装' : '安装登录自启' }}
         </button>
         <span class="faint" style="font-size:10.5px">装好后开机自动启动并接管网络，不用每次确认 UAC</span>
+      </div>
+    </div>
+
+    <!-- 名字解析：写 /etc/hosts，让 ssh nacos 直接用。
+         默认关闭——这是唯一会改系统文件的开关，不该自作主张打开 -->
+    <div class="card tight" style="margin-bottom:14px">
+      <div class="spread">
+        <div>
+          <span style="font-size:11.5px">本地名字解析</span>
+          <div class="faint" style="font-size:10.5px;margin-top:3px">
+            把设备名写进 /etc/hosts，终端里直接 <span class="mono">ssh nacos</span>，不用记 100.x
+          </div>
+        </div>
+        <button class="switch" :class="{ on: !!props.state?.nameSync }" :disabled="nameBusy"
+                @click="toggleNameSync"></button>
+      </div>
+      <div v-if="props.state?.nameSync" class="faint" style="font-size:10.5px;margin-top:8px">
+        已写入 {{ props.state?.nameSyncCount || 0 }} 个名字，设备有变动会自动更新；断开连接或退出应用会清掉
+      </div>
+      <div v-if="props.state?.nameSync && props.state?.nameSyncSkipped?.length" class="faint"
+           style="font-size:10.5px;margin-top:6px">
+        这些名字没写：{{ props.state?.nameSyncSkipped?.join('、') }}（hosts 里已有同名，或两台设备重名）
+      </div>
+      <div v-if="props.state?.nameSyncErr" class="notice warn" style="margin-top:8px">
+        {{ props.state?.nameSyncErr }}
       </div>
     </div>
 

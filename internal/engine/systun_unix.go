@@ -28,17 +28,23 @@ import (
 const helperFlag = "--weft-helper"
 
 type helperRequest struct {
-	Op     string   `json:"op"` // tun | configure | cleanup | ping
+	Op     string   `json:"op"` // tun | configure | cleanup | ping | hosts
 	IfName string   `json:"ifName"`
 	SelfIP string   `json:"selfIP"`
 	Routes []string `json:"routes"`
+	// hosts 操作：只传名字和地址，助手自己校验、自己拼标记区块。
+	// 不传整份文件内容，免得这条通道变成「任意改 /etc/hosts」的后门。
+	Hosts      []HostEntry `json:"hosts,omitempty"`
+	ClearHosts bool        `json:"clearHosts,omitempty"`
 }
 
 type helperResponse struct {
-	OK      bool   `json:"ok"`
-	IfName  string `json:"ifName"`
-	Version string `json:"version"`
-	Error   string `json:"error"`
+	OK      bool     `json:"ok"`
+	IfName  string   `json:"ifName"`
+	Version string   `json:"version"`
+	Error   string   `json:"error"`
+	Applied int      `json:"applied,omitempty"`
+	Skipped []string `json:"skipped,omitempty"`
 }
 
 // unixRouter 在 macOS / Linux 上工作。三条路径，优先级从高到低：

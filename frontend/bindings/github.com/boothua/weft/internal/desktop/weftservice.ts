@@ -560,6 +560,13 @@ export function SetForwardPower(on: boolean): $CancellablePromise<void> {
 }
 
 /**
+ * SetNameSync 打开/关闭本地名字解析。打开时立刻写一次，不用等下一轮轮询。
+ */
+export function SetNameSync(on: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3939359199, on);
+}
+
+/**
  * SetSync 开关同步并立即生效。端口改了会重启监听。
  */
 export function SetSync(enabled: boolean, port: number): $CancellablePromise<string> {

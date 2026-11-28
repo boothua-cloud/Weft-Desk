@@ -154,6 +154,11 @@ export interface State {
   uptime: string
   message: string
   capabilities: Capabilities
+  // 本地名字解析：把设备名写进 /etc/hosts，ssh/curl 能用裸名
+  nameSync: boolean
+  nameSyncCount: number
+  nameSyncSkipped: string[]
+  nameSyncErr: string
 }
 // UpdateStatus 是「检查更新」的返回，和 Go 侧的 updater.UpdateStatus 对应。
 export interface UpdateStatus {
@@ -200,6 +205,7 @@ export interface Config {
   socksEnabled: boolean
   socksPort: number
   autoForward: boolean
+  nameSync: boolean
 }
 export interface Device {
   id: string
@@ -328,6 +334,8 @@ export const api = {
   pingPeer: (ip: string) => parse<PingSample>((WeftService as any).PingPeer(ip)),
   // 累计收发字节，给总览页的流量曲线做差分
   traffic: () => parse<TrafficTotals>((WeftService as any).Traffic()),
+  // 本地名字解析：开关会真的去改 /etc/hosts（要系统助手），失败会抛错
+  setNameSync: (on: boolean): Promise<void> => (WeftService as any).SetNameSync(on),
 
   // 节点
   devices: () => parse<Cached<Device>>(WeftService.ListDevices()),

@@ -75,6 +75,7 @@ func (s *WeftService) GetState() (string, error) {
 	if st.SelfIP == "" {
 		st.SelfIP = "—"
 	}
+	s.fillNameSync(&st)
 	// 顺手在后台确认一下这把钥匙服务端认不认（只在没结论时才发请求）
 	s.ensureAPIKeyProbe()
 	return toJSON(st)

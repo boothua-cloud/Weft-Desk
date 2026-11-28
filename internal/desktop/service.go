@@ -58,6 +58,9 @@ type WeftService struct {
 	syncSrv *appsync.Server
 	// mainWindowID 是主界面窗口的 ID。0 表示还不知道（放行，避免误伤启动流程）。
 	mainWindowID uint
+	// nameSync 是 /etc/hosts 同步的运行态，与 cfg.NameSync（用户开关）分开：
+	// 开关是意图，这里记的是「实际写成了什么样」。
+	nameSync nameSyncState
 }
 
 // callerAllowed 给改配置、看凭证、删除这类方法用。
@@ -138,6 +141,7 @@ func (s *WeftService) attach(app *application.App) {
 	s.app = app
 	s.autoConnect()
 	s.watchAPIKeyExpiry()
+	go s.watchNameSync()
 }
 
 // autoConnect 在启动与保存配置后复用，避免「配置好了还要手动再点一次连接」。
@@ -222,6 +226,12 @@ func (s *WeftService) shutdown() {
 	}
 	if e != nil {
 		e.Shutdown()
+	}
+	// 退出前把 hosts 区块删掉：隧道一断，那些名字就指不到任何地方
+	if engine.HostsEnabled() {
+		if err := engine.ClearHosts(); err != nil {
+			log.Printf("[namesync] 退出时清理 hosts 失败: %v", err)
+		}
 	}
 }
 
