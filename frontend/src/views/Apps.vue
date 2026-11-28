@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { api, type State, type AppBookmark, type SyncInfo } from '../api'
+import { api, type State, type AppBookmark, type SyncInfo, type IconFailure } from '../api'
 import Pick from '../components/Pick.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useConfirm } from '../confirm'
@@ -21,7 +21,7 @@ const groups = computed(() => {
   return [...set].sort()
 })
 const drawer = ref(false)
-const form = ref<AppBookmark>({ id: '', name: '', url: '', group: '常用', icon: '#0F6E56', iconData: '', browser: false, updatedAt: '', lastOpen: '' })
+const form = ref<AppBookmark>({ id: '', name: '', url: '', group: '常用', icon: '#0F6E56', iconData: '', iconError: '', browser: false, updatedAt: '', lastOpen: '' })
 // 记下进抽屉时的地址：保存后只有「新建」或「地址变了」才重新抓图标，
 // 改个名字就重新抓一遍，等于每次编辑都多等几秒
 const editingUrl = ref('')
@@ -78,7 +78,7 @@ watch(reloadTick, load)
 function openForm(a?: AppBookmark) {
   form.value = a
     ? { ...a }
-    : { id: '', name: '', url: '', group: '常用', icon: colors[0], iconData: '', browser: false, updatedAt: '', lastOpen: '' }
+    : { id: '', name: '', url: '', group: '常用', icon: colors[0], iconData: '', iconError: '', browser: false, updatedAt: '', lastOpen: '' }
   editingUrl.value = a?.url ?? ''
   drawer.value = true
 }
@@ -101,18 +101,71 @@ async function submit() {
 }
 
 // ---------- 图标 ----------
-async function fillIcons() {
+const iconFailures = ref<IconFailure[]>([])
+const fillScope = ref<'missing' | 'all'>('missing')
+// 单个卡片正在重抓。用对象而不是一个 id：点了几张就各转各的
+const iconBusy = ref<Record<string, boolean>>({})
+
+async function fillIcons(scope: 'missing' | 'all') {
   if (filling.value) return
   filling.value = true
+  fillScope.value = scope
+  iconFailures.value = []
   try {
-    const r = await api.fillIcons()
+    const r = await api.fillIcons(scope)
     await load()
-    if (r.total === 0) emit('notify', '所有应用都有图标了')
-    else if (r.failed?.length) emit('notify', `抓到 ${r.done} 个，${r.failed.length} 个没抓到`)
+    iconFailures.value = r.failed ?? []
+    if (r.total === 0) emit('notify', '没有需要抓图标的应用')
+    else if (r.failed?.length) emit('notify', `抓到了 ${r.done} 个，${r.failed.length} 个没抓到`)
     else emit('notify', `${r.done} 个图标都抓到了`)
   } catch (err: any) {
     emit('notify', '抓取失败：' + (err?.message ?? err))
   } finally { filling.value = false }
+}
+
+// 单张重抓：不用管之前抓到的是什么，重新走一遍候选地址
+async function refetchIcon(a: AppBookmark) {
+  if (iconBusy.value[a.id] || !a.id) return
+  iconBusy.value = { ...iconBusy.value, [a.id]: true }
+  try {
+    const saved = await api.fetchAppIcon(a.id)
+    const i = apps.value.findIndex(x => x.id === saved.id)
+    if (i >= 0) apps.value[i] = saved
+    iconFailures.value = iconFailures.value.filter(x => x.id !== saved.id)
+    if (form.value.id === saved.id) form.value = { ...form.value, iconData: saved.iconData, iconError: '' }
+    emit('notify', `已更新「${a.name}」的图标`)
+  } catch (err: any) {
+    // 后端已经把失败原因写进 iconError，重拉一次列表把它显示出来
+    await load()
+    emit('notify', `没抓到「${a.name}」的图标：` + (err?.message ?? err))
+  } finally {
+    const next = { ...iconBusy.value }
+    delete next[a.id]
+    iconBusy.value = next
+  }
+}
+
+// 失败清单里的单条重试：成功就从清单里摘掉，不用整批重来
+async function retryOne(f: IconFailure) {
+  const a = apps.value.find(x => x.id === f.id)
+  if (!a) return
+  await refetchIcon(a)
+  const after = apps.value.find(x => x.id === f.id)
+  if (after && after.iconData && !after.iconError) {
+    iconFailures.value = iconFailures.value.filter(x => x.id !== f.id)
+  }
+}
+
+async function clearIcon(a: AppBookmark) {
+  if (!a.id) return
+  try {
+    await api.clearAppIcon(a.id)
+    if (form.value.id === a.id) form.value = { ...form.value, iconData: '', iconError: '' }
+    await load()
+    emit('notify', `「${a.name}」改回色块图标`)
+  } catch (err: any) {
+    emit('notify', '清除失败：' + (err?.message ?? err))
+  }
 }
 
 // ---------- 拖动排序 ----------
@@ -303,12 +356,39 @@ function describe(r: { peer: string; added: number; updated: number; skipped: nu
     <div class="spread" style="margin-bottom:18px;flex-shrink:0">
       <div class="faint" style="font-size:11.5px">共 {{ apps.length }} 个内网应用 · 书签保存在本地 SQLite</div>
       <div class="row" style="gap:8px">
-        <button v-if="missingIcons" class="btn" :disabled="filling" @click="fillIcons"
-                :title="'从各站点抓 favicon，抓不到就留着色块'">
-          <span v-if="filling" class="spinner"></span>{{ filling ? '抓取中…' : `补齐图标 (${missingIcons})` }}
+        <button v-if="missingIcons" class="btn" :disabled="filling" @click="fillIcons('missing')"
+                title="给还没有图标的书签抓一遍，抓不到就留着色块">
+          <span v-if="filling && fillScope === 'missing'" class="spinner"></span>
+          {{ filling && fillScope === 'missing' ? '抓取中…' : `补齐图标 (${missingIcons})` }}
+        </button>
+        <button class="btn" :disabled="filling" @click="fillIcons('all')"
+                title="包括已经有图标的，全部按站点重新抓一遍">
+          <span v-if="filling && fillScope === 'all'" class="spinner"></span>
+          {{ filling && fillScope === 'all' ? '抓取中…' : '重抓全部' }}
         </button>
         <button class="btn" @click="openSync">同步到其他设备</button>
         <button class="btn primary" @click="openForm()">＋ 添加应用</button>
+      </div>
+    </div>
+
+    <div v-if="iconFailures.length" class="notice warn" style="margin-bottom:14px">
+      <div class="spread">
+        <span>有 {{ iconFailures.length }} 个没抓到图标，可以先单独重试，也可以等站点起来再抓一遍</span>
+        <span class="row" style="gap:6px">
+          <button class="btn sm ghost" :disabled="filling" @click="fillIcons('missing')">重试</button>
+          <button class="btn sm ghost" @click="iconFailures = []">关闭</button>
+        </span>
+      </div>
+      <ul style="margin:8px 0 0;padding-left:18px;line-height:1.9">
+        <li v-for="f in iconFailures.slice(0, 6)" :key="f.id">
+          <b>{{ f.name }}</b>：{{ f.reason }}
+          <button class="btn sm ghost" style="margin-left:6px;padding:0 6px;height:20px"
+                  :disabled="!!iconBusy[f.id]"
+                  @click="retryOne(f)">{{ iconBusy[f.id] ? '…' : '重试' }}</button>
+        </li>
+      </ul>
+      <div v-if="iconFailures.length > 6" class="faint" style="margin-top:4px;font-size:11px">
+        还有 {{ iconFailures.length - 6 }} 个，原因大概同上
       </div>
     </div>
 
@@ -335,10 +415,16 @@ function describe(r: { peer: string; added: number; updated: number; skipped: nu
            @dragstart="onDragStart($event, a)" @dragover="onDragOver($event, a)"
            @drop="onDrop($event, a)" @dragend="onDragEnd">
         <div class="row">
-          <div class="ico" :class="{ 'has-img': !!a.iconData }" :style="a.iconData ? {} : { background: a.icon || '#0F6E56' }">
-            <img v-if="a.iconData" :src="a.iconData" alt="" />
-            <template v-else>{{ a.name.slice(0, 2) }}</template>
-          </div>
+          <button class="ico-wrap" :disabled="!!iconBusy[a.id]"
+                  :title="a.iconError ? `上次没抓到：${a.iconError}\n点一下重新抓取` : '点一下重新抓取图标'"
+                  @click.stop="refetchIcon(a)">
+            <span class="ico" :class="{ 'has-img': !!a.iconData }" :style="a.iconData ? {} : { background: a.icon || '#0F6E56' }">
+              <img v-if="a.iconData" :src="a.iconData" alt="" />
+              <template v-else>{{ a.name.slice(0, 2) }}</template>
+            </span>
+            <span v-if="a.iconError" class="ico-bad" :title="a.iconError">!</span>
+            <span v-if="iconBusy[a.id]" class="ico-busy"><span class="spinner"></span></span>
+          </button>
           <div style="min-width:0">
             <b>{{ a.name }}</b>
             <div class="url mono" style="color:var(--faint);font-size:10.5px;margin-top:3px">{{ a.url }}</div>
@@ -390,8 +476,21 @@ function describe(r: { peer: string; added: number; updated: number; skipped: nu
               <img v-if="form.iconData" :src="form.iconData" alt="" />
               <template v-else>{{ (form.name || '应用').slice(0, 2) }}</template>
             </div>
-            <div class="faint" style="font-size:10.5px;line-height:1.7">
-              {{ form.iconData ? '已从站点抓到图标' : '保存后自动抓取；抓不到就用下面的颜色和名字首字' }}
+            <div style="min-width:0">
+              <div class="faint" style="font-size:10.5px;line-height:1.7">
+                {{ form.iconData ? '已从站点抓到图标'
+                  : (form.iconError ? `上次没抓到：${form.iconError}`
+                  : '保存后自动抓取；抓不到就用下面的颜色和名字首字') }}
+              </div>
+              <div class="row" style="gap:6px;margin-top:6px">
+                <button class="btn sm ghost" :disabled="!form.id || !!iconBusy[form.id]"
+                        :title="form.id ? '按站点重新抓一遍' : '先保存，再抓图标'"
+                        @click="refetchIcon(form)">
+                  {{ iconBusy[form.id] ? '抓取中…' : '重新抓取' }}
+                </button>
+                <button v-if="form.iconData" class="btn sm ghost" :disabled="!form.id"
+                        title="去掉图标，退回颜色块 + 名字首字" @click="clearIcon(form)">清除图标</button>
+              </div>
             </div>
           </div>
           <div class="row" style="margin-top:10px">
@@ -489,6 +588,24 @@ function describe(r: { peer: string; added: number; updated: number; skipped: nu
 .ico img { width: 100%; height: 100%; object-fit: contain; display: block; }
 /* 有图标时不再用满底色：很多图标是透明底的深色图形，压一块饱和色会糊成一团 */
 .ico.has-img { background: var(--surface-2); padding: 2px; }
+
+/* 图标本身就是「重新抓取」的入口：不必在卡片底栏再挤一个按钮 */
+.ico-wrap {
+  position: relative; flex: none; width: 38px; height: 38px;
+  padding: 0; border: 0; background: none; border-radius: 11px; cursor: pointer;
+}
+.ico-wrap:disabled { cursor: default; }
+.ico-wrap:hover .ico { filter: brightness(.94); }
+.ico-bad {
+  position: absolute; right: -4px; top: -4px; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--warn); color: #fff;
+  font-size: 10px; line-height: 14px; text-align: center; font-weight: 700;
+}
+.ico-busy {
+  position: absolute; inset: 0; border-radius: 11px;
+  background: rgba(0, 0, 0, .38); display: grid; place-items: center;
+}
+.ico-busy .spinner { width: 14px; height: 14px; border-width: 2px; }
 
 /* 拖动排序：能拖的时候光标变抓手，拖起来的那张退成半透明，
    落点用品牌色描一圈，比插一条线更好认 */

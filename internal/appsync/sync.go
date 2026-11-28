@@ -190,7 +190,7 @@ type payload struct {
 func stripLocalOnly(apps []model.AppBookmark) []model.AppBookmark {
 	out := make([]model.AppBookmark, len(apps))
 	for i, a := range apps {
-		a.IconData, a.LastOpen = "", ""
+		a.IconData, a.IconError, a.LastOpen = "", "", ""
 		out[i] = a
 	}
 	return out
@@ -420,7 +420,7 @@ func Merge(local, incoming []model.AppBookmark) (out []model.AppBookmark, added,
 			in.ID = cur.ID // 沿用本机 ID，避免同一地址出现两条
 			// 图标和打开时间只属于本机：对端传过来的是空值，
 			// 直接覆盖会让已经抓好的图标白丢一遍。
-			in.IconData, in.LastOpen = cur.IconData, cur.LastOpen
+			in.IconData, in.IconError, in.LastOpen = cur.IconData, cur.IconError, cur.LastOpen
 			out[i] = in
 			updated++
 			continue

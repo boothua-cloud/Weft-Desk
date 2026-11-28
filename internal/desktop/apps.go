@@ -72,8 +72,8 @@ func (s *WeftService) ReorderApps(raw string) error {
 	return s.store.ReorderApps(ids)
 }
 
-// FetchAppIcon 抓一个应用的书签图标并写库。返回最新的一条书签。
-// 抓不到不算错误——内网里没图标的服务一抓一大把，前端静默留着色块。
+// FetchAppIcon 重新抓一个应用的图标并写库，不管原来有没有。
+// 抓不到不算致命：记下原因，前端留着色块，用户想再试就再点一次。
 func (s *WeftService) FetchAppIcon(id string) (string, error) {
 	apps, err := s.store.ListApps()
 	if err != nil {
@@ -85,39 +85,70 @@ func (s *WeftService) FetchAppIcon(id string) (string, error) {
 		}
 		data, ferr := fetchSiteIcon(a.URL)
 		if ferr != nil {
+			_ = s.store.SetAppIconError(id, iconErrText(ferr))
 			return "", ferr
 		}
 		if err := s.store.SetAppIcon(id, data); err != nil {
 			return "", err
 		}
-		a.IconData = data
+		a.IconData, a.IconError = data, ""
 		return toJSON(a)
 	}
 	return "", fmt.Errorf("未找到应用: %s", id)
 }
 
-// IconFillResult 是「补齐图标」的汇总。失败项带名字和原因，
-// 全部成功时前端只报一句「N 个都抓到了」。
-type IconFillResult struct {
-	Total  int      `json:"total"`
-	Done   int      `json:"done"`
-	Failed []string `json:"failed"`
+// iconErrText 把网络层的英文报错换成人话。前端会把它直接贴在
+// 失败清单里，`Get "https://…": context deadline exceeded` 这种
+// 对用户没有意义。
+func iconErrText(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	switch {
+	case strings.Contains(s, "context deadline exceeded"), strings.Contains(s, "Client.Timeout"):
+		return "连接超时，站点没在 5 秒内回应"
+	case strings.Contains(s, "connection refused"):
+		return "端口没有服务在听"
+	case strings.Contains(s, "no such host"):
+		return "域名解析不了"
+	case strings.Contains(s, "certificate"):
+		return "证书校验失败"
+	}
+	return s
 }
 
-// FillMissingIcons 给还没有图标的书签批量抓一遍。
+// IconFailure 是某一个应用没抓到的原因。前端按条显示，
+// 不用再从一句拼好的中文里猜是哪台。
+type IconFailure struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
+// IconFillResult 是批量抓取的汇总。
+type IconFillResult struct {
+	Scope  string        `json:"scope"`
+	Total  int           `json:"total"`
+	Done   int           `json:"done"`
+	Failed []IconFailure `json:"failed"`
+}
+
+// FillIcons 批量抓图标。scope 为 all 时连已经有图标的也重抓，
+// 其它值只补空的——「抓歪了重来一遍」和「把缺的补上」是两件事。
 // 并发 4：串行的话二十个书签每个等到超时就是一百秒，用户会以为卡死。
-func (s *WeftService) FillMissingIcons() (string, error) {
+func (s *WeftService) FillIcons(scope string) (string, error) {
 	apps, err := s.store.ListApps()
 	if err != nil {
 		return "", err
 	}
 	var todo []model.AppBookmark
 	for _, a := range apps {
-		if a.IconData == "" {
+		if scope == "all" || a.IconData == "" {
 			todo = append(todo, a)
 		}
 	}
-	res := IconFillResult{Total: len(todo), Failed: []string{}}
+	res := IconFillResult{Scope: scope, Total: len(todo), Failed: []IconFailure{}}
 	if len(todo) == 0 {
 		return toJSON(res)
 	}
@@ -135,19 +166,29 @@ func (s *WeftService) FillMissingIcons() (string, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			if ferr != nil {
-				res.Failed = append(res.Failed, fmt.Sprintf("%s：%v", a.Name, ferr))
+				_ = s.store.SetAppIconError(a.ID, iconErrText(ferr))
+				res.Failed = append(res.Failed, IconFailure{ID: a.ID, Name: a.Name, Reason: iconErrText(ferr)})
 				return
 			}
 			if err := s.store.SetAppIcon(a.ID, data); err != nil {
-				res.Failed = append(res.Failed, fmt.Sprintf("%s：写入失败 %v", a.Name, err))
+				res.Failed = append(res.Failed, IconFailure{ID: a.ID, Name: a.Name, Reason: "写入失败 " + err.Error()})
 				return
 			}
 			res.Done++
 		}(a)
 	}
 	wg.Wait()
-	s.audit("补齐应用图标", fmt.Sprintf("%d 个，成功 %d", res.Total, res.Done), nil)
+	what := "补齐应用图标"
+	if scope == "all" {
+		what = "重抓应用图标"
+	}
+	s.audit(what, fmt.Sprintf("%d 个，成功 %d", res.Total, res.Done), nil)
 	return toJSON(res)
+}
+
+// ClearAppIcon 把图标退回色块 + 名字首字。
+func (s *WeftService) ClearAppIcon(id string) error {
+	return s.store.ClearAppIcon(id)
 }
 
 // OpenApp 用 Wails v3 多窗口新开独立 WebView，不走 iframe（会被 X-Frame-Options 拦截）。

@@ -194,6 +194,10 @@ type AppBookmark struct {
 	// 存进库里而不是每次渲染去抓：内网站点首字节常常要等一两秒，
 	// 列表里一排空色块等图标，比一个稳定的色块还难看。
 	IconData string `json:"iconData"`
+	// IconError 是上一次抓图标失败的原因。只在本机有意义，不参与同步；
+	// 抓成功就清空。留着它是为了让「重试」知道该重试哪几个，
+	// 也让用户看得到是超时、404 还是认证拦截，而不是一排莫名其妙的色块。
+	IconError string `json:"iconError"`
 	// Browser 为 true 时始终用系统浏览器打开：
 	// 需要浏览器扩展（如密码管理器自动填充）的站点走这条路。
 	Browser bool `json:"browser"`

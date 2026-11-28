@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS apps (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, url TEXT NOT NULL,
   grp TEXT NOT NULL DEFAULT '', icon TEXT NOT NULL DEFAULT '',
-  icon_data TEXT NOT NULL DEFAULT '', last_open TEXT NOT NULL DEFAULT '',
+  icon_data TEXT NOT NULL DEFAULT '', icon_error TEXT NOT NULL DEFAULT '',
+  last_open TEXT NOT NULL DEFAULT '',
   browser INTEGER NOT NULL DEFAULT 0, sort INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS policy_history (
@@ -80,6 +81,7 @@ CREATE TABLE IF NOT EXISTS forwards (
 	_, _ = s.db.Exec(`ALTER TABLE apps ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE apps ADD COLUMN icon_data TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE apps ADD COLUMN last_open TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE apps ADD COLUMN icon_error TEXT NOT NULL DEFAULT ''`)
 	// 审计补列：profile 记这条操作属于哪台服务端，target 记对象，
 	// result/error 记成败。老记录只有 action/detail，读的时候兜底。
 	_, _ = s.db.Exec(`ALTER TABLE audit ADD COLUMN profile TEXT NOT NULL DEFAULT ''`)
@@ -181,7 +183,7 @@ func (s *Store) SaveConfig(c model.Config) error {
 }
 
 func (s *Store) ListApps() ([]model.AppBookmark, error) {
-	rows, err := s.db.Query(`SELECT id,name,url,grp,icon,icon_data,browser,updated_at,last_open FROM apps ORDER BY sort`)
+	rows, err := s.db.Query(`SELECT id,name,url,grp,icon,icon_data,icon_error,browser,updated_at,last_open FROM apps ORDER BY sort`)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +192,7 @@ func (s *Store) ListApps() ([]model.AppBookmark, error) {
 	for rows.Next() {
 		var a model.AppBookmark
 		var browser int
-		if err = rows.Scan(&a.ID, &a.Name, &a.URL, &a.Group, &a.Icon, &a.IconData,
+		if err = rows.Scan(&a.ID, &a.Name, &a.URL, &a.Group, &a.Icon, &a.IconData, &a.IconError,
 			&browser, &a.UpdatedAt, &a.LastOpen); err != nil {
 			return nil, err
 		}
@@ -206,24 +208,41 @@ func (s *Store) SaveApp(a model.AppBookmark) error {
 }
 
 // SaveAppRaw 写入时不动 UpdatedAt，供同步合并保留对端的修改时间。
+//
+// 图标、图标错误、打开时间不在这条语句里：它们各有各的写入方法，
+// 表单保存时不该顺手把图标覆盖成空值（表单里的 iconData 只是用来预览）。
 func (s *Store) SaveAppRaw(a model.AppBookmark) error {
 	browser := 0
 	if a.Browser {
 		browser = 1
 	}
-	_, err := s.db.Exec(`INSERT INTO apps(id,name,url,grp,icon,icon_data,last_open,browser,sort,updated_at)
-      VALUES(?,?,?,?,?,?,?,?, (SELECT COALESCE(MAX(sort),0)+1 FROM apps), ?)
+	_, err := s.db.Exec(`INSERT INTO apps(id,name,url,grp,icon,browser,sort,updated_at)
+      VALUES(?,?,?,?,?,?, (SELECT COALESCE(MAX(sort),0)+1 FROM apps), ?)
       ON CONFLICT(id) DO UPDATE SET name=excluded.name,url=excluded.url,grp=excluded.grp,
-        icon=excluded.icon,icon_data=excluded.icon_data,last_open=excluded.last_open,
-        browser=excluded.browser,updated_at=excluded.updated_at`,
-		a.ID, a.Name, a.URL, a.Group, a.Icon, a.IconData, a.LastOpen, browser, a.UpdatedAt)
+        icon=excluded.icon,browser=excluded.browser,updated_at=excluded.updated_at`,
+		a.ID, a.Name, a.URL, a.Group, a.Icon, browser, a.UpdatedAt)
 	return err
 }
 
 // SetAppIcon 只写图标，不动 UpdatedAt：图标是本机抓的缓存，
 // 不该因为它让一次同步把对端的书名改动判成「本机更新」。
+// 写成功意味着上一轮的失败记录已经过时，一并清掉。
 func (s *Store) SetAppIcon(id, data string) error {
-	_, err := s.db.Exec(`UPDATE apps SET icon_data=? WHERE id=?`, data, id)
+	_, err := s.db.Exec(`UPDATE apps SET icon_data=?, icon_error='' WHERE id=?`, data, id)
+	return err
+}
+
+// SetAppIconError 记下这次没抓到的原因，图标本身不动：
+// 之前抓到过的旧图标比一个空色块有用，用户重试之前还能继续用。
+func (s *Store) SetAppIconError(id, reason string) error {
+	_, err := s.db.Exec(`UPDATE apps SET icon_error=? WHERE id=?`, reason, id)
+	return err
+}
+
+// ClearAppIcon 把图标退回色块加首字，同时清掉失败记录。
+// 抓到的图标一直不合适时，用户需要一个「不要图标」的出口。
+func (s *Store) ClearAppIcon(id string) error {
+	_, err := s.db.Exec(`UPDATE apps SET icon_data='', icon_error='' WHERE id=?`, id)
 	return err
 }
 

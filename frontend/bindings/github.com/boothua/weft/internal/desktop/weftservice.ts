@@ -68,6 +68,13 @@ export function CheckUpdate(): $CancellablePromise<string> {
     return $Call.ByID(3401865786);
 }
 
+/**
+ * ClearAppIcon 把图标退回色块 + 名字首字。
+ */
+export function ClearAppIcon(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2441498240, id);
+}
+
 export function Connect(): $CancellablePromise<string> {
     return $Call.ByID(2885969597);
 }
@@ -206,19 +213,20 @@ export function ExportText(filename: string, content: string): $CancellablePromi
 }
 
 /**
- * FetchAppIcon 抓一个应用的书签图标并写库。返回最新的一条书签。
- * 抓不到不算错误——内网里没图标的服务一抓一大把，前端静默留着色块。
+ * FetchAppIcon 重新抓一个应用的图标并写库，不管原来有没有。
+ * 抓不到不算致命：记下原因，前端留着色块，用户想再试就再点一次。
  */
 export function FetchAppIcon(id: string): $CancellablePromise<string> {
     return $Call.ByID(318035919, id);
 }
 
 /**
- * FillMissingIcons 给还没有图标的书签批量抓一遍。
+ * FillIcons 批量抓图标。scope 为 all 时连已经有图标的也重抓，
+ * 其它值只补空的——「抓歪了重来一遍」和「把缺的补上」是两件事。
  * 并发 4：串行的话二十个书签每个等到超时就是一百秒，用户会以为卡死。
  */
-export function FillMissingIcons(): $CancellablePromise<string> {
-    return $Call.ByID(3208460914);
+export function FillIcons(scope: string): $CancellablePromise<string> {
+    return $Call.ByID(2752785650, scope);
 }
 
 export function ForwardSnippet(id: string): $CancellablePromise<string> {

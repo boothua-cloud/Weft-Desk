@@ -212,21 +212,30 @@ https://github.com/boothua-cloud/Weft-Desk/releases/tag/v0.1.5
     没连上时显示「连上之后开始采样」。
 
 - [x] 应用图标抓 favicon、拖动排序、最近使用
-  - 图标：保存书签时后台抓一次，先试 `/favicon.ico`，404 或者回的是 HTML 就
-    读页面里的 `<link rel="icon">`，按 `sizes` 挑大的（`any` 当矢量图，优先）。
-    结果存成 data URL 进库，列表渲染不再依赖网络。
+  - 图标：保存书签时后台抓一次。先读页面里的 `<link rel="icon">`，按声明尺寸从大到小试，
+    最后才退回 `/favicon.ico`；挑的是解码出来的真实宽高，声明可以瞎写。1×1 的占位图、
+    单色 `mask-icon` 跳过。结果存成 data URL 进库，列表渲染不再依赖网络。
+  - 抓取不走系统代理。真机上 7 个内网应用图标一模一样，因为 `HTTP_PROXY` 把所有
+    `10.0.1.x` 拦成同一张站标；现在 `10.x`、`192.168.x`、`100.64/10`、MagicDNS
+    单标签名直连，公网域名仍按环境变量走。页面里的相对路径按**重定向之后**的地址解析
+    （Nacos 从 `/` 跳到 `/next/`，按原地址算必然 404）。
+  - 重试：点卡片上的图标重抓这一张；工具栏「补齐图标」只补空的，「重抓全部」连已有的也重来；
+    失败原因写进 `icon_error`（本机字段，同步时抹掉），黄条里逐条列出并可单条重试。
+    编辑抽屉里还有「重新抓取」和「清除图标」。
   - 排序：卡片 HTML5 拖动，落库按 id 数组重写 `sort`（事务里做，不会留一半新一半旧）。
     筛选状态下和「最近使用」排序时拖动关掉——落点和看到的列表不是同一张表。
   - 最近使用：打开应用时写 `last_open`（不动 `updated_at`，免得一次点击就把
     同步判成「本机更新」）。应用页可按它排序，卡片上写「2 小时前用过」；
     总览页快捷应用固定按它排，没用过的保持自定义顺序。
-  - 结果：`fetchSiteIcon` + `WeftService.FetchAppIcon` / `FillMissingIcons` /
-    `ReorderApps`；`store.SetAppIcon` / `MarkAppOpened` / `ReorderApps`。
-    同步包的 `stripLocalOnly` 把 `icon_data` 和 `last_open` 抹掉：一个图标几十 KB，
-    几十个书签就能顶满 1MB 的请求体，而打开时间是本机的事。
-  - 验：单测覆盖「/favicon.ico 命中」「/favicon.ico 回 HTML 时改读 link 标签」「没有图标要报错」
-    「HTML 不能当图标」；真机 9 个内网书签抓到 8 个（Rancher 的域名超时），
-    截图看过图标、最近使用文案和补齐按钮。
+  - 结果：`fetchSiteIcon` + `WeftService.FetchAppIcon` / `FillIcons(scope)` /
+    `ClearAppIcon` / `ReorderApps`；`store.SetAppIcon` / `SetAppIconError` /
+    `ClearAppIcon` / `MarkAppOpened` / `ReorderApps`。
+    同步包的 `stripLocalOnly` 把 `icon_data`、`icon_error`、`last_open` 抹掉：
+    一个图标几十 KB，几十个书签就能顶满 1MB 的请求体，打开时间和失败原因都是本机的事。
+  - 验：单测覆盖 favicon 命中、优先声明的高清图、1×1 跳过、只有 1×1 时报错、
+    HTML 不能当图标、重定向后相对路径、ICO 尺寸、内网地址判定、错误文案。
+    真机 9 个书签「重抓全部」：7 个拿到各自不同的图标（Nacos 从 404 变成 1529B PNG，
+    Gitea 拿到 SVG），2 个超时的写进了失败清单；截图看过橙点、黄条和抽屉按钮。
 
 - [ ] 内嵌终端，走 100.x + `x/crypto/ssh`
 - [ ] 本地名字解析：127.0.0.1:53 把设备名解析成 100.x
@@ -242,7 +251,6 @@ https://github.com/boothua-cloud/Weft-Desk/releases/tag/v0.1.5
   - 验：临时单测跑成功 / 超时 / 非法地址三种样本，JSON 字段对得上（脚本跑完删掉）；
     截图看过 46 个点的曲线、三处丢包红条和统计栏。
 
-- [ ] 应用图标抓 favicon、拖动排序、最近使用
 - [x] 应用小窗钉在最前
   - 结果：应用内窗口注入的浮动菜单加一项「钉在最前」，走已有的控制端点（`/pin`、`/unpin`），
     Go 侧 `SetAlwaysOnTop`。钉住状态写进 `sessionStorage`，页面导航后重新注入时菜单文字还对得上。

@@ -344,9 +344,16 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
                 反代只在云栈运行期间有效，关掉应用链接就断了。
               </p>
               <p style="margin-top:8px">
-                图标是保存时自动从站点抓的（先试 <span class="mono">/favicon.ico</span>，没有就读页面里的
-                <span class="mono">&lt;link rel="icon"&gt;</span>）。抓不到的留色块加名字首字，可以点右上角
-                <span class="hl">补齐图标</span> 再补一遍——只会补还没图标的那些。
+                图标是保存时自动从站点抓的：先读页面里的 <span class="mono">&lt;link rel="icon"&gt;</span>，
+                按声明的尺寸从大到小试，最后才退回 <span class="mono">/favicon.ico</span>；1×1 的占位图会跳过。
+                抓歪了直接<span class="hl">点卡片上的图标</span>重抓这一张，图标右上角出现橙点说明上次没抓到，
+                鼠标停上去能看到原因。
+              </p>
+              <p style="margin-top:8px">
+                工具栏两个按钮分工不同：<span class="hl">补齐图标</span> 只补还没有图标的，
+                <span class="hl">重抓全部</span> 连已经有图标的也按站点重来一遍。批量抓完如果有没抓到的，
+                上方出现一条黄条，逐个写着原因，每条右边有 <span class="hl">重试</span>。
+                抓不到的留色块加名字首字；不想要图标了，在编辑抽屉里点 <span class="hl">清除图标</span>。
               </p>
               <p style="margin-top:8px">
                 卡片可以直接拖着换位置，松手就按新顺序存下来（筛选或切到「最近使用」时拖动关掉，

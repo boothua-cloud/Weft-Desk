@@ -246,6 +246,8 @@ export interface AppBookmark {
   icon: string
   // 抓下来的站点图标，data URL。空表示还没抓到，界面退回色块 + 首字
   iconData: string
+  // 上一次抓取失败的原因，抓成功会自动清空。只在本机有意义，不参与同步
+  iconError: string
   browser: boolean
   updatedAt: string
   // 最近一次打开的时间，只在本机有意义，不参与同步
@@ -263,8 +265,10 @@ export interface SyncInfo {
   error: string
 }
 export interface SyncResult { peer: string; added: number; updated: number; skipped: number; total: number }
-// IconFillResult 是「补齐图标」的汇总，失败项带名字和原因
-export interface IconFillResult { total: number; done: number; failed: string[] }
+// IconFailure 是某一个应用没抓到的原因
+export interface IconFailure { id: string; name: string; reason: string }
+// IconFillResult 是批量抓取的汇总。scope 为 all 表示连已有图标的也重抓了
+export interface IconFillResult { scope: string; total: number; done: number; failed: IconFailure[] }
 export interface AuditEvent {
   time: string; action: string; detail: string
   profile: string; target: string
@@ -397,10 +401,12 @@ export const api = {
   deleteApp: (id: string) => WeftService.DeleteApp(id),
   // 拖动排序：传排好的 id 数组
   reorderApps: (ids: string[]) => WeftService.ReorderApps(JSON.stringify(ids)),
-  // 抓单个图标，返回更新后的书签；抓不到会 reject
+  // 抓单个图标（不管原来有没有），返回更新后的书签；抓不到会 reject
   fetchAppIcon: (id: string) => parse<AppBookmark>((WeftService as any).FetchAppIcon(id)),
-  // 给所有还没图标的书签批量抓一遍
-  fillIcons: () => parse<IconFillResult>((WeftService as any).FillMissingIcons()),
+  // 批量抓：missing 只补空的，all 连已有的也重抓
+  fillIcons: (scope: 'missing' | 'all') => parse<IconFillResult>((WeftService as any).FillIcons(scope)),
+  // 去掉图标，退回色块 + 首字
+  clearAppIcon: (id: string) => (WeftService as any).ClearAppIcon(id),
   openApp: (id: string) => WeftService.OpenApp(id),
   openInBrowser: (id: string) => WeftService.OpenInBrowser(id),
 
