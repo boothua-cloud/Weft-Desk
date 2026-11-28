@@ -1014,9 +1014,8 @@ func (s *WeftService) GetState() (string, error) {
 
 // apiKeyStatus 回答「该不该显示服务端管理入口」，顺便给出不该显示的原因。
 //
-// 三层判断：空 → 形状不对 → 服务端上次的结论。形状这一层是为了即时响应：
-// 刚粘进去一个「1」，不用等服务端回来就知道它不可能是钥匙。真问到结果会覆盖它，
-// 万一哪套部署的钥匙前缀不一样，探测通过就照常显示。
+// 顺序：空 → 形状不对 → 服务端确认过没有。最后一步必须等服务端真的点头：
+// 以前形状对就先显示，于是填一把假的整组菜单都冒出来，点进去全是 401。
 func (s *WeftService) apiKeyStatus() (bool, string) {
 	key := strings.TrimSpace(secretGet(secretMain))
 	if key == "" {
@@ -1037,7 +1036,12 @@ func (s *WeftService) apiKeyStatus() (bool, string) {
 	if !looksLikeAPIKey(key) {
 		return false, "格式不正确：headscale 的管理 Key 以 `hskey-` 开头"
 	}
-	return true, ""
+	// 格式对、但还没跟服务端确认过，先不亮入口。
+	// 以前这里乐观返回 true，结果是填一把假的整组菜单都出来，点进去全是 401。
+	if p.at.IsZero() {
+		return false, "正在确认这把 Key 能不能用…"
+	}
+	return false, "还没连上服务端，确认不了这把 Key"
 }
 
 // ensureAPIKeyProbe 在后台问一次服务端「这把钥匙收不收」。

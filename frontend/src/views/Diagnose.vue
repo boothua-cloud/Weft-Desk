@@ -55,6 +55,14 @@ function fmtKb(n: number): string {
   }
   return (i === 0 ? v : v.toFixed(1)) + ' ' + units[i]
 }
+
+// 没配管理 Key 就改不了策略，别让人去点一个改不了的页面。
+function hintList(r: DiagReport): string[] {
+  if (props.state?.hasApiKey) return r.hints
+  return r.hints.map((h) =>
+    h.includes('去 ACL 页') ? '让管理员在服务端策略里加一条，保存后立刻生效' : h,
+  )
+}
 </script>
 
 <template>
@@ -155,7 +163,9 @@ function fmtKb(n: number): string {
                 {{ reports[p.ip].dialErr ? '失败' : Math.round(reports[p.ip].dialMs) + ' ms' }}
               </b>
             </div>
-            <div class="fact">
+            <!-- ACL 只在没连上的时候才有解释价值：已经连上了就说明放行了，
+                 再去说「规则里没找到这条」只会让人以为出了问题 -->
+            <div v-if="reports[p.ip].dialErr" class="fact">
               <span>ACL</span>
               <b v-if="!reports[p.ip].aclChecked" class="faint">没读到</b>
               <b v-else :class="{ bad: !reports[p.ip].aclAllowed }">
@@ -173,12 +183,12 @@ function fmtKb(n: number): string {
           </div>
 
           <ul v-if="reports[p.ip].hints?.length" class="hints">
-            <li v-for="(h, i) in reports[p.ip].hints" :key="i">{{ h }}</li>
+            <li v-for="(h, i) in hintList(reports[p.ip])" :key="i">{{ h }}</li>
           </ul>
 
           <div class="report-foot">
             <span class="faint">检查于 {{ reports[p.ip].at.slice(11, 19) }}</span>
-            <button v-if="state?.hasApiKey && reports[p.ip].aclChecked && !reports[p.ip].aclAllowed"
+            <button v-if="state?.hasApiKey && reports[p.ip].dialErr && reports[p.ip].aclChecked && !reports[p.ip].aclAllowed"
                     class="link-btn" @click="emit('navigate', 'acl')">去改 ACL</button>
           </div>
         </div>
