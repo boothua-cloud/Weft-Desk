@@ -267,16 +267,18 @@ onUnmounted(() => {
         <img class="logo" src="/appicon.png" alt="云栈" draggable="false" />
         <div><b>云栈</b><small>Headscale 桌面端 v{{ state?.appVersion || '' }}</small></div>
       </div>
-      <template v-for="g in nav" :key="g.label">
-        <span class="nav-label">{{ g.label }}</span>
-        <button v-for="it in g.items" :key="it.key" class="nav-item"
-                :class="{ active: page === it.key }" :title="sideCollapsed ? it.label : undefined"
-                @click="page = it.key">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"
-               stroke-linecap="round" stroke-linejoin="round"><path :d="icons[it.key]" /></svg>
-          <span class="nav-text">{{ it.label }}</span>
-        </button>
-      </template>
+      <div class="side-nav">
+        <template v-for="g in nav" :key="g.label">
+          <span class="nav-label">{{ g.label }}</span>
+          <button v-for="it in g.items" :key="it.key" class="nav-item"
+                  :class="{ active: page === it.key }" :title="sideCollapsed ? it.label : undefined"
+                  @click="page = it.key">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"
+                 stroke-linecap="round" stroke-linejoin="round"><path :d="icons[it.key]" /></svg>
+            <span class="nav-text">{{ it.label }}</span>
+          </button>
+        </template>
+      </div>
       <div class="side-foot">
         <span class="dot" :class="state?.connecting ? 'warn pulse' : (state?.connected ? 'ok' : 'off')"></span>
         <div>
@@ -284,9 +286,9 @@ onUnmounted(() => {
           <small>{{ state?.message || '读取中…' }}</small>
         </div>
       </div>
-      <!-- 只留一个箭头：位置钉在面板最底部，不跟导航抢注意力 -->
+      <!-- 挂在面板右边缘：平时几乎看不见，鼠标进到面板上才浮出来 -->
       <button class="side-toggle" :title="sideCollapsed ? '展开侧栏' : '收起侧栏'" @click="toggleSide">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"
              stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3.5 5 8l4.5 4.5" /></svg>
       </button>
     </aside>

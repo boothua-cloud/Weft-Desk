@@ -135,17 +135,23 @@ button { cursor: pointer; }
    不是后台模板那种左栏 + 右栏 */
 .side {
   width: 216px; flex: none; display: flex; flex-direction: column;
+  position: relative;
   margin: 10px 0 10px 10px;
-  padding: 14px 10px 8px;
+  padding: 14px 10px 10px;
   background: color-mix(in srgb, var(--surface) 78%, transparent);
   -webkit-backdrop-filter: blur(22px) saturate(1.5);
   backdrop-filter: blur(22px) saturate(1.5);
   border: 1px solid var(--line);
   border-radius: 16px;
   box-shadow: var(--shadow-2);
-  overflow: hidden;
+  /* 收起按钮要伸出右边缘，这里不能裁 */
+  overflow: visible;
+  /* 高于正文，突出的按钮才不会被内容盖住 */
+  z-index: 4;
   transition: width .2s ease, padding .2s ease;
 }
+/* 导航自己滚，脚注和按钮不动。窗口矮的时候也不会把底下的状态挤出去 */
+.side-nav { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 /* 收起后只剩图标：宽屏看矩阵时能省出 150px，鼠标悬停有原生提示 */
 .side.collapsed { width: 60px; padding: 14px 8px 8px; }
 .side.collapsed .brand { justify-content: center; padding: 4px 0 14px; }
@@ -212,15 +218,24 @@ html[data-theme="dark"] .logo { filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55
   content: ""; position: absolute; left: -10px; top: 50%; transform: translateY(-50%);
   width: 3px; height: 18px; border-radius: 0 3px 3px 0; background: var(--brand);
 }
-/* 底部那一枚箭头：只有图标，居中，不占一整行文字的位置 */
+/* 收起按钮挂在面板右边缘、垂直居中：平时只留一点影子，
+   鼠标进到面板上才完整浮出来，不占导航的位置 */
 .side-toggle {
-  flex: none; width: 30px; height: 30px; margin: 4px auto 2px; padding: 0;
-  display: flex; align-items: center; justify-content: center;
-  border: 0; border-radius: 999px; background: transparent;
-  color: var(--faint); transition: background .15s, color .15s;
+  position: absolute; right: -13px; top: 50%;
+  transform: translateY(-50%);
+  width: 26px; height: 26px; padding: 0;
+  display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--surface); color: var(--muted);
+  box-shadow: var(--shadow-1);
+  opacity: .3; z-index: 3;
+  transition: opacity .16s ease, color .15s, border-color .15s;
 }
-.side-toggle:hover { background: var(--surface-3); color: var(--text); }
-.side-toggle svg { width: 14px; height: 14px; transition: transform .2s ease; }
+.side:hover .side-toggle,
+.side-toggle:focus-visible { opacity: 1; }
+.side-toggle:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.side-toggle:hover { color: var(--text); border-color: var(--faint); }
+.side-toggle svg { width: 12px; height: 12px; transition: transform .2s ease; }
 .side.collapsed .side-toggle svg { transform: rotate(180deg); }
 
 .side-foot {
@@ -239,6 +254,8 @@ html[data-theme="dark"] .logo { filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55
   flex: none; display: flex; align-items: center; justify-content: space-between;
   gap: 20px; padding: 16px 26px 10px;
   position: relative;
+  /* 页头里挂着下拉菜单，必须压在内容之上，否则菜单会被下面的卡片切掉 */
+  z-index: 5;
 }
 .page-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .page-id::before {
@@ -253,15 +270,15 @@ html[data-theme="dark"] .logo { filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55
   white-space: nowrap;
 }
 /* 右上角收进一枚玻璃胶囊：不再是一排散落的按钮，
-   而是像窗口自带的工具条，跟浮起来的侧栏用同一套材质 */
+   而是像窗口自带的工具条，跟浮起来的侧栏用同一套材质。
+   注意这里不能用 backdrop-filter：它会给自身建一个层叠上下文，
+   里面的下拉菜单和遮罩就跳不出这枚胶囊，菜单会被内容盖住 */
 .page-actions {
   display: flex; align-items: center; gap: 3px;
   padding: 3px;
   border-radius: 999px;
   border: 1px solid var(--line-soft);
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
-  -webkit-backdrop-filter: blur(16px) saturate(1.4);
-  backdrop-filter: blur(16px) saturate(1.4);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
   box-shadow: var(--shadow-1);
 }
 .page-actions .icon-btn {
@@ -271,6 +288,8 @@ html[data-theme="dark"] .logo { filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .55
 .page-actions .icon-btn.active { background: var(--brand-soft); color: var(--brand); }
 .page-actions .chip { border-color: transparent; }
 .page-actions .avatar { border-color: var(--line); background: var(--surface-3); margin-left: 1px; }
+/* 胶囊自身有 3px 内边距，菜单默认的 36px 会贴着胶囊底，这里再放下来一点 */
+.page-actions .menu-panel { top: 40px; }
 
 .crumb { font-size: 13px; color: var(--muted); }
 .crumb b { color: var(--text); font-weight: 600; }
