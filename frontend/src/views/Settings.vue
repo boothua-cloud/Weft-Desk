@@ -267,6 +267,17 @@ async function uninstallHelper() {
       </div>
     </div>
 
+    <!-- 有 Key 但服务端不认（填错、填成 Auth Key）时，入口会整组消失。
+         不说一句原因，看起来就像软件坏了。 -->
+    <div v-if="state?.apiKeyIssue" class="notice warn" style="margin-bottom:14px">
+      <b>管理 API Key 不可用，「服务端管理」已收起</b>
+      <div style="margin-top:5px">{{ state.apiKeyIssue }}</div>
+      <div style="margin-top:5px;font-size:10.5px;opacity:.85">
+        在上面的服务端里点「编辑」换一把 <span class="mono">headscale apikeys create</span> 生成的 Key；
+        不需要管理功能就点「清空」，别留一串假的。
+      </div>
+    </div>
+
     <!-- 助手在跑就只留一行状态；出问题（没装 / 装了没跑 / 指向旧路径）才展开整块 -->
     <div v-if="helper?.running" class="card tight row" style="margin-bottom:14px">
       <span style="font-size:11.5px">系统助手</span>

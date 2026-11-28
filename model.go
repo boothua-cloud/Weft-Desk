@@ -77,6 +77,9 @@ type State struct {
 	CLIReady     bool         `json:"cliReady"`   // 兼容旧前端：等价于 EngineReady
 	Configured   bool         `json:"configured"` // 是否已填控制面凭证
 	HasAPIKey    bool         `json:"hasApiKey"`  // 是否配了能用的管理 API Key（不是节点 Auth Key）
+	// APIKeyIssue 是「为什么不算配了」：非空时界面要把它显示出来，
+	// 否则入口突然消失会让人以为软件坏了
+	APIKeyIssue  string       `json:"apiKeyIssue"`
 	Uptime       string       `json:"uptime"`
 	Message      string       `json:"message"`
 	Capabilities Capabilities `json:"capabilities"`

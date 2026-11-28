@@ -186,7 +186,10 @@ onMounted(async () => {
         window.setTimeout(() => window.dispatchEvent(new CustomEvent('weft:open-profile')), 900)
       } else if (['overview', 'apps', 'forwards', 'acl', 'devices', 'users', 'keys', 'api', 'settings'].includes(target)) {
         if (managePages.includes(target) && !hasAPIKey.value) {
-          notify('这张服务端还没配管理 API Key，设备 / 人员 / 密钥 / ACL 这些页面暂不显示')
+          const why = state.value?.apiKeyIssue
+          notify(why
+            ? `管理 API Key 不可用：${why}`
+            : '这张服务端还没配管理 API Key，设备 / 人员 / 密钥 / ACL 这些页面暂不显示')
           page.value = 'overview'
         } else {
           page.value = target

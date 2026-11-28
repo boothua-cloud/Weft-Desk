@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,27 @@ import (
 	"strings"
 	"time"
 )
+
+// apiError 带上 HTTP 状态码。文案和以前完全一样（日志、界面都照旧），
+// 多出来的状态码是给上层判断用的：401/403 说明「这把钥匙不对」，
+// 换网络、等一会儿都不会好，界面据此把服务端管理入口收起来；
+// 超时、DNS 失败这类只是「现在问不到」，不能当成钥匙有问题。
+type apiError struct {
+	status int
+	text   string
+}
+
+func (e *apiError) Error() string { return e.text }
+
+// isRejected 表示服务端明确拒绝了这把钥匙。
+// 403 也算：headscale 对没有权限的 Key 有时回 403 而不是 401。
+func isRejected(err error) bool {
+	var ae *apiError
+	if !errors.As(err, &ae) {
+		return false
+	}
+	return ae.status == http.StatusUnauthorized || ae.status == http.StatusForbidden
+}
 
 // ControlPlane 只实现 Headscale 管理 API（/api/v1）。
 // 端点与字段以服务端 /swagger/v1/openapiv2.json 为准。
@@ -109,18 +131,22 @@ func doJSON(method, endpoint, bearer string, body any, out any) (http.Header, er
 			Code    int    `json:"code"`
 			Message string `json:"message"`
 		}
+		var text string
 		if json.Unmarshal(raw, &e) == nil && e.Message != "" {
 			switch resp.StatusCode {
 			case http.StatusUnauthorized:
-				return resp.Header, fmt.Errorf(
+				text = fmt.Sprintf(
 					"401 未授权：管理 API 需要 `headscale apikeys create` 生成的 API Key（不是节点 Auth Key）。"+
 						"服务端响应：%s", e.Message)
 			case http.StatusNotFound:
-				return resp.Header, fmt.Errorf("404 资源不存在：%s", e.Message)
+				text = "404 资源不存在：" + e.Message
+			default:
+				text = fmt.Sprintf("%s %s -> %d: %s", method, endpoint, resp.StatusCode, e.Message)
 			}
-			return resp.Header, fmt.Errorf("%s %s -> %d: %s", method, endpoint, resp.StatusCode, e.Message)
+		} else {
+			text = fmt.Sprintf("%s %s -> %d: %s", method, endpoint, resp.StatusCode, short(raw))
 		}
-		return resp.Header, fmt.Errorf("%s %s -> %d: %s", method, endpoint, resp.StatusCode, short(raw))
+		return resp.Header, &apiError{status: resp.StatusCode, text: text}
 	}
 	if out != nil && len(raw) > 0 {
 		if err := json.Unmarshal(raw, out); err != nil {
@@ -318,6 +344,33 @@ func isAuthKey(k string) bool {
 func usableAPIKey() bool {
 	k := strings.TrimSpace(secretGet(secretMain))
 	return k != "" && !isAuthKey(k)
+}
+
+// looksLikeAPIKey 只看形状：headscale 的管理钥匙一律 hskey- 开头
+// （旧版 hskey-apikey-、新版 hskey-api-）。节点 Auth Key 虽然也是 hskey-，
+// 但管理接口不认，单独排掉，让调用方能给出更准的提示。
+// 它只用来在没联网时先给个答案，真正认不认还得问服务端（见 CheckKey）。
+func looksLikeAPIKey(k string) bool {
+	if isAuthKey(k) {
+		return false
+	}
+	return strings.HasPrefix(k, "hskey-") || strings.HasPrefix(k, "tskey-")
+}
+
+// CheckKey 是最便宜的一次鉴权：打 /api/v1/node，401/403 就代表钥匙不能用。
+// 不走 Probe，是因为启动和改配置时会频繁调用，没必要顺带拉 version 和 health。
+func (c *headscaleCP) CheckKey() error {
+	return c.checkKeyWith(c.bearer())
+}
+
+// checkKeyWith 把钥匙作为入参，纯粹为了让测试能绕开钥匙串。
+func (c *headscaleCP) checkKeyWith(key string) error {
+	if strings.TrimSpace(key) == "" {
+		return nil
+	}
+	var v map[string]any
+	_, err := doJSON("GET", c.url("/api/v1/node"), key, nil, &v)
+	return err
 }
 
 func (c *headscaleCP) url(p string) string {

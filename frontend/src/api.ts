@@ -34,6 +34,9 @@ export interface State {
   // 是否配了能用的管理 API Key（空值或节点 Auth Key 都是 false）。
   // 为 false 时服务端管理相关的入口整块不显示。
   hasApiKey: boolean
+  // 为什么不算配了：填的是 Auth Key、形状不对、或者服务端 401 拒绝。
+  // 空串表示没配（就是没填），界面据此决定要不要显示一条提示
+  apiKeyIssue: string
   loginURL: string
   lastError: string
   platform: string

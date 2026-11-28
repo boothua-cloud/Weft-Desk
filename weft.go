@@ -42,8 +42,21 @@ type WeftService struct {
 	devToolsHook func()
 	// autoPending 表示启动时的自动连接还没结束，界面据此显示加载态。
 	autoPending bool
+	// keyProbe 是「服务端认不认这把管理 Key」的最近一次结论。
+	keyProbe keyProbe
 	// upd 是自动更新的运行态（框架的 Updater + 最近一次检查结果）。
 	upd *updateState
+}
+
+// keyProbe 缓存管理 Key 的判定结果。
+// 只有服务端明确回 401/403 才记 bad；网络不通记成「还没结论」，
+// 界面按乐观处理 —— 离线时把整组入口藏起来会被当成软件坏了。
+type keyProbe struct {
+	key  string    // 判定时用的钥匙，换了就作废
+	bad  bool      // 服务端明确拒绝
+	msg  string    // 拒绝原因，界面直接显示
+	at   time.Time // 上次尝试的时间，避免离线时每 3 秒打一次接口
+	busy bool      // 正在问，别重复发
 }
 
 // OpenDevTools 供界面里的「更多」菜单调用。
@@ -481,7 +494,9 @@ func (s *WeftService) DeleteProfile(id string) error {
 	return nil
 }
 
-// profileInput 是服务端编辑弹窗提交的字段。凭证留空表示不修改。
+// profileInput 是服务端编辑弹窗提交的字段。
+// 凭证留空表示不修改；要删掉得显式给 Clear*Key —— 以前「空 = 不改」既没法测
+// 「没 Key 会怎样」，也没法把填错的那串删掉。
 type profileInput struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
@@ -489,6 +504,8 @@ type profileInput struct {
 	Hostname      string `json:"hostname"`
 	APIKey        string `json:"apiKey"`
 	AuthKey       string `json:"authKey"`
+	ClearAPIKey   bool   `json:"clearApiKey"`
+	ClearAuthKey  bool   `json:"clearAuthKey"`
 	AllowInsecure bool   `json:"allowInsecure"`
 }
 
@@ -555,12 +572,16 @@ func (s *WeftService) SaveProfileRaw(raw string) (string, error) {
 		cfg.Profiles = append(cfg.Profiles, p)
 	}
 
-	// 凭证：留空表示沿用原来的
+	// 凭证：留空表示沿用原来的，要清掉得点弹窗里的「清空」
 	if v := strings.TrimSpace(in.APIKey); v != "" {
 		_ = secretSet(secretMain+"."+id, v)
+	} else if in.ClearAPIKey {
+		_ = secretSet(secretMain+"."+id, "")
 	}
 	if v := strings.TrimSpace(in.AuthKey); v != "" {
 		_ = secretSet(secretAuth+"."+id, v)
+	} else if in.ClearAuthKey {
+		_ = secretSet(secretAuth+"."+id, "")
 	}
 
 	if changedActive {
@@ -718,6 +739,19 @@ func (s *WeftService) RevealCredential(kind string) (string, error) {
 
 func (s *WeftService) TestConnection() (string, error) {
 	cap, err := s.cp.Probe()
+	// 手动点「测试连接」得到的就是最新结论，直接记下来，
+	// 省得界面等下一轮轮询才知道这把钥匙到底行不行
+	key := strings.TrimSpace(secretGet(secretMain))
+	s.mu.Lock()
+	switch {
+	case key == "":
+		s.keyProbe = keyProbe{}
+	case err == nil:
+		s.keyProbe = keyProbe{key: key, at: time.Now()}
+	case isRejected(err):
+		s.keyProbe = keyProbe{key: key, bad: true, msg: short([]byte(err.Error())), at: time.Now()}
+	}
+	s.mu.Unlock()
 	if err != nil {
 		return "", err
 	}
@@ -876,12 +910,14 @@ func (s *WeftService) GetState() (string, error) {
 	cfg, cap, connected, started := s.cfg, s.cap, s.connected, s.started
 	s.mu.Unlock()
 	e := s.engine
+	hasKey, keyWhy := s.apiKeyStatus()
 	st := State{
 		Connected: connected, ControlPlane: cfg.ControlPlane,
 		Endpoint: cfg.BaseURL, Engine: e.Name(),
 		EngineReady: e.Available(), CLIReady: e.Available(),
 		LoginURL: e.LoginURL(), Configured: hasCredential(cfg),
-		HasAPIKey:    usableAPIKey(),
+		HasAPIKey:    hasKey,
+		APIKeyIssue:  keyWhy,
 		Capabilities: cap,
 		Platform:     runtime.GOOS,
 		AppVersion:   appVersion,
@@ -926,7 +962,83 @@ func (s *WeftService) GetState() (string, error) {
 	if st.SelfIP == "" {
 		st.SelfIP = "—"
 	}
+	// 顺手在后台确认一下这把钥匙服务端认不认（只在没结论时才发请求）
+	s.ensureAPIKeyProbe()
 	return toJSON(st)
+}
+
+// apiKeyStatus 回答「该不该显示服务端管理入口」，顺便给出不该显示的原因。
+//
+// 三层判断：空 → 形状不对 → 服务端上次的结论。形状这一层是为了即时响应：
+// 刚粘进去一个「1」，不用等服务端回来就知道它不可能是钥匙。真问到结果会覆盖它，
+// 万一哪套部署的钥匙前缀不一样，探测通过就照常显示。
+func (s *WeftService) apiKeyStatus() (bool, string) {
+	key := strings.TrimSpace(secretGet(secretMain))
+	if key == "" {
+		return false, ""
+	}
+	if isAuthKey(key) {
+		return false, "填的是节点注册用的 Auth Key（hskey-auth-…）：管理接口只认 `headscale apikeys create` 生成的 Key"
+	}
+	s.mu.Lock()
+	p := s.keyProbe
+	s.mu.Unlock()
+	if p.key == key {
+		if p.bad {
+			return false, "服务端拒绝了这把 Key（" + p.msg + "）：确认它是 `headscale apikeys create` 生成的，并且没过期"
+		}
+		return true, ""
+	}
+	if !looksLikeAPIKey(key) {
+		return false, "这串不像 headscale 的 API Key（应以 hskey- 开头），多半是黏贴错了或者随手填的占位"
+	}
+	return true, ""
+}
+
+// ensureAPIKeyProbe 在后台问一次服务端「这把钥匙收不收」。
+// 由 GetState 触发：界面每 3 秒轮询一次，所以配好或清掉 Key 之后最多几秒，
+// 入口就会跟着出现/消失，不用在每个保存、切换的路径上各挂一份。
+func (s *WeftService) ensureAPIKeyProbe() {
+	key := strings.TrimSpace(secretGet(secretMain))
+	if key == "" || isAuthKey(key) {
+		return // 这两种情况 apiKeyStatus 已经能直接回答，不必打接口
+	}
+	s.mu.Lock()
+	p, cp := s.keyProbe, s.cp
+	if p.busy || p.key == key || (!p.at.IsZero() && time.Since(p.at) < 30*time.Second) {
+		// 正在问 / 已有结论 / 刚试过还没结论：都先不重复发
+		s.mu.Unlock()
+		return
+	}
+	s.keyProbe = keyProbe{key: p.key, at: time.Now(), busy: true}
+	s.mu.Unlock()
+	if cp == nil {
+		return
+	}
+	go func() {
+		var err error
+		if kc, ok := cp.(interface{ CheckKey() error }); ok {
+			err = kc.CheckKey()
+		} else {
+			_, err = cp.Devices("")
+		}
+		cur := strings.TrimSpace(secretGet(secretMain))
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		switch {
+		case cur != key:
+			// 问的过程中钥匙被改了，这次结论作废，下一轮重新问
+			s.keyProbe = keyProbe{}
+		case isRejected(err):
+			s.keyProbe = keyProbe{key: key, bad: true, msg: short([]byte(err.Error())), at: time.Now()}
+			log.Printf("[keys] 管理 Key 被拒绝，服务端管理入口已收起: %v", err)
+		case err == nil:
+			s.keyProbe = keyProbe{key: key, at: time.Now()}
+		default:
+			// 网络不通之类：不知道，过 30 秒再问一次
+			s.keyProbe = keyProbe{at: time.Now()}
+		}
+	}()
 }
 
 // formatUptime 把时长写成「2 天 3 小时」这种能直接读的形式。
