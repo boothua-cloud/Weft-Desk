@@ -21,16 +21,52 @@ const groups = computed(() => {
   return [...set].sort()
 })
 const drawer = ref(false)
-const form = ref<AppBookmark>({ id: '', name: '', url: '', group: '常用', icon: '#0F6E56', browser: false, updatedAt: '' })
+const form = ref<AppBookmark>({ id: '', name: '', url: '', group: '常用', icon: '#0F6E56', iconData: '', browser: false, updatedAt: '', lastOpen: '' })
+// 记下进抽屉时的地址：保存后只有「新建」或「地址变了」才重新抓图标，
+// 改个名字就重新抓一遍，等于每次编辑都多等几秒
+const editingUrl = ref('')
 const colors = ['#0F6E56', '#185FA5', '#378ADD', '#D85A30', '#BA7517', '#534AB7']
 const { confirmBox, askConfirm, closeConfirm } = useConfirm()
 
-const shown = computed(() => apps.value.filter(a => {
-  const kw = keyword.value.trim().toLowerCase()
-  if (kw && !(a.name + a.url + a.group).toLowerCase().includes(kw)) return false
-  if (groupFilter.value && a.group !== groupFilter.value) return false
-  return true
-}))
+// 自定义顺序和最近使用是两种看法：一个是你排的，一个是系统记的。
+// 拖动只在前者、且没有筛选时开——筛过的列表里拖动，落点和用户
+// 看到的不是同一张表，重排结果会莫名其妙。
+const sortMode = ref<'custom' | 'recent'>('custom')
+const sortOptions = [{ value: 'custom', label: '自定义顺序' }, { value: 'recent', label: '最近使用' }]
+const canDrag = computed(() => sortMode.value === 'custom' && !keyword.value.trim() && !groupFilter.value)
+
+const shown = computed(() => {
+  const list = apps.value.filter(a => {
+    const kw = keyword.value.trim().toLowerCase()
+    if (kw && !(a.name + a.url + a.group).toLowerCase().includes(kw)) return false
+    if (groupFilter.value && a.group !== groupFilter.value) return false
+    return true
+  })
+  if (sortMode.value === 'recent') {
+    // 没打开过的排最后；RFC3339 直接按字符串倒序就是时间倒序
+    return [...list].sort((a, b) => (b.lastOpen || '').localeCompare(a.lastOpen || ''))
+  }
+  return list
+})
+
+const missingIcons = computed(() => apps.value.filter(a => !a.iconData).length)
+const filling = ref(false)
+
+// 「3 天前用过」只在有记录时出现；超过一个月就不提了，
+// 那时候说「上个月用过」跟没说差不多
+function usedText(iso: string): string {
+  if (!iso) return ''
+  const t = new Date(iso).getTime()
+  if (!t) return ''
+  const mins = Math.floor((Date.now() - t) / 60000)
+  if (mins < 1) return '刚刚用过'
+  if (mins < 60) return `${mins} 分钟前用过`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours} 小时前用过`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days} 天前用过`
+  return ''
+}
 
 async function load() {
   try { apps.value = await api.apps() }
@@ -40,7 +76,10 @@ onMounted(load)
 watch(reloadTick, load)
 
 function openForm(a?: AppBookmark) {
-  form.value = a ? { ...a } : { id: '', name: '', url: '', group: '常用', icon: colors[0], browser: false, updatedAt: '' }
+  form.value = a
+    ? { ...a }
+    : { id: '', name: '', url: '', group: '常用', icon: colors[0], iconData: '', browser: false, updatedAt: '', lastOpen: '' }
+  editingUrl.value = a?.url ?? ''
   drawer.value = true
 }
 async function submit() {
@@ -49,11 +88,75 @@ async function submit() {
     return
   }
   try {
-    await api.saveApp(form.value)
+    const saved = await api.saveApp(form.value)
     drawer.value = false
     await load()
-    emit('notify', '应用已保存到本地数据库')
+    emit('notify', '应用已保存')
+    // 新建或者换了地址才重新抓图标。抓取在后台跑，抓到了再刷一次列表；
+    // 抓不到就留着色块，不影响用户继续点别的东西
+    if (!form.value.id || saved.url !== editingUrl.value) {
+      api.fetchAppIcon(saved.id).then(load).catch(() => {})
+    }
   } catch (err: any) { emit('notify', '保存失败：' + (err?.message ?? err)) }
+}
+
+// ---------- 图标 ----------
+async function fillIcons() {
+  if (filling.value) return
+  filling.value = true
+  try {
+    const r = await api.fillIcons()
+    await load()
+    if (r.total === 0) emit('notify', '所有应用都有图标了')
+    else if (r.failed?.length) emit('notify', `抓到 ${r.done} 个，${r.failed.length} 个没抓到`)
+    else emit('notify', `${r.done} 个图标都抓到了`)
+  } catch (err: any) {
+    emit('notify', '抓取失败：' + (err?.message ?? err))
+  } finally { filling.value = false }
+}
+
+// ---------- 拖动排序 ----------
+const dragId = ref('')
+const overId = ref('')
+
+function onDragStart(e: DragEvent, a: AppBookmark) {
+  if (!canDrag.value) { e.preventDefault(); return }
+  dragId.value = a.id
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', a.id)
+  }
+}
+function onDragOver(e: DragEvent, a: AppBookmark) {
+  if (!dragId.value || dragId.value === a.id) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  overId.value = a.id
+}
+async function onDrop(e: DragEvent, target: AppBookmark) {
+  e.preventDefault()
+  const from = dragId.value
+  dragId.value = ''
+  overId.value = ''
+  if (!from || from === target.id) return
+  const list = [...apps.value]
+  const i = list.findIndex(x => x.id === from)
+  const j = list.findIndex(x => x.id === target.id)
+  if (i < 0 || j < 0) return
+  const [moved] = list.splice(i, 1)
+  list.splice(j, 0, moved)
+  // 先本地重排，不等写入：拖完立刻看到结果，失败再拉回真实顺序
+  apps.value = list
+  try {
+    await api.reorderApps(list.map(x => x.id))
+  } catch (err: any) {
+    emit('notify', '保存顺序失败：' + (err?.message ?? err))
+    await load()
+  }
+}
+function onDragEnd() {
+  dragId.value = ''
+  overId.value = ''
 }
 function remove(a: AppBookmark) {
   askConfirm({
@@ -200,6 +303,10 @@ function describe(r: { peer: string; added: number; updated: number; skipped: nu
     <div class="spread" style="margin-bottom:18px;flex-shrink:0">
       <div class="faint" style="font-size:11.5px">共 {{ apps.length }} 个内网应用 · 书签保存在本地 SQLite</div>
       <div class="row" style="gap:8px">
+        <button v-if="missingIcons" class="btn" :disabled="filling" @click="fillIcons"
+                :title="'从各站点抓 favicon，抓不到就留着色块'">
+          <span v-if="filling" class="spinner"></span>{{ filling ? '抓取中…' : `补齐图标 (${missingIcons})` }}
+        </button>
         <button class="btn" @click="openSync">同步到其他设备</button>
         <button class="btn primary" @click="openForm()">＋ 添加应用</button>
       </div>
@@ -212,19 +319,32 @@ function describe(r: { peer: string; added: number; updated: number; skipped: nu
     <div class="filter-bar">
       <input class="input" style="width:240px" v-model="keyword" placeholder="搜索名称 / 地址…" />
       <div style="width:132px"><Pick v-model="groupFilter" :options="groupOptions" /></div>
+      <div style="width:140px"><Pick v-model="sortMode" :options="sortOptions" /></div>
       <button v-if="keyword || groupFilter" class="btn ghost sm"
               @click="keyword=''; groupFilter=''">清空条件</button>
-      <span class="faint" style="margin-left:auto;font-size:11px">{{ shown.length }} / {{ apps.length }} 个应用</span>
+      <span class="faint" style="margin-left:auto;font-size:11px">
+        {{ canDrag ? '拖动卡片可以调整顺序' : `${shown.length} / ${apps.length} 个应用` }}
+      </span>
     </div>
 
     <div class="table-scroll">
     <div class="grid3">
-      <div v-for="a in shown" :key="a.id" class="appcard">
+      <div v-for="a in shown" :key="a.id" class="appcard"
+           :class="{ movable: canDrag, dragging: dragId === a.id, 'drop-target': overId === a.id }"
+           :draggable="canDrag"
+           @dragstart="onDragStart($event, a)" @dragover="onDragOver($event, a)"
+           @drop="onDrop($event, a)" @dragend="onDragEnd">
         <div class="row">
-          <div class="ico" :style="{ background: a.icon || '#0F6E56' }">{{ a.name.slice(0, 2) }}</div>
+          <div class="ico" :class="{ 'has-img': !!a.iconData }" :style="a.iconData ? {} : { background: a.icon || '#0F6E56' }">
+            <img v-if="a.iconData" :src="a.iconData" alt="" />
+            <template v-else>{{ a.name.slice(0, 2) }}</template>
+          </div>
           <div style="min-width:0">
             <b>{{ a.name }}</b>
             <div class="url mono" style="color:var(--faint);font-size:10.5px;margin-top:3px">{{ a.url }}</div>
+            <div v-if="usedText(a.lastOpen)" class="faint" style="font-size:10px;margin-top:2px">
+              {{ usedText(a.lastOpen) }}
+            </div>
           </div>
           <span v-if="a.browser" class="tag amber" style="margin-left:auto" title="用系统浏览器打开">浏览器</span>
           <span v-else class="tag" style="margin-left:auto">{{ a.group }}</span>
@@ -263,8 +383,18 @@ function describe(r: { peer: string; added: number; updated: number; skipped: nu
         </div>
         <div class="field"><label class="field-label">分组</label><input class="input" v-model="form.group" placeholder="常用" /></div>
         <div class="field">
-          <label class="field-label">图标颜色</label>
-          <div class="row">
+          <label class="field-label">图标</label>
+          <div class="row" style="align-items:center;gap:10px">
+            <div class="ico form-ico" :class="{ 'has-img': !!form.iconData }"
+                 :style="form.iconData ? {} : { background: form.icon }">
+              <img v-if="form.iconData" :src="form.iconData" alt="" />
+              <template v-else>{{ (form.name || '应用').slice(0, 2) }}</template>
+            </div>
+            <div class="faint" style="font-size:10.5px;line-height:1.7">
+              {{ form.iconData ? '已从站点抓到图标' : '保存后自动抓取；抓不到就用下面的颜色和名字首字' }}
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px">
             <button v-for="c in colors" :key="c" class="swatch" :class="{ active: form.icon === c }"
                     :style="{ background: c }" @click="form.icon = c"></button>
           </div>
@@ -352,3 +482,33 @@ function describe(r: { peer: string; added: number; updated: number; skipped: nu
     <ConfirmDialog v-if="confirmBox" v-bind="confirmBox" @close="closeConfirm" />
   </div>
 </template>
+
+<style scoped>
+/* 抓下来的 favicon 直接铺在色块里，等比缩放、跟着圆角裁 */
+.ico { overflow: hidden; }
+.ico img { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* 有图标时不再用满底色：很多图标是透明底的深色图形，压一块饱和色会糊成一团 */
+.ico.has-img { background: var(--surface-2); padding: 2px; }
+
+/* 拖动排序：能拖的时候光标变抓手，拖起来的那张退成半透明，
+   落点用品牌色描一圈，比插一条线更好认 */
+.appcard.movable { cursor: grab; }
+.appcard.movable:active { cursor: grabbing; }
+.appcard.dragging { opacity: .45; }
+.appcard.drop-target {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px var(--brand-soft);
+  transform: none;
+}
+.form-ico {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  flex: none;
+}
+</style>

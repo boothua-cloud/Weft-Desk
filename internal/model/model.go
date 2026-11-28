@@ -190,11 +190,18 @@ type AppBookmark struct {
 	URL   string `json:"url"`
 	Group string `json:"group"`
 	Icon  string `json:"icon"`
+	// IconData 是抓下来的站点图标，data URL（image/png;base64,…）。
+	// 存进库里而不是每次渲染去抓：内网站点首字节常常要等一两秒，
+	// 列表里一排空色块等图标，比一个稳定的色块还难看。
+	IconData string `json:"iconData"`
 	// Browser 为 true 时始终用系统浏览器打开：
 	// 需要浏览器扩展（如密码管理器自动填充）的站点走这条路。
 	Browser bool `json:"browser"`
 	// UpdatedAt 用于设备间同步时判断哪边的改动更新，RFC3339。
 	UpdatedAt string `json:"updatedAt"`
+	// LastOpen 是最近一次打开的时间，只在本机有意义，不参与同步。
+	// 总览页的「快捷应用」按它排，用得多的自然浮到前面。
+	LastOpen string `json:"lastOpen"`
 }
 
 // SyncInfo 是应用同步的当前状态，给本机界面看。

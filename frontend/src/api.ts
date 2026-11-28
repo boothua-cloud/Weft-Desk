@@ -238,7 +238,19 @@ export interface APIKey {
 }
 export interface PolicyDoc { content: string; updatedAt: string; source?: string }
 export interface HealthInfo { database: boolean }
-export interface AppBookmark { id: string; name: string; url: string; group: string; icon: string; browser: boolean; updatedAt: string }
+export interface AppBookmark {
+  id: string
+  name: string
+  url: string
+  group: string
+  icon: string
+  // 抓下来的站点图标，data URL。空表示还没抓到，界面退回色块 + 首字
+  iconData: string
+  browser: boolean
+  updatedAt: string
+  // 最近一次打开的时间，只在本机有意义，不参与同步
+  lastOpen: string
+}
 // SyncInfo 是应用书签同步的当前状态，和 Go 侧 SyncInfo 对应。
 export interface SyncInfo {
   enabled: boolean
@@ -251,6 +263,8 @@ export interface SyncInfo {
   error: string
 }
 export interface SyncResult { peer: string; added: number; updated: number; skipped: number; total: number }
+// IconFillResult 是「补齐图标」的汇总，失败项带名字和原因
+export interface IconFillResult { total: number; done: number; failed: string[] }
 export interface AuditEvent {
   time: string; action: string; detail: string
   profile: string; target: string
@@ -379,8 +393,14 @@ export const api = {
 
   // 应用与书签
   apps: () => parse<AppBookmark[]>(WeftService.ListApps()),
-  saveApp: (a: AppBookmark) => WeftService.SaveApp(JSON.stringify(a)),
+  saveApp: (a: AppBookmark) => parse<AppBookmark>(WeftService.SaveApp(JSON.stringify(a))),
   deleteApp: (id: string) => WeftService.DeleteApp(id),
+  // 拖动排序：传排好的 id 数组
+  reorderApps: (ids: string[]) => WeftService.ReorderApps(JSON.stringify(ids)),
+  // 抓单个图标，返回更新后的书签；抓不到会 reject
+  fetchAppIcon: (id: string) => parse<AppBookmark>((WeftService as any).FetchAppIcon(id)),
+  // 给所有还没图标的书签批量抓一遍
+  fillIcons: () => parse<IconFillResult>((WeftService as any).FillMissingIcons()),
   openApp: (id: string) => WeftService.OpenApp(id),
   openInBrowser: (id: string) => WeftService.OpenInBrowser(id),
 

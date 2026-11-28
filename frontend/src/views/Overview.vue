@@ -305,6 +305,14 @@ async function openApp(a: AppBookmark) {
   }
 }
 
+// 快捷应用按「最近用过」排：这一栏的作用就是少找一步，
+// 一周没碰过的排在天天用的前面没有道理。没用过的保持自定义顺序。
+const quickApps = computed(() => {
+  const used = apps.value.filter((a) => a.lastOpen)
+    .sort((a, b) => b.lastOpen.localeCompare(a.lastOpen))
+  return [...used, ...apps.value.filter((a) => !a.lastOpen)]
+})
+
 // 应用没配图标时用名字首字母 + 一个稳定色，看着比清一色绿点舒服
 const palette = ['#0F6E56', '#1D6FD8', '#B45309', '#7C3AED', '#0E7490', '#BE185D']
 function iconColor(a: AppBookmark, idx: number) {
@@ -564,8 +572,12 @@ async function fetchAuth() {
         <button class="btn ghost sm" @click="$emit('notify', '在「应用管理」里增删应用')">管理</button>
       </div>
       <div v-if="apps.length" class="app-grid">
-        <button v-for="(a, i) in apps" :key="a.id" class="app-chip" :disabled="!!opening" @click="openApp(a)">
-          <span class="ico" :style="{ background: iconColor(a, i) }">{{ initial(a) }}</span>
+        <button v-for="(a, i) in quickApps" :key="a.id" class="app-chip" :disabled="!!opening" @click="openApp(a)">
+          <span class="ico" :class="{ 'has-img': !!a.iconData }"
+                :style="a.iconData ? {} : { background: iconColor(a, i) }">
+            <img v-if="a.iconData" :src="a.iconData" alt="" />
+            <template v-else>{{ initial(a) }}</template>
+          </span>
           <span style="min-width:0">
             <b>{{ a.name }}</b>
             <small>{{ a.group || '未分组' }}</small>
@@ -615,3 +627,10 @@ async function fetchAuth() {
     </template>
   </div>
 </template>
+
+<style scoped>
+/* 抓到的 favicon 等比铺进色块；没有图标的仍然用底色 + 首字 */
+.app-chip .ico { overflow: hidden; }
+.app-chip .ico img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.app-chip .ico.has-img { background: var(--surface-2); padding: 3px; }
+</style>

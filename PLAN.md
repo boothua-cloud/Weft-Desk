@@ -211,6 +211,23 @@ https://github.com/boothua-cloud/Weft-Desk/releases/tag/v0.1.5
     纵轴自动抬到 40 KB/s，两条线颜色分明；空闲时回到基线，
     没连上时显示「连上之后开始采样」。
 
+- [x] 应用图标抓 favicon、拖动排序、最近使用
+  - 图标：保存书签时后台抓一次，先试 `/favicon.ico`，404 或者回的是 HTML 就
+    读页面里的 `<link rel="icon">`，按 `sizes` 挑大的（`any` 当矢量图，优先）。
+    结果存成 data URL 进库，列表渲染不再依赖网络。
+  - 排序：卡片 HTML5 拖动，落库按 id 数组重写 `sort`（事务里做，不会留一半新一半旧）。
+    筛选状态下和「最近使用」排序时拖动关掉——落点和看到的列表不是同一张表。
+  - 最近使用：打开应用时写 `last_open`（不动 `updated_at`，免得一次点击就把
+    同步判成「本机更新」）。应用页可按它排序，卡片上写「2 小时前用过」；
+    总览页快捷应用固定按它排，没用过的保持自定义顺序。
+  - 结果：`fetchSiteIcon` + `WeftService.FetchAppIcon` / `FillMissingIcons` /
+    `ReorderApps`；`store.SetAppIcon` / `MarkAppOpened` / `ReorderApps`。
+    同步包的 `stripLocalOnly` 把 `icon_data` 和 `last_open` 抹掉：一个图标几十 KB，
+    几十个书签就能顶满 1MB 的请求体，而打开时间是本机的事。
+  - 验：单测覆盖「/favicon.ico 命中」「/favicon.ico 回 HTML 时改读 link 标签」「没有图标要报错」
+    「HTML 不能当图标」；真机 9 个内网书签抓到 8 个（Rancher 的域名超时），
+    截图看过图标、最近使用文案和补齐按钮。
+
 - [ ] 内嵌终端，走 100.x + `x/crypto/ssh`
 - [ ] 本地名字解析：127.0.0.1:53 把设备名解析成 100.x
 - [ ] MTU 探测

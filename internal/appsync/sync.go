@@ -181,6 +181,21 @@ type payload struct {
 	At      string              `json:"at"`
 }
 
+// stripLocalOnly 抹掉不该跟着同步跑的两样：
+//   - IconData 是本机抓的图片缓存，一个图标几十上百 KB，几十个书签
+//     就能把 1MB 的请求体顶满；
+//   - LastOpen 是「本机什么时候点过」，换台设备就失去意义。
+//
+// 对端收到后自己会补图标，打开时间从零开始记。
+func stripLocalOnly(apps []model.AppBookmark) []model.AppBookmark {
+	out := make([]model.AppBookmark, len(apps))
+	for i, a := range apps {
+		a.IconData, a.LastOpen = "", ""
+		out[i] = a
+	}
+	return out
+}
+
 func (s *Server) handleApps(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -190,7 +205,7 @@ func (s *Server) handleApps(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, host := s.place()
-		writeJSON(w, payload{Host: host, Version: appinfo.Version, Apps: apps, At: time.Now().Format(time.RFC3339)})
+		writeJSON(w, payload{Host: host, Version: appinfo.Version, Apps: stripLocalOnly(apps), At: time.Now().Format(time.RFC3339)})
 
 	case http.MethodPost:
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
@@ -265,7 +280,7 @@ func (s *Server) Push(target, token string) (model.SyncResult, error) {
 		return model.SyncResult{}, err
 	}
 	_, host := s.place()
-	p := payload{Host: host, Version: appinfo.Version, Apps: apps, At: time.Now().Format(time.RFC3339)}
+	p := payload{Host: host, Version: appinfo.Version, Apps: stripLocalOnly(apps), At: time.Now().Format(time.RFC3339)}
 	raw, err := json.Marshal(p)
 	if err != nil {
 		return model.SyncResult{}, err
@@ -403,6 +418,9 @@ func Merge(local, incoming []model.AppBookmark) (out []model.AppBookmark, added,
 				continue
 			}
 			in.ID = cur.ID // 沿用本机 ID，避免同一地址出现两条
+			// 图标和打开时间只属于本机：对端传过来的是空值，
+			// 直接覆盖会让已经抓好的图标白丢一遍。
+			in.IconData, in.LastOpen = cur.IconData, cur.LastOpen
 			out[i] = in
 			updated++
 			continue

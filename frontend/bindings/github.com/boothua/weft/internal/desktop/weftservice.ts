@@ -205,6 +205,22 @@ export function ExportText(filename: string, content: string): $CancellablePromi
     return $Call.ByID(269140072, filename, content);
 }
 
+/**
+ * FetchAppIcon 抓一个应用的书签图标并写库。返回最新的一条书签。
+ * 抓不到不算错误——内网里没图标的服务一抓一大把，前端静默留着色块。
+ */
+export function FetchAppIcon(id: string): $CancellablePromise<string> {
+    return $Call.ByID(318035919, id);
+}
+
+/**
+ * FillMissingIcons 给还没有图标的书签批量抓一遍。
+ * 并发 4：串行的话二十个书签每个等到超时就是一百秒，用户会以为卡死。
+ */
+export function FillMissingIcons(): $CancellablePromise<string> {
+    return $Call.ByID(3208460914);
+}
+
 export function ForwardSnippet(id: string): $CancellablePromise<string> {
     return $Call.ByID(3109869535, id);
 }
@@ -417,6 +433,13 @@ export function RenewAPIKey(days: number): $CancellablePromise<void> {
 }
 
 /**
+ * ReorderApps 拖动排序后按新顺序落库。传的是 id 的 JSON 数组。
+ */
+export function ReorderApps(raw: string): $CancellablePromise<void> {
+    return $Call.ByID(1451773484, raw);
+}
+
+/**
  * RestorePolicy 把历史版本写回服务端。写之前当前版本会进历史，所以回滚也能后悔。
  */
 export function RestorePolicy(id: number): $CancellablePromise<void> {
@@ -446,7 +469,7 @@ export function RotateSyncToken(): $CancellablePromise<string> {
     return $Call.ByID(1334311242);
 }
 
-export function SaveApp(raw: string): $CancellablePromise<void> {
+export function SaveApp(raw: string): $CancellablePromise<string> {
     return $Call.ByID(3918778559, raw);
 }
 

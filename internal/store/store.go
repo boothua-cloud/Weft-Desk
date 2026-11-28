@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS apps (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, url TEXT NOT NULL,
   grp TEXT NOT NULL DEFAULT '', icon TEXT NOT NULL DEFAULT '',
+  icon_data TEXT NOT NULL DEFAULT '', last_open TEXT NOT NULL DEFAULT '',
   browser INTEGER NOT NULL DEFAULT 0, sort INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS policy_history (
@@ -77,6 +78,8 @@ CREATE TABLE IF NOT EXISTS forwards (
 	// 老库补列：ALTER 在列已存在时会报错，这里直接忽略。
 	_, _ = s.db.Exec(`ALTER TABLE apps ADD COLUMN browser INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE apps ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE apps ADD COLUMN icon_data TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE apps ADD COLUMN last_open TEXT NOT NULL DEFAULT ''`)
 	// 审计补列：profile 记这条操作属于哪台服务端，target 记对象，
 	// result/error 记成败。老记录只有 action/detail，读的时候兜底。
 	_, _ = s.db.Exec(`ALTER TABLE audit ADD COLUMN profile TEXT NOT NULL DEFAULT ''`)
@@ -178,7 +181,7 @@ func (s *Store) SaveConfig(c model.Config) error {
 }
 
 func (s *Store) ListApps() ([]model.AppBookmark, error) {
-	rows, err := s.db.Query(`SELECT id,name,url,grp,icon,browser,updated_at FROM apps ORDER BY sort`)
+	rows, err := s.db.Query(`SELECT id,name,url,grp,icon,icon_data,browser,updated_at,last_open FROM apps ORDER BY sort`)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +190,8 @@ func (s *Store) ListApps() ([]model.AppBookmark, error) {
 	for rows.Next() {
 		var a model.AppBookmark
 		var browser int
-		if err = rows.Scan(&a.ID, &a.Name, &a.URL, &a.Group, &a.Icon, &browser, &a.UpdatedAt); err != nil {
+		if err = rows.Scan(&a.ID, &a.Name, &a.URL, &a.Group, &a.Icon, &a.IconData,
+			&browser, &a.UpdatedAt, &a.LastOpen); err != nil {
 			return nil, err
 		}
 		a.Browser = browser != 0
@@ -207,12 +211,43 @@ func (s *Store) SaveAppRaw(a model.AppBookmark) error {
 	if a.Browser {
 		browser = 1
 	}
-	_, err := s.db.Exec(`INSERT INTO apps(id,name,url,grp,icon,browser,sort,updated_at)
-      VALUES(?,?,?,?,?,?, (SELECT COALESCE(MAX(sort),0)+1 FROM apps), ?)
+	_, err := s.db.Exec(`INSERT INTO apps(id,name,url,grp,icon,icon_data,last_open,browser,sort,updated_at)
+      VALUES(?,?,?,?,?,?,?,?, (SELECT COALESCE(MAX(sort),0)+1 FROM apps), ?)
       ON CONFLICT(id) DO UPDATE SET name=excluded.name,url=excluded.url,grp=excluded.grp,
-        icon=excluded.icon,browser=excluded.browser,updated_at=excluded.updated_at`,
-		a.ID, a.Name, a.URL, a.Group, a.Icon, browser, a.UpdatedAt)
+        icon=excluded.icon,icon_data=excluded.icon_data,last_open=excluded.last_open,
+        browser=excluded.browser,updated_at=excluded.updated_at`,
+		a.ID, a.Name, a.URL, a.Group, a.Icon, a.IconData, a.LastOpen, browser, a.UpdatedAt)
 	return err
+}
+
+// SetAppIcon 只写图标，不动 UpdatedAt：图标是本机抓的缓存，
+// 不该因为它让一次同步把对端的书名改动判成「本机更新」。
+func (s *Store) SetAppIcon(id, data string) error {
+	_, err := s.db.Exec(`UPDATE apps SET icon_data=? WHERE id=?`, data, id)
+	return err
+}
+
+// MarkAppOpened 记一次打开时间。同样不动 UpdatedAt，理由同上。
+func (s *Store) MarkAppOpened(id string) error {
+	_, err := s.db.Exec(`UPDATE apps SET last_open=? WHERE id=?`,
+		time.Now().Format(time.RFC3339), id)
+	return err
+}
+
+// ReorderApps 按传入的 ID 顺序重写 sort。事务里做，中途失败不会留下
+// 一半新一半旧的顺序。
+func (s *Store) ReorderApps(ids []string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for i, id := range ids {
+		if _, err := tx.Exec(`UPDATE apps SET sort=? WHERE id=?`, i+1, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Store) DeleteApp(id string) error {
