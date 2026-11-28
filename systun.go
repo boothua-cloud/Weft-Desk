@@ -837,6 +837,81 @@ func (e *systemTUNEngine) DiagDump(ctx context.Context, targets []DiagTarget) []
 // DiagPeer 实测一台对端：握手快照、disco 探测、ACL 放行判断、TCP 拨测。
 // 顺序是有讲究的——先读状态，再探链路，最后拨目标端口，
 // 这样结论里能分清是「链路不通」还是「链路通了但服务/ACL 挡着」。
+// Snapshot 采一份本机状态，给自检用。
+//
+// 它跟 DiagPeer 的分工：DiagPeer 回答「能不能到对端」，Snapshot 回答
+// 「我自己准备好了没有」。所以引擎没起来时它不返回错误——「引擎没起来」
+// 本身就是自检要报告的那条结论，这时候用户最需要看这一页。
+func (e *systemTUNEngine) Snapshot(ctx context.Context) (SelfReport, error) {
+	e.mu.Lock()
+	srv, dev, running := e.srv, e.dev, e.running
+	selfIP, host := e.selfIP, e.hostname
+	e.mu.Unlock()
+
+	rep := SelfReport{At: time.Now().Format(time.RFC3339), SelfIP: selfIP, Hostname: host}
+	if dev != nil {
+		if n, err := dev.Name(); err == nil {
+			rep.TUN = n
+		}
+	}
+	if srv == nil {
+		rep.Backend = "未启动"
+		return rep, nil
+	}
+
+	lc, err := srv.LocalClient()
+	if err != nil {
+		rep.Backend = "未启动"
+		return rep, err
+	}
+	st, err := lc.Status(ctx)
+	if err != nil {
+		rep.Backend = "读不到状态"
+		return rep, err
+	}
+	rep.Backend = st.BackendState
+	// AuthURL 非空表示控制面给了个链接在等授权，这时不算登录成功
+	rep.LoggedIn = st.AuthURL == "" && st.BackendState != "NeedsLogin" &&
+		st.BackendState != "NeedsMachineAuth"
+	rep.Health = st.Health
+	if st.Self != nil {
+		rep.Relay = st.Self.Relay
+		rep.Direct = st.Self.CurAddr != ""
+		if len(st.Self.TailscaleIPs) > 0 {
+			rep.SelfIP = st.Self.TailscaleIPs[0].String()
+		}
+	}
+	if !running {
+		// 后端在跑但路由没配完时，流量的去向和「已连接」不是一回事
+		rep.Backend = st.BackendState + "（路由未就绪）"
+	}
+	if pr, perr := lc.GetPrefs(ctx); perr == nil {
+		rep.AcceptRoutes = pr.RouteAll
+	}
+
+	// 本机 netmap 里已经接受的子网路由。没批准的通告不会出现在这里，
+	// 要靠管理 Key 才能补上，那一步在 SelfCheck 里做。
+	for _, p := range st.Peer {
+		if p.PrimaryRoutes == nil {
+			continue
+		}
+		ip := ""
+		if len(p.TailscaleIPs) > 0 {
+			ip = p.TailscaleIPs[0].String()
+		}
+		for _, r := range p.PrimaryRoutes.All() {
+			rep.Routes = append(rep.Routes, RouteCheck{
+				Prefix: r.String(), Peer: p.HostName, PeerIP: ip,
+				Accepted: true, PeerOnline: p.Online,
+			})
+		}
+	}
+	sort.Slice(rep.Routes, func(i, j int) bool {
+		return rep.Routes[i].Prefix < rep.Routes[j].Prefix
+	})
+	return rep, nil
+}
+
 func (e *systemTUNEngine) DiagPeer(ctx context.Context, ip netip.Addr, port uint16) (DiagReport, error) {
 	e.mu.Lock()
 	srv := e.srv

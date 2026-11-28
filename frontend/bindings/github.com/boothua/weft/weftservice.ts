@@ -293,6 +293,18 @@ export function OpenReleasePage(): $CancellablePromise<void> {
 }
 
 /**
+ * PeerPorts 列出每台设备上「登记过的服务」——应用书签里的地址、
+ * 端口转发规则里的目标端口。
+ * 
+ * 为什么需要它：全局填一个 22 然后轮一遍所有设备，测出来的只是
+ * 「SSH 通不通」，跟用户实际要访问的东西没关系。诊断应该回答
+ * 「我那台机器上的 nginx 能不能访问」。
+ */
+export function PeerPorts(): $CancellablePromise<string> {
+    return $Call.ByID(1321802501);
+}
+
+/**
  * ProfilesView 返回服务端列表和当前激活项，前端用来做切换器。
  */
 export function ProfilesView(): $CancellablePromise<string> {
@@ -410,6 +422,17 @@ export function SaveProfile(name: string): $CancellablePromise<void> {
  */
 export function SaveProfileRaw(raw: string): $CancellablePromise<string> {
     return $Call.ByID(1456708043, raw);
+}
+
+/**
+ * SelfCheck 是「连接诊断」页顶部的本机自检。
+ * 
+ * 它存在的理由很直接：连不上的时候，原来那一页只会说一句「还没连上」，
+ * 什么都不给。可这正是最需要信息的时候——是没登录、TUN 没建、
+ * 控制面不可达，还是 UDP 被挡只能走 DERP，都能从这几个字段看出来。
+ */
+export function SelfCheck(): $CancellablePromise<string> {
+    return $Call.ByID(4108694167);
 }
 
 /**

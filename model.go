@@ -226,8 +226,6 @@ type ForwardStatus struct {
 	ListenAddr string `json:"listenAddr"`
 }
 
-// PeerInfo 是节点自己从控制面同步下来的对端视图，不需要任何 API Key。
-// 用来判断「连不上」到底是本机问题还是对端离线。
 // DiagReport 是一次连通性检查的结果。界面只负责把它摆出来，
 // 结论和可能原因都在后端算好：同一份字要给 CLI 和 GUI 用。
 type DiagReport struct {
@@ -264,7 +262,69 @@ type DiagReport struct {
 	At      string   `json:"at"`
 }
 
-// PeerInfo 是列表里的对端快照。诊断页另有 DiagReport，比它多实测数据。
+// SelfReport 是本机自检：不看对端，只回答「我这台机器准备好了没有」。
+// 连不上的时候最需要它，所以引擎没起来时也要能出结果，只是字段少一些。
+type SelfReport struct {
+	At       string `json:"at"`
+	Engine   string `json:"engine"`
+	Backend  string `json:"backend"` // Running / NeedsLogin / Stopped / 未启动
+	LoggedIn bool   `json:"loggedIn"`
+	TUN      string `json:"tun"` // 接口名，空表示没建起来
+	SelfIP   string `json:"selfIP"`
+	Hostname string `json:"hostname"`
+	Relay    string `json:"relay"`
+	Direct   bool   `json:"direct"` // 是否已打通直连，false 表示只走 DERP
+	// AcceptRoutes 是引擎是否接管别人通告的子网。关着的时候，
+	// 服务端批准了也没用，表现就是「内网怎么都访问不了」。
+	AcceptRoutes bool `json:"acceptRoutes"`
+
+	Control ControlStat `json:"control"`
+
+	// Health 是引擎自己的健康告警（UDP 被挡、DERP 不可达、路由冲突都在里面）。
+	// 原样透传，不翻译：这些字是上游给出的最准的说法。
+	Health   []string     `json:"health"`
+	Problems []string     `json:"problems"` // 自检发现的、会直接影响使用的问题
+	Verdict  string       `json:"verdict"`
+	Tone     string       `json:"tone"` // ok | warn | bad
+	Routes   []RouteCheck `json:"routes"`
+}
+
+// ControlStat 是控制面那一次探测的结果。
+type ControlStat struct {
+	URL     string  `json:"url"`
+	OK      bool    `json:"ok"`
+	Ms      float64 `json:"ms"`
+	Version string  `json:"version"`
+	Err     string  `json:"err"`
+}
+
+// RouteCheck 是一条子网路由走完四步的状态：通告 → 批准 → 接受 → 可达。
+// 任何一步断了，症状都是「访问不了内网」，所以四步要分开看。
+// 通告与批准只有配了管理 Key 才看得到（Known 为 false 时这两项无意义）。
+type RouteCheck struct {
+	Prefix     string `json:"prefix"`
+	Peer       string `json:"peer"`
+	PeerIP     string `json:"peerIP"`
+	Known      bool   `json:"known"`
+	Advertised bool   `json:"advertised"`
+	Approved   bool   `json:"approved"`
+	Accepted   bool   `json:"accepted"`
+	PeerOnline bool   `json:"peerOnline"`
+	Verdict    string `json:"verdict"`
+	Tone       string `json:"tone"`
+}
+
+// PeerPort 是「这台设备上登记过的服务」，来自应用书签和端口转发规则。
+// 检查端口默认不再是全局的 22，而是这些真在用着的端口。
+type PeerPort struct {
+	IP    string `json:"ip"`
+	Port  int    `json:"port"`
+	Label string `json:"label"`
+	Kind  string `json:"kind"` // app | forward
+}
+
+// PeerInfo 是节点自己从控制面同步下来的对端视图，不需要任何 API Key。
+// 用来判断「连不上」到底是本机问题还是对端离线。
 type PeerInfo struct {
 	Name     string `json:"name"`
 	IP       string `json:"ip"`

@@ -274,17 +274,22 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
         <section class="help-sec">
           <h4><span class="step">10</span>连接诊断</h4>
           <p>
-            「设备管理」告诉你谁在线上，「连接诊断」告诉你为什么连不上。列表里每台设备一行，
-            右边的胶囊是当前路径：<span class="hl">直连</span>是点对点打通了，<span class="hl">DERP</span> 是没打通、
-            退到中继，能通但慢一截。离线设备不显示路径。
+            最上面那块是<span class="hl">本机自检</span>，不看对端，只看自己：引擎在不在跑、网卡建没建起来、
+            节点登录了没有、控制面能不能连上、出口是直连还是 DERP、子网路由有没有接管。
+            连不上的时候这块照样有内容——十有八九答案就在这里。
+          </p>
+          <p style="margin-top:8px">
+            下面是设备列表。每台一行，右边的胶囊是当前路径：<span class="hl">直连</span>是点对点打通了，
+            <span class="hl">DERP</span> 是没打通、退到中继，能通但慢一截。离线设备不显示路径。
+            应用书签和端口转发里登记过的服务会做成标签挂在设备下面，点哪个测哪个；
+            没登记过的设备才用顶上的「临时端口」，默认 22。
           </p>
           <figure class="shot">
             <img src="/help/diagnose.png" alt="连接诊断" />
-            <figcaption>连接诊断：每台设备实测一次，下面给出结论和原因</figcaption>
+            <figcaption>连接诊断：先看本机自检，再逐台实测，下面给出结论和原因</figcaption>
           </figure>
           <p style="margin-top:10px">
             点<span class="hl">检查</span>会对这台设备实测一遍：连发三次探测看链路稳不稳，再真的连一次目标端口。
-            上面的「检查端口」默认 22，要测数据库就改成 3306。
           </p>
           <p style="margin-top:8px">
             结果按链路层往上排，先说最根本的：<br>
@@ -292,6 +297,10 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
             · 探测全丢，是链路问题，看 DERP 状态和中继区域，或者对方挡了 UDP；<br>
             · 探测通了、端口连不上，再看 ACL：规则里没有这一条会直接写「ACL 没放行」，右下角给一个「去改 ACL」；<br>
             · ACL 也放行了，那就是对端端口没开服务，或者只监听了 <span class="mono">127.0.0.1</span>。
+          </p>
+          <p style="margin-top:8px">
+            子网路由单独一张卡，每条按「通告 → 批准 → 接受 → 可达」四步标状态，断在哪一步就说哪一步。
+            全部检查完顶栏会给「几台通几台不通」，「复制诊断」把这一屏拼成文本，排查时直接发给别人。
           </p>
         </section>
 

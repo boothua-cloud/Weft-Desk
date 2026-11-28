@@ -45,6 +45,56 @@ export interface DiagReport {
   at: string
 }
 
+// SelfReport 是本机自检，连不上时也能出结果。
+export interface SelfReport {
+  at: string
+  engine: string
+  backend: string
+  loggedIn: boolean
+  tun: string
+  selfIP: string
+  hostname: string
+  relay: string
+  direct: boolean
+  acceptRoutes: boolean
+  control: ControlStat
+  health: string[]
+  problems: string[]
+  verdict: string
+  tone: 'ok' | 'warn' | 'bad'
+  routes: RouteCheck[]
+}
+
+export interface ControlStat {
+  url: string
+  ok: boolean
+  ms: number
+  version: string
+  err: string
+}
+
+// 一条子网路由的四步：通告 → 批准 → 接受 → 可达
+export interface RouteCheck {
+  prefix: string
+  peer: string
+  peerIP: string
+  known: boolean
+  advertised: boolean
+  approved: boolean
+  accepted: boolean
+  peerOnline: boolean
+  verdict: string
+  tone: 'ok' | 'warn' | 'bad'
+}
+
+// 设备上登记过的服务，来自应用书签和转发规则
+export interface PeerPort {
+  ip: string
+  port: number
+  label: string
+  kind: 'app' | 'forward'
+}
+
 // PolicyVersion 是策略历史里的一版，和 Go 侧 model.go 对应。
 export interface PolicyVersion {
   id: number
@@ -220,6 +270,8 @@ export const api = {
   audit: () => parse<AuditEvent[]>(WeftService.ListAudit()),
   testPeer: (host: string, port: number, via: string) => WeftService.TestPeer(host, port, via),
   diagnose: (ip: string, port: number) => parse<DiagReport>((WeftService as any).Diagnose(ip, port)),
+  selfCheck: () => parse<SelfReport>((WeftService as any).SelfCheck()),
+  peerPorts: () => parse<PeerPort[]>((WeftService as any).PeerPorts()),
 
   // 节点
   devices: () => parse<Cached<Device>>(WeftService.ListDevices()),

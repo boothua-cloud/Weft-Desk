@@ -8,7 +8,9 @@ import (
 	"log"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -156,6 +158,95 @@ func (s *WeftService) Diagnose(ip string, port int) (string, error) {
 	}
 	out, err := json.Marshal(rep)
 	return string(out), err
+}
+
+// PeerPorts 列出每台设备上「登记过的服务」——应用书签里的地址、
+// 端口转发规则里的目标端口。
+//
+// 为什么需要它：全局填一个 22 然后轮一遍所有设备，测出来的只是
+// 「SSH 通不通」，跟用户实际要访问的东西没关系。诊断应该回答
+// 「我那台机器上的 nginx 能不能访问」。
+func (s *WeftService) PeerPorts() (string, error) {
+	apps, _ := s.store.ListApps()
+	rules, _ := s.store.ListForwards()
+
+	// 书签和转发规则里常写主机名（ubuntu），要换成 100.x 才能对上设备卡片
+	byName := map[string]string{}
+	s.mu.Lock()
+	eng := s.engine
+	s.mu.Unlock()
+	if eng != nil {
+		if pr, ok := eng.(interface{ Peers() []PeerInfo }); ok {
+			for _, p := range pr.Peers() {
+				if p.IP == "" {
+					continue
+				}
+				byName[strings.ToLower(p.IP)] = p.IP
+				if p.Name != "" {
+					byName[strings.ToLower(p.Name)] = p.IP
+				}
+			}
+		}
+	}
+	resolve := func(host string) string {
+		h := strings.ToLower(strings.TrimSpace(host))
+		if h == "" {
+			return ""
+		}
+		if ip, ok := byName[h]; ok {
+			return ip
+		}
+		if a, err := netip.ParseAddr(h); err == nil {
+			return a.String()
+		}
+		return ""
+	}
+
+	out := []PeerPort{}
+	seen := map[string]bool{}
+	add := func(ip string, port int, label, kind string) {
+		if ip == "" || port <= 0 || port > 65535 {
+			return
+		}
+		k := ip + ":" + strconv.Itoa(port)
+		if seen[k] {
+			return
+		}
+		seen[k] = true
+		out = append(out, PeerPort{IP: ip, Port: port, Label: label, Kind: kind})
+	}
+
+	for _, a := range apps {
+		u, err := url.Parse(strings.TrimSpace(a.URL))
+		if err != nil || u.Host == "" {
+			continue
+		}
+		ip := resolve(u.Hostname())
+		if ip == "" {
+			continue
+		}
+		// 没写端口的按协议默认填，用户点它测的就是浏览器实际连的那个
+		port := 443
+		if u.Scheme == "http" {
+			port = 80
+		}
+		if p := u.Port(); p != "" {
+			if n, err := strconv.Atoi(p); err == nil {
+				port = n
+			}
+		}
+		add(ip, port, a.Name, "app")
+	}
+	for _, r := range rules {
+		add(resolve(r.Target), r.TargetPort, r.Name, "forward")
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].IP != out[j].IP {
+			return out[i].IP < out[j].IP
+		}
+		return out[i].Port < out[j].Port
+	})
+	return toJSON(out)
 }
 
 // matchIPSet 判断地址是否落在规则里的一个 IP 集合中。
