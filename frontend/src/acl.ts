@@ -330,7 +330,7 @@ export function validateAcl(form: AclForm, ctx: ValidateCtx = {}): AclIssue[] {
   }
   // 服务端认得的成员（统一成 joey@ 的形式），用来抓「名字写错了」这类错
   const known = new Set((ctx.members ?? []).map(userToken).filter(Boolean))
-  // 最常见的一种错法：把显示名（Joey）当用户名写进策略，服务端里其实叫 joey。
+  // 最常见的一种错法：把显示名（Alice）当用户名写进策略，服务端里其实叫 alice。
   // 名字对不上时顺手把服务端那个名字带出来，用户知道该换成谁。
   const near = (v: string): string => {
     const bare = v.replace(/@$/, '').toLowerCase()
@@ -617,7 +617,7 @@ export interface AccessPeer {
   tags: string[]
   ip: string
   online: boolean
-  /** 这台设备通告并已生效的子网路由（10.0.1.0/24 这种） */
+  /** 这台设备通告并已生效的子网路由（192.168.10.0/24 这种） */
   routes?: string[]
 }
 

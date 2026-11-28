@@ -855,7 +855,7 @@ function splitList(v: string) {
         <template v-else-if="drawer === 'user'">
           <div class="field">
             <label class="field-label">成员名称 <span style="color:var(--danger)">*</span></label>
-            <input class="input mono" v-model="userForm.name" placeholder="boothua"
+            <input class="input mono" v-model="userForm.name" placeholder="alice"
                    @keyup.enter="createUser" />
             <div class="faint" style="font-size:10.5px;margin-top:4px">
               对应 headscale 的 user.name，创建后用作命名空间，只能用字母、数字、点、下划线、短横线

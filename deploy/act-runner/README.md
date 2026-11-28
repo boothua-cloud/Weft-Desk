@@ -1,6 +1,6 @@
 # act_runner
 
-给 `git.boothua.cn` 跑 `.gitea/workflows/build.yml` 的执行器，部署在 10.0.1.5（与 Gitea 同机）。
+给 `git.example.com` 跑 `.gitea/workflows/build.yml` 的执行器，部署在 192.168.10.5（与 Gitea 同机）。
 
 ## 起
 
@@ -19,11 +19,11 @@ docker compose logs -f     # 看到 "declare successfully" 就好了
 `GITHUB_SERVER_URL`——`actions/checkout` 拿它拼 clone 地址。所以填内网地址后，
 CI 拉代码也走内网，不经过公网域名，也就绕开了仓库前面的 WAF。
 
-前提是 Gitea 的端口映射到 `0.0.0.0` 或 `10.0.1.5`：
+前提是 Gitea 的端口映射到 `0.0.0.0` 或 `192.168.10.5`：
 
 ```bash
 docker ps --format '{{.Names}}\t{{.Ports}}' | grep gitea
-# 要看到 0.0.0.0:3000->3000/tcp 或 10.0.1.5:3000->3000/tcp
+# 要看到 0.0.0.0:3000->3000/tcp 或 192.168.10.5:3000->3000/tcp
 # 只有 127.0.0.1:3000->3000/tcp 的话，job 容器连不进去，用 composer 文末的方案 B
 ```
 

@@ -555,7 +555,7 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
         </div>
 
         <p v-if="form.acls.length" class="pane-foot">
-          标签只代表设备本身，不含它后面的网段。要让人进子网，得把网段写进目标，比如 <code>10.0.1.0/24</code>。
+          标签只代表设备本身，不含它后面的网段。要让人进子网，得把网段写进目标，比如 <code>192.168.10.0/24</code>。
         </p>
 
         <div v-if="Object.keys(form.extra).length || form.hasIPRules" class="acl-preserved">

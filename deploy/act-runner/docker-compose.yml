@@ -1,4 +1,4 @@
-# act_runner —— 部署在 10.0.1.5（与 Gitea 同机）
+# act_runner —— 部署在 192.168.10.5（与 Gitea 同机）
 #
 # 部署：
 #   mkdir -p /opt/act-runner && cd /opt/act-runner
@@ -8,9 +8,9 @@
 #
 # 关键点：
 #   1. GITEA_INSTANCE_URL 用内网地址。它同时决定 act_runner 拉任务的地址和 job 里的
-#      GITHUB_SERVER_URL，所以 actions/checkout 拉代码也走内网，不绕 git.boothua.cn，
+#      GITHUB_SERVER_URL，所以 actions/checkout 拉代码也走内网，不绕 git.example.com，
 #      避开仓库前面 WAF 的限流。
-#   2. 前提：Gitea 的 3000 端口映射到 0.0.0.0 或 10.0.1.5，不能只绑 127.0.0.1。
+#   2. 前提：Gitea 的 3000 端口映射到 0.0.0.0 或 192.168.10.5，不能只绑 127.0.0.1。
 #      用 `docker ps | grep gitea` 看 PORTS 列确认；只有 127.0.0.1 时看文末方案 B。
 #   3. docker.sock 必须挂，act_runner 靠它创建 job 容器。
 #   4. 不挂 config.yml：首次启动会自己在 /data/config.yml 生成默认配置。
@@ -25,7 +25,7 @@ services:
     environment:
       TZ: Asia/Shanghai
       # Gitea 端口若不是 3000，改成实际映射的端口
-      GITEA_INSTANCE_URL: "http://10.0.1.5:3000"
+      GITEA_INSTANCE_URL: "http://192.168.10.5:3000"
       GITEA_RUNNER_REGISTRATION_TOKEN: "${RUNNER_TOKEN}"
       GITEA_RUNNER_NAME: "weft-desktop"
       # 冒号前要和 workflow 的 runs-on 一致；冒号后是 job 容器镜像。
@@ -37,9 +37,9 @@ services:
 
       # 拉 action（github.com）和 Go 工具链要走代理时打开下面几行。
       # NO_PROXY 必须包含内网段，否则访问 Gitea 也绕代理。
-      # HTTPS_PROXY: "http://10.0.1.2:7890"
-      # HTTP_PROXY: "http://10.0.1.2:7890"
-      # NO_PROXY: "localhost,127.0.0.1,10.0.1.0/24"
+      # HTTPS_PROXY: "http://192.168.10.2:7890"
+      # HTTP_PROXY: "http://192.168.10.2:7890"
+      # NO_PROXY: "localhost,127.0.0.1,192.168.10.0/24"
 
     volumes:
       - ./data:/data

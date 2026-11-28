@@ -242,7 +242,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
         <section class="help-sec">
           <h4><span class="step">9</span>端口转发</h4>
           <p>
-            把 tailnet 里的服务映射到本地端口，比如「本地 3306 → 10.0.1.20:3306」，之后
+            把 tailnet 里的服务映射到本地端口，比如「本地 3306 → 192.168.10.20:3306」，之后
             <span class="mono">mysql -h 127.0.0.1 -P 3306</span> 就能连过去。顶部是总开关、SOCKS5 开关（默认 <span class="mono">1080</span>）和「连接后自动启动」。
           </p>
           <figure class="shot">

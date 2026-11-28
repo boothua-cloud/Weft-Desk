@@ -1,6 +1,6 @@
 # Gitea + act_runner —— 只在内网提供服务
 #
-# 关键：ports 只绑定 10.0.1.5，不绑 0.0.0.0。
+# 关键：ports 只绑定 192.168.10.5，不绑 0.0.0.0。
 # 这样即使路由器上做了端口转发，外网也连不进来。
 #
 # 文件布局（在 /opt/gitea 下）：
@@ -17,8 +17,8 @@ services:
 
     ports:
       # 只监听内网网卡：外网连不到
-      - "10.0.1.5:3000:3000"    # HTTP（app.ini 里 ROOT_URL 用的就是这个）
-      - "10.0.1.5:2222:2222"    # 内置 SSH
+      - "192.168.10.5:3000:3000"    # HTTP（app.ini 里 ROOT_URL 用的就是这个）
+      - "192.168.10.5:2222:2222"    # 内置 SSH
 
     environment:
       USER_UID: "1000"
@@ -51,9 +51,9 @@ services:
       GITEA_RUNNER_LABELS: "ubuntu-latest:docker://node:20-bookworm"
       HOME: /data
       # 拉 action（github.com）和 Go 工具链要走代理时打开
-      # HTTPS_PROXY: "http://10.0.1.2:7890"
-      # HTTP_PROXY: "http://10.0.1.2:7890"
-      # NO_PROXY: "localhost,127.0.0.1,10.0.1.0/24,gitea"
+      # HTTPS_PROXY: "http://192.168.10.2:7890"
+      # HTTP_PROXY: "http://192.168.10.2:7890"
+      # NO_PROXY: "localhost,127.0.0.1,192.168.10.0/24,gitea"
     volumes:
       - ./runner-data:/data
       - /var/run/docker.sock:/var/run/docker.sock
@@ -70,5 +70,5 @@ services:
 #     network: "gitea_default"     # 用 docker network ls 确认实际名字
 # 然后 docker compose restart act_runner。
 #
-# 另一种更省事的做法：GITEA_INSTANCE_URL 用 http://10.0.1.5:3000（宿主端口），
-# 只要 Gitea 的 3000 映射到了 10.0.1.5 就行 —— 本文件已经是这种绑定方式。
+# 另一种更省事的做法：GITEA_INSTANCE_URL 用 http://192.168.10.5:3000（宿主端口），
+# 只要 Gitea 的 3000 映射到了 192.168.10.5 就行 —— 本文件已经是这种绑定方式。

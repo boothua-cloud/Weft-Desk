@@ -346,7 +346,7 @@ onUnmounted(() => {
               </div>
             </template>
           </div>
-          <div class="avatar">BT</div>
+          <div class="avatar">云</div>
         </div>
       </header>
 

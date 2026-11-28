@@ -19,7 +19,7 @@ curl -s http://127.0.0.1:5000/v2/_catalog     # 返回 {"repositories":[]} 就�
 
 ## 推拉
 
-客户端（10.0.1.5）要信任内网 HTTP：
+客户端（192.168.10.5）要信任内网 HTTP：
 
 ```bash
 sudo tee /etc/docker/daemon.json >/dev/null <<'JSON'
