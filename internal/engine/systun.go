@@ -66,6 +66,9 @@ type systemTUNEngine struct {
 	since time.Time
 	cfg   model.Config
 	proxy *proxyHub
+	// peerCache 是最近一次成功读到的对端列表。Status 偶尔超时或报错，
+	// 有了它就不用把整列设备清空再等三秒长回来。
+	peerCache []model.PeerInfo
 }
 
 func newSystemTUNEngine() *systemTUNEngine {
@@ -133,22 +136,44 @@ func (e *systemTUNEngine) RouteInfo() ([]string, []string, string) {
 
 // Peers 从本地 netmap 读取对端状态。这是「谁的错」最快的判据：
 // 对端 Offline 就与应用无关，别再改客户端。
+//
+// 读失败时沿用上一次的结果。Status 偶尔会卡到超时、或在重连的瞬间报错，
+// 这里返回空的话，界面上整列设备会先消失、三秒后再冒出来，看着像在乱跳。
+// 旧数据只在不运行时清掉（Down），运行期间它至少说明「上一刻是这样」。
 func (e *systemTUNEngine) Peers() []model.PeerInfo {
 	e.mu.Lock()
 	srv := e.srv
+	cached := e.peerCache
 	e.mu.Unlock()
 	if srv == nil {
 		return nil
 	}
+	out, err := readPeers(srv)
+	if err != nil {
+		if len(cached) > 0 {
+			return append([]model.PeerInfo(nil), cached...)
+		}
+		return nil
+	}
+	e.mu.Lock()
+	e.peerCache = out
+	e.mu.Unlock()
+	// 交出去的是一份拷贝：调用方（GetState、PeerPorts）只读，但别让它们
+	// 拿着同一块底层数组，回头哪里一改就串了
+	return append([]model.PeerInfo(nil), out...)
+}
+
+// readPeers 是一次真正的读取，顺带排好序。
+func readPeers(srv *tsnet.Server) ([]model.PeerInfo, error) {
 	lc, err := srv.LocalClient()
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	st, err := lc.Status(ctx)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	out := make([]model.PeerInfo, 0, len(st.Peer))
 	for _, p := range st.Peer {
@@ -203,7 +228,7 @@ func (e *systemTUNEngine) Peers() []model.PeerInfo {
 		}
 		return out[i].IP < out[j].IP
 	})
-	return out
+	return out, nil
 }
 
 // ResolveURL 原样返回：系统路由已接管，WebView 与任何程序都能直连 100.x。
@@ -680,6 +705,7 @@ func (e *systemTUNEngine) Down() error {
 	e.srv, e.dev, e.router, e.cancel = nil, nil, nil, nil
 	e.running, e.selfIP, e.loginURL = false, "", ""
 	e.routes, e.skipped, e.since = nil, nil, time.Time{}
+	e.peerCache = nil
 	proxy := e.proxy
 	e.mu.Unlock()
 

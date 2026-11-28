@@ -20,6 +20,34 @@ const peers = computed(() => props.state?.peers ?? [])
 const onlineCount = computed(() => peers.value.filter((p) => p.online).length)
 const busy = computed(() => Object.values(running.value).some(Boolean))
 
+// 卡片顺序固定在进入页面时的这一刻，之后设备上线、下线、改名、乃至后端
+// 某一轮没读到设备，都不再挪位置。设备真的增减时才动：新设备排到末尾。
+// 后端已经按名字排过一遍，这里再兜一层是为了「看着的顺序」不被任何一次
+// 读失败搅乱——一列卡片跳一下，比数字变一下明显得多。
+const order = ref<string[]>([])
+const orderedPeers = computed(() => {
+  const byIP = new Map(peers.value.map((p) => [p.ip, p]))
+  const out: PeerInfo[] = []
+  for (const ip of order.value) {
+    const p = byIP.get(ip)
+    if (p) out.push(p)
+  }
+  return out
+})
+watch(
+  peers,
+  (list) => {
+    const known = new Set(order.value)
+    const fresh = list
+      .filter((p) => p.ip && !known.has(p.ip))
+      .slice()
+      .sort((a, b) => (a.name || a.ip).toLowerCase().localeCompare((b.name || b.ip).toLowerCase()))
+      .map((p) => p.ip)
+    if (fresh.length) order.value = order.value.concat(fresh)
+  },
+  { immediate: true },
+)
+
 // 一次「全部检查」之后要能一眼看出几台通几台不通
 const summary = computed(() => {
   const done = Object.values(reports.value)
@@ -62,6 +90,30 @@ async function loadPorts() {
     ports.value = (await api.peerPorts()) ?? []
   } catch {
     ports.value = []
+  }
+}
+
+// 静默刷新：不转圈、不弹提示，「本机」和「这台机器上有哪些服务」自己变新。
+// 这一页本来就是看现状的，让人为了一个数字去点按钮没道理；但每刷一次都
+// 转个圈弹个提示，比不刷新更吵。只在页面可见时跑，切走就停。
+const AUTO_MS = 10000
+let autoTimer: number | undefined
+let autoBusy = false
+async function autoRefresh() {
+  if (autoBusy || selfBusy.value || document.visibilityState !== 'visible') return
+  autoBusy = true
+  try {
+    const [s, p] = await Promise.all([
+      api.selfCheck(),
+      api.peerPorts().then((v) => v ?? []).catch(() => null),
+    ])
+    self.value = s
+    if (p) ports.value = p
+  } catch {
+    // 这一轮没读到就等下一轮。静默刷新不该在界面上留一条报错，
+    // 真要原因，用户点「重新自检」，那条路径会给提示。
+  } finally {
+    autoBusy = false
   }
 }
 
@@ -239,6 +291,7 @@ async function copyAll() {
 onMounted(() => {
   runSelf()
   loadPorts()
+  autoTimer = window.setInterval(autoRefresh, AUTO_MS)
 })
 
 // 连上/断开之后自检结果就过期了，跟着状态刷一次
@@ -251,7 +304,11 @@ watch(
     if (!c) stopWatch()
   },
 )
-onUnmounted(stopWatch)
+onUnmounted(() => {
+  stopWatch()
+  window.clearInterval(autoTimer)
+  autoTimer = undefined
+})
 
 // 顶栏刷新：这一页原来只认「连接状态变了」，按钮点下去什么都不动。
 // 对端探测是快照，不自动重跑（会一直 ping 别人），只重新自检和刷服务列表。
@@ -313,7 +370,7 @@ watch(reloadTick, () => {
             <span v-else-if="selfBusy" class="faint">自检中…</span>
           </div>
           <div class="row" style="gap:10px">
-            <span v-if="self" class="faint">{{ self.at.slice(11, 19) }}</span>
+            <span v-if="self" class="faint auto-note" title="每 10 秒在后台自动刷新">{{ self.at.slice(11, 19) }}</span>
             <button class="btn sm" :disabled="selfBusy" @click="runSelf">
               <span v-if="selfBusy" class="spinner"></span>重新自检
             </button>
@@ -384,7 +441,7 @@ watch(reloadTick, () => {
         这段 tailnet 里还没有其他设备。对端上线后会自动出现在这里。
       </div>
 
-      <div v-for="p in peers" :key="p.ip" class="card tight peer-card">
+      <div v-for="p in orderedPeers" :key="p.ip" class="card tight peer-card">
         <div class="peer-head">
           <div class="peer-id">
             <div class="peer-name">
@@ -480,7 +537,7 @@ watch(reloadTick, () => {
                  :title="reports[p.ip].aclNote">规则里没有这条</b>
               <b v-else class="warn" :title="reports[p.ip].aclNote">判不了</b>
             </div>
-            <div v-if="reports[p.ip].version" class="fact">
+            <div v-if="reports[p.ip].version" class="fact wide">
               <span>对端版本</span>
               <b class="mono">{{ reports[p.ip].version }}</b>
             </div>
@@ -535,7 +592,9 @@ watch(reloadTick, () => {
   font-size: 11.5px;
 }
 .diag-self-item span { color: var(--faint); }
-.diag-self-item b { font-weight: 600; }
+.diag-self-item b { font-weight: 600; font-variant-numeric: tabular-nums; }
+/* 自检时间每 10 秒变一次，数字等宽，不然秒位一变宽标题栏就跟着抖 */
+.auto-note { font-variant-numeric: tabular-nums; }
 .diag-port {
   display: flex;
   align-items: center;
@@ -675,20 +734,37 @@ watch(reloadTick, () => {
 .verdict.bad { color: var(--danger); }
 .verdict.bad .verdict-dot { background: var(--danger); }
 
+/* 自检字段用固定三列，而不是 flex 自动折行。
+   数值一变宽（25 ms → 1.2 s、版本号多一位），flex 会把后面的项挤到下一行，
+   整张卡的高度跟着变，下面的卡片一起上下跳。格子固定，数字只在自己的格里变。 */
 .facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 20px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 18px;
   margin-top: 10px;
+}
+.report .facts {
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
 }
 .fact {
   display: flex;
   align-items: baseline;
   gap: 6px;
   font-size: 11px;
+  min-width: 0;
 }
-.fact span { color: var(--faint); }
-.fact b { font-weight: 500; }
+.fact span { color: var(--faint); flex: none; }
+.fact b {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* 版本号这类长值给它两格，宁可整行换行也不要截成「1.86.5-…」 */
+.fact.wide { grid-column: span 2; }
+.fact.wide b { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 .fact b.bad { color: var(--danger); }
 .fact b.ok { color: var(--ok); }
 .fact b.warn { color: var(--warn); }

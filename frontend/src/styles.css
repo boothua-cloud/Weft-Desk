@@ -612,7 +612,8 @@ table.tbl tr:last-child td { border-bottom: 0; }
 .cell-main { font-weight: 600; font-size: 12px; }
 .cell-sub { color: var(--faint); font-size: 10.5px; margin-top: 3px; }
 
-.mono { font-family: var(--mono); font-size: 11px; letter-spacing: -.01em; }
+/* 等宽 + 等宽数字：地址、时间、速率每三秒刷一次，数字宽度不一致会左右抖 */
+.mono { font-family: var(--mono); font-size: 11px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
 .row { display: flex; align-items: center; gap: 10px; }
 .spread { display: flex; align-items: center; justify-content: space-between; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
