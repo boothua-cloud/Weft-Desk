@@ -67,7 +67,14 @@ type WeftService struct {
 // 可以直接调到所有后端方法。这里按调用来源窗口再挡一道：
 // 不是主界面发起的，一律不认。
 func (s *WeftService) callerAllowed(ctx context.Context) bool {
-	if s.mainWindowID == 0 {
+	return CallerAllowed(ctx, s.mainWindowID)
+}
+
+// CallerAllowed 是上面那条规则的实体。单独导出来，是为了让测试能直接验它：
+// 这条规则挡的是应用内窗口冒充主界面，值得有回归测试，而不是只靠读代码。
+// mainWindowID 为 0 表示主界面还没建好，此时一律放行。
+func CallerAllowed(ctx context.Context, mainWindowID uint) bool {
+	if mainWindowID == 0 {
 		return true
 	}
 	w, ok := ctx.Value(application.WindowKey).(application.Window)
@@ -75,7 +82,7 @@ func (s *WeftService) callerAllowed(ctx context.Context) bool {
 		// 托盘、启动流程这类不是从窗口发起的调用
 		return true
 	}
-	return w.ID() == s.mainWindowID
+	return w.ID() == mainWindowID
 }
 
 var errNotMainWindow = errors.New("这个操作只能在云栈主界面里做")

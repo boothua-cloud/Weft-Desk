@@ -1,4 +1,4 @@
-package engine
+package tests
 
 import (
 	"context"
@@ -17,18 +17,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/boothua/weft/internal/engine"
 	"github.com/boothua/weft/internal/model"
 	"tailscale.com/tailcfg"
 )
 
-// 引擎侧的单测：ACL 判定、诊断结论、本地代理、子网路由与助手进程。
+// 引擎侧：ACL 判定、诊断结论、本地代理。
 
 func TestACLEvaluate(t *testing.T) {
 	self := netip.MustParseAddr("100.64.0.13")
 	nas := netip.MustParseAddr("100.64.0.3")
 
 	// 全放行
-	if v := AclEvaluate(tailcfg.FilterAllowAll, self, nas, 22, nil); v.State != aclAllow {
+	if v := engine.AclEvaluate(tailcfg.FilterAllowAll, self, nas, 22, nil); v.State != "allow" {
 		t.Errorf("全放行规则应该放行 22，得到 %q", v.State)
 	}
 
@@ -38,16 +39,16 @@ func TestACLEvaluate(t *testing.T) {
 			DstPorts: []tailcfg.NetPortRange{{IP: "100.64.0.3", Ports: tailcfg.PortRange{First: 22, Last: 22}}},
 		},
 	}
-	if v := AclEvaluate(rules, self, nas, 22, nil); v.State != aclAllow {
+	if v := engine.AclEvaluate(rules, self, nas, 22, nil); v.State != "allow" {
 		t.Error("同网段到 22 应该放行")
 	}
-	if v := AclEvaluate(rules, self, nas, 80, nil); v.State != aclDeny {
+	if v := engine.AclEvaluate(rules, self, nas, 80, nil); v.State != "deny" {
 		t.Error("规则只写了 22，80 应该是明确拒绝")
 	}
-	if v := AclEvaluate(rules, self, netip.MustParseAddr("100.64.0.9"), 22, nil); v.State != aclDeny {
+	if v := engine.AclEvaluate(rules, self, netip.MustParseAddr("100.64.0.9"), 22, nil); v.State != "deny" {
 		t.Error("目标不在规则里，应该拒绝")
 	}
-	if v := AclEvaluate(rules, netip.MustParseAddr("100.64.1.20"), nas, 22, nil); v.State != aclDeny {
+	if v := engine.AclEvaluate(rules, netip.MustParseAddr("100.64.1.20"), nas, 22, nil); v.State != "deny" {
 		t.Error("来源不在规则里，应该拒绝")
 	}
 
@@ -59,7 +60,7 @@ func TestACLEvaluate(t *testing.T) {
 			DstPorts: []tailcfg.NetPortRange{{IP: "*", Ports: tailcfg.PortRange{First: 0, Last: 65535}}},
 		},
 	}
-	if v := AclEvaluate(icmpOnly, self, nas, 22, nil); v.State != aclDeny {
+	if v := engine.AclEvaluate(icmpOnly, self, nas, 22, nil); v.State != "deny" {
 		t.Error("ICMP 规则不该放行 TCP")
 	}
 
@@ -70,7 +71,7 @@ func TestACLEvaluate(t *testing.T) {
 			DstPorts: []tailcfg.NetPortRange{{IP: "*", Ports: tailcfg.PortRange{First: 22, Last: 22}}},
 		},
 	}
-	if v := AclEvaluate(anyDst, self, netip.MustParseAddr("100.64.9.9"), 22, nil); v.State != aclAllow {
+	if v := engine.AclEvaluate(anyDst, self, netip.MustParseAddr("100.64.9.9"), 22, nil); v.State != "allow" {
 		t.Error("目标 * 应该匹配任意地址")
 	}
 
@@ -81,10 +82,10 @@ func TestACLEvaluate(t *testing.T) {
 			DstPorts: []tailcfg.NetPortRange{{IP: "100.64.0.1-100.64.0.5", Ports: tailcfg.PortRange{First: 1, Last: 65535}}},
 		},
 	}
-	if v := AclEvaluate(rangeDst, self, nas, 443, nil); v.State != aclAllow {
+	if v := engine.AclEvaluate(rangeDst, self, nas, 443, nil); v.State != "allow" {
 		t.Error("区间应该包含 100.64.0.3")
 	}
-	if v := AclEvaluate(rangeDst, self, netip.MustParseAddr("100.64.0.6"), 443, nil); v.State != aclDeny {
+	if v := engine.AclEvaluate(rangeDst, self, netip.MustParseAddr("100.64.0.6"), 443, nil); v.State != "deny" {
 		t.Error("区间外的地址不该放行")
 	}
 }
@@ -98,11 +99,11 @@ func TestACLEvaluateAutogroup(t *testing.T) {
 		SrcIPs:   []string{"autogroup:member"},
 		DstPorts: []tailcfg.NetPortRange{{IP: "*", Ports: tailcfg.PortRange{First: 0, Last: 65535}}},
 	}}
-	if v := AclEvaluate(member, self, dst, 3306, nil); v.State != aclAllow {
+	if v := engine.AclEvaluate(member, self, dst, 3306, nil); v.State != "allow" {
 		t.Fatalf("没打标签的节点属于 member，应该放行: %+v", v)
 	}
 	// tagged 节点不算 member，这是 tailscale 的语义
-	if v := AclEvaluate(member, self, dst, 3306, []string{"tag:db"}); v.State != aclDeny {
+	if v := engine.AclEvaluate(member, self, dst, 3306, []string{"tag:db"}); v.State != "deny" {
 		t.Fatalf("打了标签就不算 member，应该是明确拒绝: %+v", v)
 	}
 
@@ -110,10 +111,10 @@ func TestACLEvaluateAutogroup(t *testing.T) {
 		SrcIPs:   []string{"tag:db"},
 		DstPorts: []tailcfg.NetPortRange{{IP: "*", Ports: tailcfg.PortRange{First: 5432, Last: 5432}}},
 	}}
-	if v := AclEvaluate(tagged, self, dst, 5432, []string{"tag:db"}); v.State != aclAllow {
+	if v := engine.AclEvaluate(tagged, self, dst, 5432, []string{"tag:db"}); v.State != "allow" {
 		t.Fatalf("本机带 tag:db，应该放行: %+v", v)
 	}
-	if v := AclEvaluate(tagged, self, dst, 5432, []string{"tag:web"}); v.State != aclDeny {
+	if v := engine.AclEvaluate(tagged, self, dst, 5432, []string{"tag:web"}); v.State != "deny" {
 		t.Fatalf("本机不是 tag:db，应该拒绝: %+v", v)
 	}
 }
@@ -127,8 +128,8 @@ func TestACLEvaluateUnknown(t *testing.T) {
 		SrcIPs:   []string{"group:ops"},
 		DstPorts: []tailcfg.NetPortRange{{IP: "*", Ports: tailcfg.PortRange{First: 0, Last: 65535}}},
 	}}
-	v := AclEvaluate(group, self, dst, 3306, nil)
-	if v.State != aclUnknown {
+	v := engine.AclEvaluate(group, self, dst, 3306, nil)
+	if v.State != "unknown" {
 		t.Fatalf("group: 算不出来，不能判成拒绝: %+v", v)
 	}
 	if !strings.Contains(v.Note, "group:ops") {
@@ -139,13 +140,13 @@ func TestACLEvaluateUnknown(t *testing.T) {
 		SrcIPs:   []string{"autogroup:admin"},
 		DstPorts: []tailcfg.NetPortRange{{IP: "*", Ports: tailcfg.PortRange{First: 0, Last: 65535}}},
 	}}
-	if v := AclEvaluate(admin, self, dst, 22, nil); v.State != aclUnknown {
+	if v := engine.AclEvaluate(admin, self, dst, 22, nil); v.State != "unknown" {
 		t.Fatalf("autogroup:admin 算不出来: %+v", v)
 	}
 
 	// 0 条规则不能判成拒绝：既可能服务端没下发（默认放行），
 	// 也可能是空规则（全拒），客户端分不出来，说明里要两种都提。
-	if v := AclEvaluate(nil, self, dst, 22, nil); v.State != aclUnknown {
+	if v := engine.AclEvaluate(nil, self, dst, 22, nil); v.State != "unknown" {
 		t.Fatalf("空规则只能是 unknown: %+v", v)
 	} else if !strings.Contains(v.Note, "默认放行") || !strings.Contains(v.Note, "全拒") {
 		t.Fatalf("空规则的说明要写清两种可能: %q", v.Note)
@@ -156,7 +157,7 @@ func TestACLEvaluateUnknown(t *testing.T) {
 		{SrcIPs: []string{"group:ops"}, DstPorts: []tailcfg.NetPortRange{{IP: "*", Ports: tailcfg.PortRange{First: 0, Last: 65535}}}},
 		{SrcIPs: []string{"*"}, DstPorts: []tailcfg.NetPortRange{{IP: "*", Ports: tailcfg.PortRange{First: 0, Last: 65535}}}},
 	}
-	if v := AclEvaluate(mixed, self, dst, 22, nil); v.State != aclAllow {
+	if v := engine.AclEvaluate(mixed, self, dst, 22, nil); v.State != "allow" {
 		t.Fatalf("有一条确定放行就该是放行: %+v", v)
 	}
 
@@ -165,36 +166,57 @@ func TestACLEvaluateUnknown(t *testing.T) {
 		SrcIPs:   []string{"group:ops"},
 		DstPorts: []tailcfg.NetPortRange{{IP: "100.64.9.9", Ports: tailcfg.PortRange{First: 0, Last: 65535}}},
 	}}
-	if v := AclEvaluate(unrelated, self, dst, 22, nil); v.State != aclDeny {
+	if v := engine.AclEvaluate(unrelated, self, dst, 22, nil); v.State != "deny" {
 		t.Fatalf("目标都对不上，就是明确拒绝: %+v", v)
 	}
 }
 
-func TestMatchIPSet(t *testing.T) {
-	ip := netip.MustParseAddr("100.64.0.3")
-	yes := []string{"*", "100.64.0.3", "100.64.0.0/16", "100.64.0.1-100.64.0.9"}
-	no := []string{"", "100.64.0.4", "100.65.0.0/16", "100.64.0.4-100.64.0.9"}
-	for _, s := range yes {
-		if !matchIPSet(s, ip) {
-			t.Errorf("%q 应该匹配", s)
-		}
+// 「没有这条」要说清对这台设备到底放行了什么，不然用户还得自己去翻策略。
+func TestACLDenyNoteListsPorts(t *testing.T) {
+	self := netip.MustParseAddr("100.64.0.13")
+	dst := netip.MustParseAddr("100.64.0.3")
+	rules := []tailcfg.FilterRule{
+		{SrcIPs: []string{"*"}, DstPorts: []tailcfg.NetPortRange{{IP: "*", Ports: tailcfg.PortRange{First: 22, Last: 22}}}},
+		{SrcIPs: []string{"*"}, DstPorts: []tailcfg.NetPortRange{{IP: "*", Ports: tailcfg.PortRange{First: 8000, Last: 8100}}}},
+		// 只针对别的设备，不该混进来
+		{SrcIPs: []string{"*"}, DstPorts: []tailcfg.NetPortRange{{IP: "100.64.9.9", Ports: tailcfg.PortRange{First: 5432, Last: 5432}}}},
 	}
-	for _, s := range no {
-		if matchIPSet(s, ip) {
-			t.Errorf("%q 不该匹配", s)
-		}
+	v := engine.AclEvaluate(rules, self, dst, 3306, nil)
+	if v.State != "deny" {
+		t.Fatalf("3306 没写就该是拒绝: %+v", v)
+	}
+	if !strings.Contains(v.Note, "3306") {
+		t.Fatalf("说明里要带查的端口: %q", v.Note)
+	}
+	if !strings.Contains(v.Note, "22") || !strings.Contains(v.Note, "8000-8100") {
+		t.Fatalf("要列出对这台设备实际放行的端口: %q", v.Note)
+	}
+	if strings.Contains(v.Note, "5432") {
+		t.Fatalf("别的设备的规则不该混进来: %q", v.Note)
+	}
+}
+
+// 全放行时不该长篇大论
+func TestACLDenyNoteNoPorts(t *testing.T) {
+	self := netip.MustParseAddr("100.64.0.13")
+	dst := netip.MustParseAddr("100.64.0.3")
+	rules := []tailcfg.FilterRule{
+		{SrcIPs: []string{"*"}, DstPorts: []tailcfg.NetPortRange{{IP: "100.64.9.9", Ports: tailcfg.PortRange{First: 22, Last: 22}}}},
+	}
+	if v := engine.AclEvaluate(rules, self, dst, 3306, nil); !strings.Contains(v.Note, "没有一条放行") {
+		t.Fatalf("没有可列的端口时别硬凑: %q", v.Note)
 	}
 }
 
 func TestDiagVerdict(t *testing.T) {
 	// 对端离线：即使端口通不通都不管，先说离线
-	v, h := DiagVerdict(model.DiagReport{IP: "100.64.0.3", Port: 22, Online: false, PingLost: 3})
+	v, h := engine.DiagVerdict(model.DiagReport{IP: "100.64.0.3", Port: 22, Online: false, PingLost: 3})
 	if !strings.Contains(v, "离线") || len(h) == 0 {
 		t.Fatalf("离线判定不对: %q %v", v, h)
 	}
 
 	// 全通
-	v, h = DiagVerdict(model.DiagReport{
+	v, h = engine.DiagVerdict(model.DiagReport{
 		IP: "100.64.0.3", Port: 22, Online: true, Path: "直连",
 		PingMs: 8, DialMs: 12,
 	})
@@ -207,7 +229,7 @@ func TestDiagVerdict(t *testing.T) {
 	}
 
 	// 链路不通
-	v, h = DiagVerdict(model.DiagReport{
+	v, h = engine.DiagVerdict(model.DiagReport{
 		IP: "100.64.0.3", Port: 22, Online: true, PingLost: 3,
 		PingErr: "timeout", Path: "DERP", Relay: "hkg", Handshake: "从未",
 		DialErr: "i/o timeout",
@@ -222,10 +244,10 @@ func TestDiagVerdict(t *testing.T) {
 
 	// 对端回了拒绝：包已经到了，ACL 一定放行。哪怕规则里没找到这条，
 	// 也不能让用户去改 ACL——这是最容易把人带偏的一种。
-	v, h = DiagVerdict(model.DiagReport{
+	v, h = engine.DiagVerdict(model.DiagReport{
 		IP: "100.64.0.3", Port: 3306, Online: true, Path: "直连", PingMs: 5, Name: "aliyun",
 		DialErr: "connect: connection refused", DialCode: "refused",
-		ACLChecked: true, ACLState: aclDeny,
+		ACLChecked: true, ACLState: "deny",
 	})
 	if strings.Contains(v, "ACL 没放行") || !strings.Contains(v, "没开服务") {
 		t.Fatalf("被拒绝说明 ACL 放行了，结论该指向服务: %q", v)
@@ -236,10 +258,10 @@ func TestDiagVerdict(t *testing.T) {
 	}
 
 	// 超时 + 规则里确实没这条：可以说 ACL，但不能说死
-	v, h = DiagVerdict(model.DiagReport{
+	v, h = engine.DiagVerdict(model.DiagReport{
 		IP: "100.64.0.3", Port: 3306, Online: true, Path: "直连", PingMs: 5,
 		DialErr: "i/o timeout", DialCode: "timeout",
-		ACLChecked: true, ACLState: aclDeny, ACLNote: "读到的 12 条规则里没有",
+		ACLChecked: true, ACLState: "deny", ACLNote: "读到的 12 条规则里没有",
 	})
 	if !strings.Contains(v, "规则") {
 		t.Fatalf("该指向缺失的规则: %q", v)
@@ -250,10 +272,10 @@ func TestDiagVerdict(t *testing.T) {
 	}
 
 	// 超时 + 规则里有这条：明确指向对端服务
-	v, h = DiagVerdict(model.DiagReport{
+	v, h = engine.DiagVerdict(model.DiagReport{
 		IP: "100.64.0.3", Port: 3306, Online: true, Path: "直连", PingMs: 5,
 		DialErr: "i/o timeout", DialCode: "timeout",
-		ACLChecked: true, ACLState: aclAllow,
+		ACLChecked: true, ACLState: "allow",
 	})
 	if !strings.Contains(v, "ACL 放行了") {
 		t.Fatalf("规则放行 + 超时，应该指向对端: %q", v)
@@ -263,10 +285,10 @@ func TestDiagVerdict(t *testing.T) {
 	}
 
 	// 算不出规则：不许下结论
-	v, h = DiagVerdict(model.DiagReport{
+	v, h = engine.DiagVerdict(model.DiagReport{
 		IP: "100.64.0.3", Port: 3306, Online: true, Path: "直连", PingMs: 5,
 		DialErr: "i/o timeout", DialCode: "timeout",
-		ACLChecked: true, ACLState: aclUnknown, ACLNote: "客户端算不出这条规则：group:ops",
+		ACLChecked: true, ACLState: "unknown", ACLNote: "客户端算不出这条规则：group:ops",
 	})
 	if strings.Contains(v, "ACL 没放行") || strings.Contains(v, "规则里没有") {
 		t.Fatalf("判不了的时候不能给结论: %q", v)
@@ -276,10 +298,10 @@ func TestDiagVerdict(t *testing.T) {
 	}
 
 	// 路由没装上：跟 ACL 和对端都无关
-	v, h = DiagVerdict(model.DiagReport{
+	v, h = engine.DiagVerdict(model.DiagReport{
 		IP: "10.0.1.8", Port: 22, Online: true, Path: "直连", PingMs: 5,
 		DialErr: "connect: no route to host", DialCode: "noroute",
-		ACLChecked: true, ACLState: aclDeny,
+		ACLChecked: true, ACLState: "deny",
 	})
 	if !strings.Contains(v, "路由") || strings.Contains(v, "ACL") {
 		t.Fatalf("该判成路由问题: %q", v)
@@ -305,11 +327,11 @@ func TestDialCode(t *testing.T) {
 		{errors.New("something else"), "other"},
 	}
 	for _, c := range cases {
-		if got := DialCode(c.err); got != c.want {
+		if got := engine.DialCode(c.err); got != c.want {
 			t.Errorf("%v 该分类成 %q，得到 %q", c.err, c.want, got)
 		}
 	}
-	if got := DialCode(nil); got != "" {
+	if got := engine.DialCode(nil); got != "" {
 		t.Errorf("没错误应该返回空，得到 %q", got)
 	}
 }
@@ -323,50 +345,13 @@ func (timeoutErr) Temporary() bool { return true }
 // 界面直接吃这份 JSON。hints 一旦是 null，Vue 读 length 就抛错，整页白屏。
 func TestDiagReportJSONHints(t *testing.T) {
 	rep := model.DiagReport{IP: "100.64.0.3", Port: 22, Online: true, Path: "直连", PingMs: 8, DialMs: 12}
-	rep.Verdict, rep.Hints = DiagVerdict(rep)
+	rep.Verdict, rep.Hints = engine.DiagVerdict(rep)
 	b, err := json.Marshal(rep)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(b), `"hints":[]`) {
 		t.Fatalf("hints 要序列化成空数组: %s", b)
-	}
-}
-
-// 「没有这条」要说清对这台设备到底放行了什么，不然用户还得自己去翻策略。
-func TestACLDenyNoteListsPorts(t *testing.T) {
-	self := netip.MustParseAddr("100.64.0.13")
-	dst := netip.MustParseAddr("100.64.0.3")
-	rules := []tailcfg.FilterRule{
-		{SrcIPs: []string{"*"}, DstPorts: []tailcfg.NetPortRange{{IP: "*", Ports: tailcfg.PortRange{First: 22, Last: 22}}}},
-		{SrcIPs: []string{"*"}, DstPorts: []tailcfg.NetPortRange{{IP: "*", Ports: tailcfg.PortRange{First: 8000, Last: 8100}}}},
-		// 只针对别的设备，不该混进来
-		{SrcIPs: []string{"*"}, DstPorts: []tailcfg.NetPortRange{{IP: "100.64.9.9", Ports: tailcfg.PortRange{First: 5432, Last: 5432}}}},
-	}
-	v := AclEvaluate(rules, self, dst, 3306, nil)
-	if v.State != aclDeny {
-		t.Fatalf("3306 没写就该是拒绝: %+v", v)
-	}
-	if !strings.Contains(v.Note, "3306") {
-		t.Fatalf("说明里要带查的端口: %q", v.Note)
-	}
-	if !strings.Contains(v.Note, "22") || !strings.Contains(v.Note, "8000-8100") {
-		t.Fatalf("要列出对这台设备实际放行的端口: %q", v.Note)
-	}
-	if strings.Contains(v.Note, "5432") {
-		t.Fatalf("别的设备的规则不该混进来: %q", v.Note)
-	}
-}
-
-// 全放行时不该长篇大论
-func TestACLDenyNoteNoPorts(t *testing.T) {
-	self := netip.MustParseAddr("100.64.0.13")
-	dst := netip.MustParseAddr("100.64.0.3")
-	rules := []tailcfg.FilterRule{
-		{SrcIPs: []string{"*"}, DstPorts: []tailcfg.NetPortRange{{IP: "100.64.9.9", Ports: tailcfg.PortRange{First: 22, Last: 22}}}},
-	}
-	if v := AclEvaluate(rules, self, dst, 3306, nil); !strings.Contains(v.Note, "没有一条放行") {
-		t.Fatalf("没有可列的端口时别硬凑: %q", v.Note)
 	}
 }
 
@@ -390,12 +375,12 @@ func TestProxyHubForward(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hub := newProxyHub(func(ctx context.Context, network, addr string) (net.Conn, error) {
+	hub := engine.NewProxyHub(func(ctx context.Context, network, addr string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", port))
 	})
-	defer hub.closeAll()
+	defer hub.CloseAll()
 
-	local, err := hub.resolve("http://nas.internal:5000/app")
+	local, err := hub.Resolve("http://nas.internal:5000/app")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +450,7 @@ func TestProxyHubForward(t *testing.T) {
 		t.Fatalf("Location 未改写回本地地址: %s", loc)
 	}
 
-	again, err := hub.resolve("http://nas.internal:5000/app")
+	again, err := hub.Resolve("http://nas.internal:5000/app")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,11 +496,11 @@ func TestProxySelfSigned(t *testing.T) {
 		return resp, string(body)
 	}
 
-	hub := newProxyHub(dial)
-	defer hub.closeAll()
-	hub.setInsecure(true)
+	hub := engine.NewProxyHub(dial)
+	defer hub.CloseAll()
+	hub.SetInsecure(true)
 
-	local, err := hub.resolve(upstream.URL + "/login#/login")
+	local, err := hub.Resolve(upstream.URL + "/login#/login")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,10 +512,10 @@ func TestProxySelfSigned(t *testing.T) {
 		t.Fatalf("开启信任后仍失败: 状态=%d body=%q", resp.StatusCode, body)
 	}
 
-	strict := newProxyHub(dial)
-	defer strict.closeAll()
-	strict.setInsecure(false)
-	raw, err := strict.resolve(upstream.URL + "/login")
+	strict := engine.NewProxyHub(dial)
+	defer strict.CloseAll()
+	strict.SetInsecure(false)
+	raw, err := strict.Resolve(upstream.URL + "/login")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -542,27 +527,10 @@ func TestProxySelfSigned(t *testing.T) {
 }
 
 func TestRelayLabel(t *testing.T) {
-	if got := RelayLabel("headscale"); got != "自建中继" {
+	if got := engine.RelayLabel("headscale"); got != "自建中继" {
 		t.Fatalf("headscale 内嵌中继不该原样显示: %q", got)
 	}
-	if got := RelayLabel("hkg"); got != "hkg" {
+	if got := engine.RelayLabel("hkg"); got != "hkg" {
 		t.Fatalf("公网区域照原样: %q", got)
 	}
 }
-
-// 网段冲突必须被剔除，否则会把本机局域网流量导进隧道，直接断网。
-
-// 本机已有的更具体路由不应阻止较宽的 tailnet 段安装。
-
-// 前缀完全相同才是真冲突：会覆盖本机原有路由。
-
-// fd 传递是提权助手把网卡交给主进程的唯一通道，必须可靠。
-
-// 常驻助手的握手协议：ping 不碰 TUN，可以在无 root 环境下验证。
-
-// 未知操作必须被拒绝，而不是静默通过。
-
-// 在外网（热点）时本机可能有代理留下的 10/8 网卡，
-// tailnet 通告的 10.0.1.0/24 不能被它连带跳过。
-
-// 本机已有同网段直连（家宽就是 10.0.1.0/24）时仍要跳过，避免断网。

@@ -1,18 +1,20 @@
-package main
+package tests
 
 import (
 	"bytes"
 	"image/png"
+	"os"
 	"testing"
 )
 
-// 托盘图标现在直接用应用图标（build/tray-icon.png），这里保证它被正确嵌入、
-// 是合法 PNG，并且确实画了东西（不是一张全透明的空图）。
-func TestTrayIconEmbedded(t *testing.T) {
-	if len(trayIcon) == 0 {
-		t.Fatal("托盘图标为空，检查 build/tray-icon.png 是否还在")
+// 托盘图标直接用应用图标（build/tray-icon.png）。根包把它 embed 进二进制，
+// 这里校验的是源文件本身：合法 PNG、44×44、确实画了东西（不是全透明空图）。
+func TestTrayIconFile(t *testing.T) {
+	raw, err := os.ReadFile("../../build/tray-icon.png")
+	if err != nil {
+		t.Fatalf("读不到 build/tray-icon.png: %v", err)
 	}
-	img, err := png.Decode(bytes.NewReader(trayIcon))
+	img, err := png.Decode(bytes.NewReader(raw))
 	if err != nil {
 		t.Fatalf("托盘图标解不出 PNG: %v", err)
 	}

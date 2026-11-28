@@ -1,4 +1,4 @@
-package controlplane
+package tests
 
 import (
 	"crypto/x509"
@@ -7,10 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/boothua/weft/internal/controlplane"
 	"github.com/boothua/weft/internal/model"
 )
 
-// 服务端客户端的单测：错误分类、Key 探测、TLS 配置。
+// 服务端客户端：错误分类、Key 探测、TLS 配置、地址校验。
 
 // 只有 401/403 能当「钥匙不对」用：界面据此把服务端管理整组收起来。
 // 500、404、超时都不能算 —— 离线或者服务端自己抽风时藏掉入口，
@@ -31,7 +32,7 @@ func TestIsRejected(t *testing.T) {
 			w.WriteHeader(c.status)
 			_, _ = w.Write([]byte(`{"code":1,"message":"x"}`))
 		}))
-		_, err := DoJSON("GET", srv.URL+"/api/v1/node", "k", nil, nil)
+		_, err := controlplane.DoJSON("GET", srv.URL+"/api/v1/node", "k", nil, nil)
 		srv.Close()
 		if c.status < 300 {
 			if err != nil {
@@ -42,13 +43,13 @@ func TestIsRejected(t *testing.T) {
 		if err == nil {
 			t.Fatalf("status %d: 应该报错", c.status)
 		}
-		if got := IsRejected(err); got != c.want {
+		if got := controlplane.IsRejected(err); got != c.want {
 			t.Errorf("status %d: IsRejected=%v，期望 %v", c.status, got, c.want)
 		}
 	}
 }
 
-// CheckKey 要打到 /api/v1/node 并带上 Bearer，不能顺手改成别的接口：
+// 探针要打到 /api/v1/node 并带上 Bearer，不能顺手改成别的接口：
 // 这是唯一一个「有 Key 就能读」的端点，拿它当探针最稳。
 func TestCheckKeyUsesNodeEndpoint(t *testing.T) {
 	var gotPath, gotAuth string
@@ -59,8 +60,11 @@ func TestCheckKeyUsesNodeEndpoint(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	cp := &HeadscaleCP{cfg: model.Config{BaseURL: srv.URL}}
-	if err := cp.checkKeyWith("hskey-api-abc"); err != nil {
+	cp, ok := controlplane.New(model.Config{BaseURL: srv.URL}).(*controlplane.HeadscaleCP)
+	if !ok {
+		t.Fatal("New 应该返回 HeadscaleCP")
+	}
+	if err := cp.CheckKeyWith("hskey-api-abc"); err != nil {
 		t.Fatalf("不该报错: %v", err)
 	}
 	if gotPath != "/api/v1/node" {
@@ -77,13 +81,28 @@ func TestLooksLikeAPIKey(t *testing.T) {
 	yes := []string{"hskey-api-abc", "hskey-apikey-abc", "tskey-api-abc"}
 	no := []string{"1", "", "abc", "hskey-auth-abc", "tskey-auth-abc", "Bearer abc"}
 	for _, k := range yes {
-		if !LooksLikeAPIKey(k) {
+		if !controlplane.LooksLikeAPIKey(k) {
 			t.Errorf("%q 应该被当成管理 Key", k)
 		}
 	}
 	for _, k := range no {
-		if LooksLikeAPIKey(k) {
+		if controlplane.LooksLikeAPIKey(k) {
 			t.Errorf("%q 不该被当成管理 Key", k)
+		}
+	}
+}
+
+// 服务地址只接受带协议的 http/https，明文要在调用方那里被标出来。
+func TestValidateBaseURL(t *testing.T) {
+	if got, plain, err := controlplane.ValidateBaseURL("https://hs.example.com/"); err != nil || plain || got != "https://hs.example.com" {
+		t.Errorf("https 应放行并去掉末尾斜杠: %q %v %v", got, plain, err)
+	}
+	if got, plain, err := controlplane.ValidateBaseURL("http://10.0.0.2:8080"); err != nil || !plain || got != "http://10.0.0.2:8080" {
+		t.Errorf("http 应放行但标记明文: %q %v %v", got, plain, err)
+	}
+	for _, in := range []string{"", "hs.example.com", "ftp://hs", "https://"} {
+		if _, _, err := controlplane.ValidateBaseURL(in); err == nil {
+			t.Errorf("ValidateBaseURL(%q) 应该拒绝", in)
 		}
 	}
 }
@@ -101,7 +120,7 @@ func TestControlPlaneTLS(t *testing.T) {
 	}
 
 	get := func(c model.Config) error {
-		resp, err := noProxy(NewHTTPClient(c)).Get(srv.URL)
+		resp, err := noProxy(controlplane.NewHTTPClient(c)).Get(srv.URL)
 		if err != nil {
 			return err
 		}
@@ -122,7 +141,7 @@ func TestControlPlaneTLS(t *testing.T) {
 }
 
 func TestCertPoolRejectsGarbage(t *testing.T) {
-	if _, err := CertPool("not a pem"); err == nil {
+	if _, err := controlplane.CertPool("not a pem"); err == nil {
 		t.Error("乱填的内容应该报错")
 	}
 	if _, err := x509.SystemCertPool(); err != nil {

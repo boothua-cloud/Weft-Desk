@@ -1,51 +1,25 @@
-package appsync
+package tests
 
 import (
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/boothua/weft/internal/appsync"
 	"github.com/boothua/weft/internal/model"
 	"github.com/boothua/weft/internal/store"
 )
 
-// newTestStore 用内存库，不碰真实配置目录。
-func newTestStore(t *testing.T) *store.Store {
-	t.Helper()
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s, err := store.NewWithDB(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(s.Close)
-	return s
-}
+// 书签同步：地址归一、合并规则、拉取与推送的鉴权。
 
-func newTestServer(t *testing.T, st *store.Store) *Server {
+func newSyncServer(t *testing.T, st *store.Store) *appsync.Server {
 	t.Helper()
-	return New(st, func() string { return "ABCD-1234" }, func() (string, string) { return "100.64.0.9", "test" }, nil)
-}
-
-func TestAppKey(t *testing.T) {
-	same := []string{
-		"http://100.64.0.1:8080",
-		"http://100.64.0.1:8080/",
-		" HTTP://100.64.0.1:8080 ",
-	}
-	for _, a := range same {
-		if appKey(a) != appKey(same[0]) {
-			t.Errorf("%q 应该和 %q 归一成同一个键", a, same[0])
-		}
-	}
-	if appKey("http://a/x") == appKey("http://b/x") {
-		t.Error("不同主机不该归一")
-	}
+	return appsync.New(st,
+		func() string { return "ABCD-1234" },
+		func() (string, string) { return "100.64.0.9", "test" },
+		nil)
 }
 
 func TestSyncURL(t *testing.T) {
@@ -56,7 +30,7 @@ func TestSyncURL(t *testing.T) {
 		"https://nas/ignored": "https://nas:4160",
 	}
 	for in, want := range cases {
-		got, err := URL(in)
+		got, err := appsync.URL(in)
 		if err != nil {
 			t.Errorf("%q: %v", in, err)
 			continue
@@ -68,7 +42,7 @@ func TestSyncURL(t *testing.T) {
 }
 
 func TestNormalizeSyncToken(t *testing.T) {
-	if got := NormalizeToken(" abcd-1234 "); got != "ABCD1234" {
+	if got := appsync.NormalizeToken(" abcd-1234 "); got != "ABCD1234" {
 		t.Fatalf("归一化结果 %q", got)
 	}
 }
@@ -83,7 +57,7 @@ func TestMergeApps(t *testing.T) {
 		{ID: "x2", Name: "路由器", URL: "http://100.64.0.1", UpdatedAt: "2026-11-25T00:00:00Z"},
 		{ID: "x3", Name: "", URL: "http://bad"},
 	}
-	out, added, updated, skipped := Merge(local, incoming)
+	out, added, updated, skipped := appsync.Merge(local, incoming)
 	if added != 1 || updated != 0 || skipped != 2 {
 		t.Fatalf("统计不对: added=%d updated=%d skipped=%d", added, updated, skipped)
 	}
@@ -101,11 +75,11 @@ func TestMergeApps(t *testing.T) {
 }
 
 func TestNewToken(t *testing.T) {
-	a, b := NewToken(), NewToken()
+	a, b := appsync.NewToken(), appsync.NewToken()
 	if len(a) != 19 || a == b {
 		t.Fatalf("同步码不对: %q %q", a, b)
 	}
-	if NormalizeToken(a) == "" {
+	if appsync.NormalizeToken(a) == "" {
 		t.Fatal("同步码归一化后为空")
 	}
 }
@@ -121,14 +95,17 @@ func TestPull(t *testing.T) {
 			_, _ = w.Write([]byte(`{"error":"同步码不对"}`))
 			return
 		}
-		_ = json.NewEncoder(w).Encode(payload{Host: "other", Apps: []model.AppBookmark{
-			{ID: "x1", Name: "路由器", URL: "http://100.64.0.1", UpdatedAt: "2026-11-25T00:00:00Z"},
-			{ID: "x2", Name: "群晖", URL: "http://100.64.0.3:5000", UpdatedAt: "2026-11-26T00:00:00Z"},
-		}})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"host": "other",
+			"apps": []model.AppBookmark{
+				{ID: "x1", Name: "路由器", URL: "http://100.64.0.1", UpdatedAt: "2026-11-25T00:00:00Z"},
+				{ID: "x2", Name: "群晖", URL: "http://100.64.0.3:5000", UpdatedAt: "2026-11-26T00:00:00Z"},
+			},
+		})
 	}))
 	defer peer.Close()
 
-	srv := newTestServer(t, st)
+	srv := newSyncServer(t, st)
 	res, err := srv.Pull(strings.TrimPrefix(peer.URL, "http://"), "abc-123")
 	if err != nil {
 		t.Fatalf("拉取失败: %v", err)
@@ -149,7 +126,10 @@ func TestPush(t *testing.T) {
 	st := newTestStore(t)
 	_ = st.SaveApp(model.AppBookmark{ID: "local-1", Name: "NAS", URL: "http://100.64.0.3:5000"})
 
-	var got payload
+	var got struct {
+		Host string `json:"host"`
+		Apps []model.AppBookmark
+	}
 	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("方法 = %s", r.Method)
@@ -159,7 +139,7 @@ func TestPush(t *testing.T) {
 	}))
 	defer peer.Close()
 
-	srv := newTestServer(t, st)
+	srv := newSyncServer(t, st)
 	res, err := srv.Push(strings.TrimPrefix(peer.URL, "http://"), "ABCD1234")
 	if err != nil {
 		t.Fatalf("推送失败: %v", err)
@@ -180,7 +160,7 @@ func TestPullRejectsWrongToken(t *testing.T) {
 	}))
 	defer peer.Close()
 
-	srv := newTestServer(t, st)
+	srv := newSyncServer(t, st)
 	if _, err := srv.Pull(strings.TrimPrefix(peer.URL, "http://"), "NOPE"); err == nil {
 		t.Fatal("错误码应该变成错误返回")
 	} else if !strings.Contains(err.Error(), "同步码") {

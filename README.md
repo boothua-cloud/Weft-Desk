@@ -260,6 +260,7 @@ Wails 启动时扫 `WeftService` 的公开方法，生成 `frontend/bindings/git
 | `appsync` | 应用书签的局域网同步 |
 | `update` | 自动更新：检查、下载、校验、替换 |
 | `desktop` | 桌面壳层，见上面的文件表 |
+| `tests` | 全部单测 |
 
 依赖是单向的，`model` 在最底下：
 
@@ -277,9 +278,11 @@ Wails 启动时扫 `WeftService` 的公开方法，生成 `frontend/bindings/git
 
 平台差异用文件名后缀分：`foo_darwin.go` / `foo_windows.go` / `foo_linux.go`，公共逻辑放在无后缀的 `foo.go` 里。
 
-测试跟着包走：每个包一个 `xxx_test.go`，`go test ./...` 全部离线可跑，不需要网络、服务端或钥匙串。唯一的例外是 `internal/engine/engine_unix_test.go`——文件描述符传递、助手进程这些只在 Unix 上成立，而 build tag 只能作用于整个文件。
+全部用例都在 `internal/tests` 一个包里，`go test ./...` 离线可跑，不需要网络、服务端或钥匙串。
 
-Go 的测试只能访问同包的未导出符号，所以没法把所有用例挪进一个独立目录——那样等于把内部函数全变成公开 API，而 `internal/desktop` 上的公开方法会被 Wails 暴露给前端。白盒测试留在各自包里，每个包只保留一个测试文件；根目录那个 `assets_test.go` 测的是 embed 进来的图标，只能留在根包。
+测试包只能调到导出的符号，所以有几个本来只在包内用的函数（`SplitConflicts`、`RouteVerdict`、`MergeAdvertised`、`CallerAllowed`、`Excepted`、`IsNewer` 这几个）导出了。它们都在 `internal/` 下，外面引不到；`WeftService` 上的公开方法仍然只留前端要调的那些，装配用的方法一律小写，免得被 Wails 扫成绑定接口。
+
+带平台条件的用例单独成文件：`engine_unix_test.go`（`darwin || linux`）、`sysproxy_darwin_test.go`（`darwin`）——build tag 只能作用于整个文件。
 
 ## 已知限制
 

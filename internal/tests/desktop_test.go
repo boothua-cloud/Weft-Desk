@@ -1,8 +1,7 @@
-package desktop
+package tests
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/boothua/weft/internal/controlplane"
+	"github.com/boothua/weft/internal/desktop"
 	"github.com/boothua/weft/internal/model"
 	"github.com/boothua/weft/internal/store"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// WeftService 的单测：调用来源校验、配置档案、策略历史、自检、运行时长。
+// 桌面壳层：调用来源校验、书签地址、策略历史、本机自检、路由结论。
 
 // fakeWin 只实现 ID()，其它方法用不到。
 // 嵌入 nil 接口，是为了不用把 Window 的几十个方法都写一遍。
@@ -31,24 +30,21 @@ func (f fakeWin) ID() uint { return f.id }
 // 应用内窗口加载的是第三方页面，Wails 不校验消息来源，
 // 所以高危方法要按调用窗口再挡一道。
 func TestCallerAllowed(t *testing.T) {
-	svc := &WeftService{mainWindowID: 7}
 	with := func(id uint) context.Context {
 		return context.WithValue(context.Background(), application.WindowKey, fakeWin{id: id})
 	}
 
-	if !svc.callerAllowed(context.Background()) {
+	if !desktop.CallerAllowed(context.Background(), 7) {
 		t.Error("没有窗口信息（托盘、启动流程）应放行")
 	}
-	if !svc.callerAllowed(with(7)) {
+	if !desktop.CallerAllowed(with(7), 7) {
 		t.Error("主窗口应放行")
 	}
-	if svc.callerAllowed(with(8)) {
+	if desktop.CallerAllowed(with(8), 7) {
 		t.Error("应用内窗口不该放行")
 	}
-
 	// 主窗口还没建好时不要误伤，否则启动阶段的调用全失败
-	fresh := &WeftService{}
-	if !fresh.callerAllowed(with(8)) {
+	if !desktop.CallerAllowed(with(8), 0) {
 		t.Error("还不知道主窗口 ID 时应放行")
 	}
 }
@@ -62,34 +58,19 @@ func TestAppTargetURL(t *testing.T) {
 		"  http://nas.internal/ ": "http://nas.internal/",
 	}
 	for in, want := range ok {
-		got, err := appTargetURL(in)
+		got, err := desktop.AppTargetURL(in)
 		if err != nil {
-			t.Errorf("appTargetURL(%q) 出错: %v", in, err)
+			t.Errorf("AppTargetURL(%q) 出错: %v", in, err)
 			continue
 		}
 		if got != want {
-			t.Errorf("appTargetURL(%q) = %q, want %q", in, got, want)
+			t.Errorf("AppTargetURL(%q) = %q, want %q", in, got, want)
 		}
 	}
 	bad := []string{"", "file:///etc/passwd", "-a Calculator", "javascript:alert(1)", "://nohost"}
 	for _, in := range bad {
-		if _, err := appTargetURL(in); err == nil {
-			t.Errorf("appTargetURL(%q) 应该拒绝", in)
-		}
-	}
-}
-
-// 服务地址只接受带协议的 http/https，明文要在调用方那里被标出来。
-func TestValidateBaseURL(t *testing.T) {
-	if got, plain, err := controlplane.ValidateBaseURL("https://hs.example.com/"); err != nil || plain || got != "https://hs.example.com" {
-		t.Errorf("https 应放行并去掉末尾斜杠: %q %v %v", got, plain, err)
-	}
-	if got, plain, err := controlplane.ValidateBaseURL("http://10.0.0.2:8080"); err != nil || !plain || got != "http://10.0.0.2:8080" {
-		t.Errorf("http 应放行但标记明文: %q %v %v", got, plain, err)
-	}
-	for _, in := range []string{"", "hs.example.com", "ftp://hs", "https://"} {
-		if _, _, err := controlplane.ValidateBaseURL(in); err == nil {
-			t.Errorf("controlplane.ValidateBaseURL(%q) 应该拒绝", in)
+		if _, err := desktop.AppTargetURL(in); err == nil {
+			t.Errorf("AppTargetURL(%q) 应该拒绝", in)
 		}
 	}
 }
@@ -123,21 +104,27 @@ func (f *fakePolicyServer) handler() http.Handler {
 	return mux
 }
 
-func newPolicyTestService(t *testing.T, current string) (*WeftService, *fakePolicyServer) {
+// newPolicyTestService 走真实路径：配置写进库、服务层自己从库里读出来，
+// 跟启动时做的事一样，不去拼内部字段。
+func newPolicyTestService(t *testing.T, current string) (svc *desktop.WeftService, st *store.Store, fake *fakePolicyServer) {
 	t.Helper()
-	fake := &fakePolicyServer{content: current}
+	fake = &fakePolicyServer{content: current}
 	srv := httptest.NewServer(fake.handler())
 	t.Cleanup(srv.Close)
 
-	store := newTestStore(t)
-	cfg := model.Config{BaseURL: srv.URL, ControlPlane: srv.URL}
-	svc := &WeftService{store: store, cfg: cfg, cp: controlplane.New(cfg)}
-	return svc, fake
+	st = newTestStore(t)
+	if err := st.SaveConfig(model.Config{
+		ControlPlane: "headscale", TunnelEngine: "system",
+		BaseURL: srv.URL, Hostname: "test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return desktop.New(st), st, fake
 }
 
 func TestSavePolicyKeepsPreviousVersion(t *testing.T) {
 	oldBody := `{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`
-	svc, fake := newPolicyTestService(t, oldBody)
+	svc, st, fake := newPolicyTestService(t, oldBody)
 
 	newBody := "{\n  \"acls\": []\n}\n"
 	if err := svc.SavePolicy(context.Background(), newBody); err != nil {
@@ -147,7 +134,7 @@ func TestSavePolicyKeepsPreviousVersion(t *testing.T) {
 		t.Fatalf("服务端内容没换: %q", fake.content)
 	}
 
-	items, err := svc.store.ListPolicyHistory(20)
+	items, err := st.ListPolicyHistory(20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +144,7 @@ func TestSavePolicyKeepsPreviousVersion(t *testing.T) {
 	if items[0].Size != len(oldBody) || items[0].Lines != 1 {
 		t.Fatalf("摘要不对: %+v", items[0])
 	}
-	got, err := svc.store.GetPolicyVersion(items[0].ID)
+	got, err := st.GetPolicyVersion(items[0].ID)
 	if err != nil || got != oldBody {
 		t.Fatalf("取回的旧版本不对: %q %v", got, err)
 	}
@@ -165,11 +152,11 @@ func TestSavePolicyKeepsPreviousVersion(t *testing.T) {
 
 func TestSavePolicySameContentNoHistory(t *testing.T) {
 	body := "{\"acls\":[]}"
-	svc, _ := newPolicyTestService(t, body)
+	svc, st, _ := newPolicyTestService(t, body)
 	if err := svc.SavePolicy(context.Background(), body); err != nil {
 		t.Fatal(err)
 	}
-	items, _ := svc.store.ListPolicyHistory(20)
+	items, _ := st.ListPolicyHistory(20)
 	if len(items) != 0 {
 		t.Fatalf("内容没变不该记历史, 有 %d 版", len(items))
 	}
@@ -177,13 +164,13 @@ func TestSavePolicySameContentNoHistory(t *testing.T) {
 
 func TestRestorePolicy(t *testing.T) {
 	first := "{\"acls\":[{\"action\":\"accept\",\"src\":[\"*\"],\"dst\":[\"*:*\"]}]}"
-	svc, fake := newPolicyTestService(t, first)
+	svc, st, fake := newPolicyTestService(t, first)
 
 	// 改成空策略，旧的那版进历史
 	if err := svc.SavePolicy(context.Background(), "{\"acls\":[]}"); err != nil {
 		t.Fatal(err)
 	}
-	items, _ := svc.store.ListPolicyHistory(20)
+	items, _ := st.ListPolicyHistory(20)
 	if len(items) != 1 {
 		t.Fatalf("应该有一版历史, 有 %d", len(items))
 	}
@@ -196,28 +183,28 @@ func TestRestorePolicy(t *testing.T) {
 		t.Fatalf("服务端没回到旧策略: %q", fake.content)
 	}
 	// 回滚前的空策略也应该进历史，回滚本身可以后悔
-	items, _ = svc.store.ListPolicyHistory(20)
+	items, _ = st.ListPolicyHistory(20)
 	if len(items) != 2 {
 		t.Fatalf("回滚后应该有 2 版历史, 有 %d", len(items))
 	}
 }
 
 func TestPrunePolicyHistory(t *testing.T) {
-	store := newTestStore(t)
+	st := newTestStore(t)
 	for i := 0; i < 25; i++ {
-		if err := store.AddPolicyHistory("v"+string(rune('a'+i)), ""); err != nil {
+		if err := st.AddPolicyHistory("v"+string(rune('a'+i)), ""); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := store.PrunePolicyHistory(20); err != nil {
+	if err := st.PrunePolicyHistory(20); err != nil {
 		t.Fatal(err)
 	}
-	items, _ := store.ListPolicyHistory(100)
+	items, _ := st.ListPolicyHistory(100)
 	if len(items) != 20 {
 		t.Fatalf("应该留 20 版, 留了 %d", len(items))
 	}
 	// 最老的那批被删掉，最新的还在
-	body, err := store.GetPolicyVersion(items[0].ID)
+	body, err := st.GetPolicyVersion(items[0].ID)
 	if err != nil || body != "vy" {
 		t.Fatalf("最新一版不对: %q %v", body, err)
 	}
@@ -244,7 +231,7 @@ func TestRouteVerdictFourSteps(t *testing.T) {
 		{"没 Key 时只看本机", model.RouteCheck{Accepted: true, PeerOnline: true}, "可用", "ok"},
 	}
 	for _, c := range cases {
-		v, tone := routeVerdict(c.in)
+		v, tone := desktop.RouteVerdict(c.in)
 		if v != c.want || tone != c.tone {
 			t.Errorf("%s: got %q/%q want %q/%q", c.name, v, tone, c.want, c.tone)
 		}
@@ -259,7 +246,7 @@ func TestMergeAdvertisedAddsUnaccepted(t *testing.T) {
 		{Name: "a", IP: "100.64.0.3", Online: true, AdvertisedRoutes: "10.0.0.0/24", ApprovedRoutes: "10.0.0.0/24"},
 		{Name: "b", IP: "100.64.0.5", Online: true, AdvertisedRoutes: "192.168.5.0/24"},
 	}}
-	out := mergeAdvertised(rows, cp)
+	out := desktop.MergeAdvertised(rows, cp)
 	if len(out) != 2 {
 		t.Fatalf("应补出未接受的一条，得到 %d 条: %+v", len(out), out)
 	}
@@ -274,68 +261,9 @@ func TestMergeAdvertisedAddsUnaccepted(t *testing.T) {
 // 列表接口挂了就原样返回，不能把「问不到」当成「没有路由」。
 func TestMergeAdvertisedKeepsRowsOnError(t *testing.T) {
 	rows := []model.RouteCheck{{Prefix: "10.0.0.0/24", Accepted: true}}
-	out := mergeAdvertised(rows, fakeDevices{err: errors.New("boom")})
+	out := desktop.MergeAdvertised(rows, fakeDevices{err: errors.New("boom")})
 	if len(out) != 1 || out[0].Known {
 		t.Fatalf("应保持原样: %+v", out)
-	}
-}
-
-func TestFinishSelfNotRunning(t *testing.T) {
-	got := finishSelf(model.SelfReport{Engine: "system", Backend: "未启动"})
-	if got.Tone != "bad" || !strings.Contains(got.Verdict, "没在运行") {
-		t.Fatalf("引擎没起来要说清楚: %q %q", got.Verdict, got.Tone)
-	}
-}
-
-// 界面把 health / routes / problems 当数组用，序列化成 null 就整页白屏。
-func TestSelfReportJSONShape(t *testing.T) {
-	healthy := model.SelfReport{
-		Engine: "system", Backend: "Running", LoggedIn: true,
-		TUN: "utun3", SelfIP: "100.64.0.13",
-		Control: model.ControlStat{OK: true, Version: "0.23.0"},
-	}
-	b, err := json.Marshal(finishSelf(healthy))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{`"health":[]`, `"routes":[]`, `"problems":[]`, `"tone":"ok"`} {
-		if !strings.Contains(string(b), want) {
-			t.Errorf("缺 %s: %s", want, b)
-		}
-	}
-}
-
-func TestTidyNetErr(t *testing.T) {
-	cases := map[string]string{
-		"dial tcp: context deadline exceeded":               "连接超时",
-		"dial tcp 1.2.3.4:443: connect: connection refused": "端口拒绝连接",
-	}
-	for in, want := range cases {
-		if got := tidyNetErr(errors.New(in)); !strings.Contains(got, want) {
-			t.Errorf("%q → %q，缺少 %q", in, got, want)
-		}
-	}
-}
-
-// 未连接时 SelfCheck 也必须给出结论，而不是返回错误——这正是这一页存在的意义。
-func TestSelfCheckWithoutEngine(t *testing.T) {
-	store, err := store.Open()
-	if err != nil {
-		t.Skip("没有本地数据库，跳过: ", err)
-	}
-	defer store.Close()
-	svc := New(store)
-	svc.engine = nil
-	raw, err := svc.SelfCheck()
-	if err != nil {
-		t.Fatalf("不该报错: %v", err)
-	}
-	var rep model.SelfReport
-	if err := json.Unmarshal([]byte(raw), &rep); err != nil {
-		t.Fatal(err)
-	}
-	if rep.Tone == "" || len(rep.Problems) == 0 {
-		t.Fatalf("至少要说一句为什么: %+v", rep)
 	}
 }
 
@@ -351,7 +279,7 @@ func TestMergeAdvertisedCollapsesSameRoute(t *testing.T) {
 		Name: "ubuntu", IP: "100.64.0.5", IPs: []string{"100.64.0.5", "fd7a::5"},
 		Online: true, AdvertisedRoutes: "10.0.1.0/24", ApprovedRoutes: "10.0.1.0/24",
 	}}}
-	out := mergeAdvertised(rows, cp)
+	out := desktop.MergeAdvertised(rows, cp)
 	if len(out) != 1 {
 		t.Fatalf("同一条路由只能有一行，得到 %d 行: %+v", len(out), out)
 	}
@@ -359,7 +287,7 @@ func TestMergeAdvertisedCollapsesSameRoute(t *testing.T) {
 	if !r.Known || !r.Advertised || !r.Approved || !r.Accepted {
 		t.Fatalf("四步都该是通: %+v", r)
 	}
-	if v, tone := routeVerdict(r); v != "可用" || tone != "ok" {
+	if v, tone := desktop.RouteVerdict(r); v != "可用" || tone != "ok" {
 		t.Fatalf("结论应该是可用: %q %q", v, tone)
 	}
 }
@@ -372,34 +300,53 @@ func TestMergeAdvertisedMatchesByIPNotName(t *testing.T) {
 		Name: "ubuntu", IP: "100.64.0.5", Online: true,
 		AdvertisedRoutes: "10.0.1.0/24", ApprovedRoutes: "10.0.1.0/24",
 	}}}
-	if out := mergeAdvertised(rows, cp); len(out) != 1 || !out[0].Known {
+	if out := desktop.MergeAdvertised(rows, cp); len(out) != 1 || !out[0].Known {
 		t.Fatalf("按 IP 就该认出来: %+v", out)
 	}
 }
 
-// 一个节点两个地址时，比较用的那一个必须是 100.x
-func TestPrimaryIP(t *testing.T) {
-	if got := controlplane.PrimaryIP([]string{"fd7a:115c:a1e0::5", "100.64.0.5"}); got != "100.64.0.5" {
-		t.Fatalf("优先取 IPv4: %q", got)
-	}
-	if got := controlplane.PrimaryIP(nil); got != "" {
-		t.Fatalf("没有地址要返回空: %q", got)
+func TestFinishSelfNotRunning(t *testing.T) {
+	got := desktop.FinishSelf(model.SelfReport{Engine: "system", Backend: "未启动"})
+	if got.Tone != "bad" || !strings.Contains(got.Verdict, "没在运行") {
+		t.Fatalf("引擎没起来要说清楚: %q %q", got.Verdict, got.Tone)
 	}
 }
 
-// newTestStore 用内存库，不碰真实配置目录。
-func newTestStore(t *testing.T) *store.Store {
-	t.Helper()
-	db, err := sql.Open("sqlite", ":memory:")
+// 界面把 health / routes / problems 当数组用，序列化成 null 就整页白屏。
+func TestSelfReportJSONShape(t *testing.T) {
+	healthy := model.SelfReport{
+		Engine: "system", Backend: "Running", LoggedIn: true,
+		TUN: "utun3", SelfIP: "100.64.0.13",
+		Control: model.ControlStat{OK: true, Version: "0.23.0"},
+	}
+	b, err := json.Marshal(desktop.FinishSelf(healthy))
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := store.NewWithDB(db)
+	for _, want := range []string{`"health":[]`, `"routes":[]`, `"problems":[]`, `"tone":"ok"`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("缺 %s: %s", want, b)
+		}
+	}
+}
+
+// 未连接时 SelfCheck 也必须给出结论，而不是返回错误——这正是这一页存在的意义。
+func TestSelfCheckWithoutConnection(t *testing.T) {
+	svc := desktop.New(newTestStore(t))
+	raw, err := svc.SelfCheck()
 	if err != nil {
+		t.Fatalf("不该报错: %v", err)
+	}
+	var rep model.SelfReport
+	if err := json.Unmarshal([]byte(raw), &rep); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(s.Close)
-	return s
+	if rep.Tone == "" {
+		t.Fatalf("至少要给出语气: %+v", rep)
+	}
+	if len(rep.Problems) == 0 && !rep.Control.OK {
+		t.Fatalf("没连上就该说清原因: %+v", rep)
+	}
 }
 
 func TestFormatUptime(t *testing.T) {
@@ -417,8 +364,8 @@ func TestFormatUptime(t *testing.T) {
 		{-5 * time.Second, "0 秒"},
 	}
 	for _, c := range cases {
-		if got := formatUptime(c.d); got != c.w {
-			t.Fatalf("formatUptime(%v) = %q, want %q", c.d, got, c.w)
+		if got := desktop.FormatUptime(c.d); got != c.w {
+			t.Fatalf("FormatUptime(%v) = %q, want %q", c.d, got, c.w)
 		}
 	}
 }

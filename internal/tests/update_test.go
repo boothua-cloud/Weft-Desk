@@ -1,11 +1,15 @@
-package update
+package tests
 
 import (
 	"testing"
 
+	"github.com/boothua/weft/internal/update"
 	"github.com/wailsapp/wails/v3/pkg/updater"
 	"github.com/wailsapp/wails/v3/pkg/updater/providers/github"
 )
+
+// 版本比对与附件挑选。挑错附件的后果是下载下来装不上，
+// 用户只看到一句「安装失败」。
 
 func TestIsNewer(t *testing.T) {
 	cases := []struct {
@@ -20,8 +24,8 @@ func TestIsNewer(t *testing.T) {
 		{"v0.1.4", "", true},
 	}
 	for _, c := range cases {
-		if got := isNewer(c.tag, c.cur); got != c.want {
-			t.Errorf("isNewer(%q,%q)=%v want %v", c.tag, c.cur, got, c.want)
+		if got := update.IsNewer(c.tag, c.cur); got != c.want {
+			t.Errorf("IsNewer(%q,%q)=%v want %v", c.tag, c.cur, got, c.want)
 		}
 	}
 }
@@ -40,7 +44,7 @@ func TestPickUpdateAsset(t *testing.T) {
 		{"darwin", "weft-0.1.4-macos-arm64.zip"},
 		{"linux", "weft-0.1.4-linux-amd64.tar.gz"},
 	} {
-		i := pickUpdateAsset(updater.CheckRequest{Platform: c.plat, Arch: "arm64"}, assets)
+		i := update.PickUpdateAsset(updater.CheckRequest{Platform: c.plat, Arch: "arm64"}, assets)
 		if i < 0 || assets[i].Name != c.want {
 			got := "<none>"
 			if i >= 0 {

@@ -68,7 +68,7 @@ func (s *WeftService) GetState() (string, error) {
 		}
 	}
 	if running && !since.IsZero() {
-		st.Uptime = formatUptime(time.Since(since))
+		st.Uptime = FormatUptime(time.Since(since))
 	}
 	st.Message = cfg.ControlPlane + " · " + cfg.BaseURL
 	if st.SelfIP == "" {
@@ -157,9 +157,9 @@ func (s *WeftService) ensureAPIKeyProbe() {
 	}()
 }
 
-// formatUptime 把时长写成「2 天 3 小时」这种能直接读的形式。
+// FormatUptime 把时长写成「2 天 3 小时」这种能直接读的形式。
 // time.Duration.String() 给的是 50h3m2s，超过一天就没法读。
-func formatUptime(d time.Duration) string {
+func FormatUptime(d time.Duration) string {
 	if d < 0 {
 		d = 0
 	}

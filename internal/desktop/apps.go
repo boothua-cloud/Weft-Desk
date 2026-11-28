@@ -34,11 +34,11 @@ func (s *WeftService) SaveApp(raw string) error {
 func (s *WeftService) DeleteApp(id string) error { return s.store.DeleteApp(id) }
 
 // OpenApp 用 Wails v3 多窗口新开独立 WebView，不走 iframe（会被 X-Frame-Options 拦截）。
-// appTargetURL 校验书签地址并补上协议，只放行 http/https。
+// AppTargetURL 校验书签地址并补上协议，只放行 http/https。
 // 书签会从对端同步过来（apps_sync.go），不是纯本地输入；
 // `file://` 会被 WebView 当本地文件打开，`-a Calculator` 这种值
 // 传给 `open` / `rundll32` 会被当成参数而不是网址。
-func appTargetURL(raw string) (string, error) {
+func AppTargetURL(raw string) (string, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
 		return "", errors.New("书签地址是空的")
@@ -73,7 +73,7 @@ func (s *WeftService) OpenApp(id string) error {
 		if a.Browser {
 			return s.OpenInBrowser(id)
 		}
-		raw, err := appTargetURL(a.URL)
+		raw, err := AppTargetURL(a.URL)
 		if err != nil {
 			return err
 		}
@@ -119,7 +119,7 @@ func (s *WeftService) OpenInBrowser(id string) error {
 			continue
 		}
 		// 系统浏览器同样走本地代理，避免依赖浏览器自身的路由。
-		raw, err := appTargetURL(a.URL)
+		raw, err := AppTargetURL(a.URL)
 		if err != nil {
 			return err
 		}

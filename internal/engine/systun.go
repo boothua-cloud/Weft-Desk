@@ -65,13 +65,13 @@ type systemTUNEngine struct {
 	// 运行时长以它为准：连接可能是自动拉起的，服务层不一定知道什么时候开始。
 	since time.Time
 	cfg   model.Config
-	proxy *proxyHub
+	proxy *ProxyHub
 }
 
 func newSystemTUNEngine() *systemTUNEngine {
 	// system 模式下出站走系统栈（已被 TUN 接管），这里不再经 netstack。
 	e := &systemTUNEngine{}
-	e.proxy = newProxyHub(func(ctx context.Context, network, addr string) (net.Conn, error) {
+	e.proxy = NewProxyHub(func(ctx context.Context, network, addr string) (net.Conn, error) {
 		d := &net.Dialer{Timeout: 10 * time.Second}
 		return d.DialContext(ctx, network, addr)
 	})
@@ -206,7 +206,7 @@ func (e *systemTUNEngine) ResolveURL(raw string) (string, error) {
 	if !strings.HasPrefix(strings.TrimSpace(raw), "https://") {
 		return raw, nil
 	}
-	return proxy.resolve(raw)
+	return proxy.Resolve(raw)
 }
 
 // NetstackDialer 走进程内 userspace 栈，不经过系统路由与 TUN。
@@ -327,7 +327,7 @@ func (e *systemTUNEngine) Up(c model.Config) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	e.mu.Lock()
 	if e.proxy != nil {
-		e.proxy.setInsecure(c.AllowInsecure)
+		e.proxy.SetInsecure(c.AllowInsecure)
 	}
 	e.srv, e.dev, e.router, e.cancel = srv, dev, router, cancel
 	e.hostname, e.running, e.loginURL, e.lastErr = host, false, "", ""
@@ -459,15 +459,15 @@ func (e *systemTUNEngine) waitUp(ctx context.Context, srv *tsnet.Server, dev wgt
 		// 得到 no associated peer node。
 		acceptSubnetRoutes(ctx, srv)
 		routes := collectRoutes(ctx, srv, dev)
-		if err := router.Configure(dev, ip, routes.keep); err != nil {
+		if err := router.Configure(dev, ip, routes.Keep); err != nil {
 			e.mu.Lock()
 			e.lastErr = err.Error()
 			e.mu.Unlock()
 			log.Printf("[system] 配置路由失败: %v", err)
 		}
-		hlog("路由已安装 %v", prefixStrings(routes.keep))
-		if len(routes.skipped) > 0 {
-			hlog("路由被跳过 %v", routes.skipped)
+		hlog("路由已安装 %v", prefixStrings(routes.Keep))
+		if len(routes.Skipped) > 0 {
+			hlog("路由被跳过 %v", routes.Skipped)
 		}
 		e.mu.Lock()
 		if e.srv == srv {
@@ -475,8 +475,8 @@ func (e *systemTUNEngine) waitUp(ctx context.Context, srv *tsnet.Server, dev wgt
 			e.since = time.Now()
 			e.selfIP = ip.String()
 			e.loginURL = ""
-			e.routes = prefixStrings(routes.keep)
-			e.skipped = routes.skipped
+			e.routes = prefixStrings(routes.Keep)
+			e.skipped = routes.Skipped
 		}
 		e.mu.Unlock()
 		MarkConnected(e.cfg) // 上线成功才写标记，失败的自动连接不会反复触发
@@ -497,14 +497,14 @@ func (e *systemTUNEngine) waitUp(ctx context.Context, srv *tsnet.Server, dev wgt
 	}
 }
 
-type routePlan struct {
-	keep    []netip.Prefix
-	skipped []string
+type RoutePlan struct {
+	Keep    []netip.Prefix
+	Skipped []string
 }
 
 // collectRoutes 汇总需要装进系统路由表的网段：tailnet 段 + 各 peer 通告的子网路由。
 // 与本机直连网段重叠的一律丢弃 —— 否则会把本地局域网流量导进隧道，直接断网。
-func collectRoutes(ctx context.Context, srv *tsnet.Server, dev wgtun.Device) routePlan {
+func collectRoutes(ctx context.Context, srv *tsnet.Server, dev wgtun.Device) RoutePlan {
 	base, _ := netip.ParsePrefix(tailnetPrefix)
 	all := []netip.Prefix{base}
 
@@ -535,7 +535,7 @@ func collectRoutes(ctx context.Context, srv *tsnet.Server, dev wgtun.Device) rou
 	}
 	local := localDirectPrefixes(ifName)
 	local = append(local, systemRoutes(ifName)...)
-	return splitConflicts(all, local)
+	return SplitConflicts(all, local)
 }
 
 // subnetRoutes 取对端 AllowedIPs 里的 IPv4 子网段（tailnet 段已单独覆盖）。
@@ -578,8 +578,8 @@ func acceptSubnetRoutes(ctx context.Context, srv *tsnet.Server) {
 	hlog("子网路由已接受 accept-routes=%v", p.RouteAll)
 }
 
-func splitConflicts(routes []netip.Prefix, local []localRoute) routePlan {
-	plan := routePlan{keep: make([]netip.Prefix, 0, len(routes))}
+func SplitConflicts(routes []netip.Prefix, local []LocalRoute) RoutePlan {
+	plan := RoutePlan{Keep: make([]netip.Prefix, 0, len(routes))}
 	seen := map[netip.Prefix]bool{}
 	for _, r := range routes {
 		if seen[r] {
@@ -592,37 +592,39 @@ func splitConflicts(routes []netip.Prefix, local []localRoute) routePlan {
 		// 本机已直连的更具体网段仍然优先，tailnet 通告的段照样可用。
 		conflictWith := ""
 		for _, l := range local {
-			if l.prefix == r.Masked() {
+			if l.Prefix == r.Masked() {
 				conflictWith = l.String()
 				break
 			}
 		}
 		if conflictWith != "" {
-			plan.skipped = append(plan.skipped, fmt.Sprintf("%s（已被本机 %s 占用）", r, conflictWith))
+			plan.Skipped = append(plan.Skipped, fmt.Sprintf("%s（已被本机 %s 占用）", r, conflictWith))
 			continue
 		}
-		plan.keep = append(plan.keep, r)
+		plan.Keep = append(plan.Keep, r)
 	}
 	return plan
 }
 
-// localRoute 是本机已直连的网段，带上网卡名，冲突时可以告诉用户是谁占的。
-type localRoute struct {
-	prefix netip.Prefix
-	iface  string
+// LocalRoute 是本机已直连的网段，带上网卡名，冲突时可以告诉用户是谁占的。
+type LocalRoute struct {
+	Prefix netip.Prefix
+	Iface  string
 }
 
-func (l localRoute) String() string {
-	return fmt.Sprintf("%s (%s)", l.prefix, l.iface)
+// String 给跳过原因用：让用户知道是哪个网卡占了这段。
+
+func (l LocalRoute) String() string {
+	return fmt.Sprintf("%s (%s)", l.Prefix, l.Iface)
 }
 
 // localDirectPrefixes 列出本机已直连的网段（不含我们自己的 TUN）。
-func localDirectPrefixes(exceptIface string) []localRoute {
+func localDirectPrefixes(exceptIface string) []LocalRoute {
 	ifs, err := net.Interfaces()
 	if err != nil {
 		return nil
 	}
-	var out []localRoute
+	var out []LocalRoute
 	for _, ifi := range ifs {
 		if ifi.Flags&net.FlagUp == 0 || ifi.Flags&net.FlagLoopback != 0 {
 			continue
@@ -643,7 +645,7 @@ func localDirectPrefixes(exceptIface string) []localRoute {
 			if err != nil || !p.Addr().Is4() {
 				continue
 			}
-			out = append(out, localRoute{prefix: p.Masked(), iface: ifi.Name})
+			out = append(out, LocalRoute{Prefix: p.Masked(), Iface: ifi.Name})
 		}
 	}
 	return out
@@ -667,7 +669,7 @@ func (e *systemTUNEngine) Down() error {
 	e.mu.Unlock()
 
 	if proxy != nil {
-		proxy.closeAll()
+		proxy.CloseAll()
 	}
 	if router != nil {
 		router.Cleanup() // 先撤路由，再关网卡，避免残留指向已消失接口的路由

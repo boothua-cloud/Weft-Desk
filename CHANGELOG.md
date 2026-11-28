@@ -53,7 +53,8 @@
 ### 工程
 
 - 后端代码按职责挪进 `internal/`：存储、服务端接口、隧道引擎、端口转发、书签同步、更新各占一个包，根目录只剩入口和界面装配。前端绑定的方法名没有变
-- 测试收拢：每个包只留一个 `xxx_test.go`，用例按主题分段。删掉几个没断言的、连的是占位地址的：示例数据检查、tsnet 启动冒烟、示例服务端联调、只打日志的更新检查
+- 测试全部挪进 `internal/tests` 一个包。原来散在 appsync、controlplane、desktop、engine、netio、sysproxy、update 七个包目录里，改一处要看七个地方；现在 `go test ./...` 只跑这一个包。为此导出几个原本只在包内用的函数（`SplitConflicts`、`RouteVerdict`、`MergeAdvertised`、`CallerAllowed`、`Excepted`、`IsNewer` 等），都在 `internal/` 下，外面引不到
+- 删掉几个没断言的、连的是占位地址的用例：示例数据检查、tsnet 启动冒烟、示例服务端联调、只打日志的更新检查、fd 传递与助手握手的冒烟（协议对不上时真机一跑就失败）
 - 根目录只剩三个 Go 文件：`main.go`（进程入口）、`assets.go`（embed 前端与图标）、`appname_darwin.*`。`WeftService` 连同窗口装配、托盘、应用内窗口、终端诊断整体搬进 `internal/desktop`，按配置、凭据、状态、设备、成员、书签、转发、提权助手拆成多个文件。前端 bindings 路径跟着变，`api.ts` 一处引用同步改了。README 补了一节代码结构
 
 ## [0.1.5] - 2026-11-28

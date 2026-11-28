@@ -174,7 +174,7 @@ func IsElevated() bool {
 
 // systemRoutes 补上 Windows 的路由表：判断「本机已存在完全相同前缀」时
 // 不能只看网卡地址，物理网卡上的静态/持久路由同样会把流量抢走。
-func systemRoutes(exceptIface string) []localRoute {
+func systemRoutes(exceptIface string) []LocalRoute {
 	rows, err := wgwin.GetIPForwardTable2(windows.AF_INET)
 	if err != nil {
 		log.Printf("[tunnel] 读取系统路由表失败（冲突检测跳过）: %v", err)
@@ -186,7 +186,7 @@ func systemRoutes(exceptIface string) []localRoute {
 			names[it.InterfaceIndex] = it.Alias()
 		}
 	}
-	out := make([]localRoute, 0, len(rows))
+	out := make([]LocalRoute, 0, len(rows))
 	for _, row := range rows {
 		p := row.DestinationPrefix.Prefix()
 		if !p.IsValid() || !p.Addr().Is4() {
@@ -196,7 +196,7 @@ func systemRoutes(exceptIface string) []localRoute {
 		if exceptIface != "" && strings.EqualFold(name, exceptIface) {
 			continue // 就是我们的隧道网卡，不参与冲突判断
 		}
-		out = append(out, localRoute{prefix: p.Masked(), iface: name})
+		out = append(out, LocalRoute{Prefix: p.Masked(), Iface: name})
 	}
 	return out
 }
