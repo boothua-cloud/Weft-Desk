@@ -930,6 +930,26 @@ func defaultCapabilities() Capabilities {
 	}
 }
 
+// GetLoginURL 主动要一次网页授权链接。
+// 没配授权 Key 时首次连接必须走这条，界面在什么都看不到时给个按钮，
+// 不用让用户猜是控制面没回还是界面没刷新。
+func (s *WeftService) GetLoginURL() (string, error) {
+	s.mu.Lock()
+	eng := s.engine
+	s.mu.Unlock()
+	if eng == nil {
+		return "", errors.New("还没有可用的引擎")
+	}
+	if req, ok := eng.(interface {
+		RequestLogin(context.Context) (string, error)
+	}); ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		return req.RequestLogin(ctx)
+	}
+	return eng.LoginURL(), nil
+}
+
 func (s *WeftService) GetState() (string, error) {
 	s.mu.Lock()
 	cfg, cap, connected, started := s.cfg, s.cap, s.connected, s.started

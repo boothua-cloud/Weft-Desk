@@ -61,7 +61,16 @@ func tsnetLogf(format string, args ...any) {
 	}
 }
 
-var loginURLRe = regexp.MustCompile(`https://\S+`)
+// headscale 自建常常跑在 http 上，注册链接也是 http://host/register/xxx，
+// 只认 https 会直接漏掉。引号和尖括号不进链接，随手清理尾部的标点。
+var loginURLRe = regexp.MustCompile(`https?://[^\s"'<>]+`)
+
+// cleanAuthURL 去掉日志里粘在链接尾部的标点。
+// tailscale 的日志是 `... go to: <url>`，headscale 的链接本身以 key 结尾，
+// 但偶尔会被引号或句号裹住。
+func cleanAuthURL(u string) string {
+	return strings.TrimRight(u, ".,;:!?)]}'\"")
+}
 
 // tsnetStateDir 持久化节点私钥与登录态。重开 App 复用同一身份、不重新注册，
 // 这是「关掉再打开连不上」的根治点。按控制面分目录，避免身份串台。

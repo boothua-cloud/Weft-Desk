@@ -36,10 +36,14 @@ echo "==> 构建（CGO + gtk3）"
 CGO_ENABLED=1 go build -tags "production gtk3" -trimpath -buildvcs=false \
   -ldflags="-w -s" -o bin/weft .
 
-echo "==> 生成 .desktop"
-mkdir -p build/linux
-wails3 generate .desktop -name "云栈" -exec weft -icon weft \
-  -outputfile build/linux/weft.desktop -categories "Network;Utility;"
+echo "==> 检查 .desktop"
+# 这个文件是手写的（图标名、中文名、StartupWMClass 都得对），不再用
+# `wails3 generate .desktop` 覆盖——它生成的东西没有 StartupWMClass，
+# GNOME 的 Dock 认不出应用，图标会变成通用可执行文件。
+if [ ! -f build/linux/weft.desktop ]; then
+  echo "缺少 build/linux/weft.desktop" >&2
+  exit 1
+fi
 
 echo "==> 打 deb"
 mkdir -p release

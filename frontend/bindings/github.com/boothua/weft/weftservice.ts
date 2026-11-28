@@ -8,7 +8,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -185,6 +185,15 @@ export function GetHealth(): $CancellablePromise<string> {
  */
 export function GetHelperStatus(): $CancellablePromise<string> {
     return $Call.ByID(1212634503);
+}
+
+/**
+ * GetLoginURL 主动要一次网页授权链接。
+ * 没配授权 Key 时首次连接必须走这条，界面在什么都看不到时给个按钮，
+ * 不用让用户猜是控制面没回还是界面没刷新。
+ */
+export function GetLoginURL(): $CancellablePromise<string> {
+    return $Call.ByID(4151808203);
 }
 
 export function GetPolicy(): $CancellablePromise<string> {

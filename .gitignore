@@ -14,7 +14,7 @@ build/android/gen/
 .idea
 release
 .DS_Store
-# Linux 打包时生成的桌面项（CI / scripts/build-linux.sh 会现生成）
-build/linux/*.desktop
+# Linux 的 .desktop 是手写维护的（Icon、StartupWMClass、中文名都要对），
+# 不再由 wails3 generate 覆盖，所以必须进版本库
 # wails3 generate syso 的产物，编译前生成、编译后删掉，不进版本库
 *.syso

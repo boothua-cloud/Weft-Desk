@@ -4,7 +4,8 @@
 # - 包名用 ASCII 的 weft：deb 包名不允许中文；可执行文件也叫 weft，CLI 调用方便
 # - 依赖 GTK3 + WebKit2GTK 4.1：本项目按 `-tags gtk3` 构建（见 scripts/build-linux.sh），
 #   模板默认的 gtk4 / webkitgtk-6.0 与二进制实际链接的库不一致，装了也起不来
-# - 图标按真实尺寸落到 hicolor/1024x1024，塞进 128 目录会让图标缓存索引错乱
+# - 图标按真实尺寸落到 hicolor（32 到 1024 各一份）：桌面环境按格子查图标，
+#   只给 1024 一个目录时很多主题直接查不到，菜单里就是通用程序图标
 # - arch 写死 amd64：Linux 侧必须原生 CGO 编译，交叉出来的 arm64 包没意义
 name: "weft"
 arch: "amd64"
@@ -28,6 +29,32 @@ contents:
       mode: 0755
   - src: "./build/appicon.png"
     dst: "/usr/share/icons/hicolor/1024x1024/apps/weft.png"
+    file_info:
+      mode: 0644
+  # 桌面环境按尺寸查图标，只有 1024 一个目录时 GNOME 的图标主题
+  # 找不到对应格子，菜单和 Dock 里就显示成通用程序图标。
+  - src: "./build/linux/icons/512x512.png"
+    dst: "/usr/share/icons/hicolor/512x512/apps/weft.png"
+    file_info:
+      mode: 0644
+  - src: "./build/linux/icons/256x256.png"
+    dst: "/usr/share/icons/hicolor/256x256/apps/weft.png"
+    file_info:
+      mode: 0644
+  - src: "./build/linux/icons/128x128.png"
+    dst: "/usr/share/icons/hicolor/128x128/apps/weft.png"
+    file_info:
+      mode: 0644
+  - src: "./build/linux/icons/64x64.png"
+    dst: "/usr/share/icons/hicolor/64x64/apps/weft.png"
+    file_info:
+      mode: 0644
+  - src: "./build/linux/icons/48x48.png"
+    dst: "/usr/share/icons/hicolor/48x48/apps/weft.png"
+    file_info:
+      mode: 0644
+  - src: "./build/linux/icons/32x32.png"
+    dst: "/usr/share/icons/hicolor/32x32/apps/weft.png"
     file_info:
       mode: 0644
   - src: "./build/linux/weft.desktop"

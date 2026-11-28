@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=云栈
+Name[en]=Weft
+GenericName=Headscale 客户端
+Comment=连接 Tailscale / Headscale 网络，让 ssh、mysql 等工具直接访问内网
+Comment[en]=Connect to a Tailscale / Headscale network
+Exec=weft
+Icon=weft
+Terminal=false
+Categories=Network;Utility;
+Keywords=tailscale;headscale;vpn;mesh;network;
+StartupNotify=true
+# GTK 主窗口的 WM_CLASS 是可执行文件名。不写这行，GNOME 的 Dock 和任务栏
+# 认不出这是哪个应用，图标会退化成通用程序图标。
+StartupWMClass=weft

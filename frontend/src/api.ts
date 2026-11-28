@@ -214,6 +214,8 @@ export const api = {
   testConnection: () => WeftService.TestConnection(),
   connect: () => parse<State>(WeftService.Connect()),
   disconnect: () => parse<State>(WeftService.Disconnect()),
+  // 没配授权 Key 时手动要一次网页授权链接
+  loginURL: (): Promise<string> => (WeftService as any).GetLoginURL(),
   health: () => parse<HealthInfo>(WeftService.GetHealth()),
   audit: () => parse<AuditEvent[]>(WeftService.ListAudit()),
   testPeer: (host: string, port: number, via: string) => WeftService.TestPeer(host, port, via),

@@ -301,8 +301,12 @@ func (e *systemTUNEngine) Up(c Config) error {
 			msg := fmt.Sprintf(format, args...)
 			log.Printf("[tsnet] %s", msg)
 			if u := loginURLRe.FindString(msg); u != "" {
+				u = cleanAuthURL(u)
 				e.mu.Lock()
-				e.loginURL = u
+				if e.loginURL != u {
+					e.loginURL = u
+					hlog("需要网页授权：%s", u)
+				}
 				e.mu.Unlock()
 			}
 		},
@@ -328,8 +332,95 @@ func (e *systemTUNEngine) Up(c Config) error {
 	e.since = time.Time{}
 	e.mu.Unlock()
 
+	go e.watchAuthURL(ctx, srv)
 	go e.waitUp(ctx, srv, dev, router)
 	return nil
+}
+
+// watchAuthURL 订阅引擎的登录通知，把「需要网页授权」的地址交给界面。
+//
+// 之前是靠抓日志正则，headscale 自建跑在 http 上时一个都抓不到——链接是
+// http://host/register/xxx，正则只写了 https。BrowseToURL 是引擎自己给的，
+// 不依赖日志格式，日志正则留作兜底。
+func (e *systemTUNEngine) watchAuthURL(ctx context.Context, srv *tsnet.Server) {
+	lc, err := srv.LocalClient()
+	if err != nil {
+		log.Printf("[system] 订阅登录通知失败: %v", err)
+		return
+	}
+	w, err := lc.WatchIPNBus(ctx, ipn.NotifyInitialState)
+	if err != nil {
+		log.Printf("[system] 订阅登录通知失败: %v", err)
+		return
+	}
+	defer w.Close()
+	for {
+		n, err := w.Next()
+		if err != nil {
+			return
+		}
+		if n.BrowseToURL != nil && *n.BrowseToURL != "" {
+			u := cleanAuthURL(*n.BrowseToURL)
+			e.mu.Lock()
+			if e.srv == srv && e.loginURL != u {
+				e.loginURL = u
+				hlog("需要网页授权：%s", u)
+			}
+			e.mu.Unlock()
+		}
+		// 登录完成就开始跑数据面，链接没有意义了
+		if n.State != nil && *n.State == ipn.Running {
+			e.mu.Lock()
+			if e.srv == srv {
+				e.loginURL = ""
+			}
+			e.mu.Unlock()
+		}
+	}
+}
+
+// RequestLogin 主动要一次授权链接。
+// tsnet 只在 NeedsLogin 时自己打日志，界面上什么都没出现时，用户点一下
+// 「获取授权链接」就能重新触发，不用去猜是控制面没响应还是界面没刷新。
+func (e *systemTUNEngine) RequestLogin(ctx context.Context) (string, error) {
+	e.mu.Lock()
+	srv, cur := e.srv, e.loginURL
+	e.mu.Unlock()
+	if srv == nil {
+		return "", errors.New("还没开始连接，先点「连接」")
+	}
+	if cur != "" {
+		return cur, nil
+	}
+	lc, err := srv.LocalClient()
+	if err != nil {
+		return "", fmt.Errorf("读取本地节点失败: %w", err)
+	}
+	cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	w, err := lc.WatchIPNBus(cctx, ipn.NotifyInitialState)
+	if err != nil {
+		return "", fmt.Errorf("订阅登录通知失败: %w", err)
+	}
+	defer w.Close()
+	if err := lc.StartLoginInteractive(cctx); err != nil {
+		return "", fmt.Errorf("请求授权链接失败: %w", err)
+	}
+	for {
+		n, err := w.Next()
+		if err != nil {
+			return "", errors.New("没等到授权链接：控制面没响应，或这个账号已经有节点在等授权")
+		}
+		if n.BrowseToURL != nil && *n.BrowseToURL != "" {
+			u := cleanAuthURL(*n.BrowseToURL)
+			e.mu.Lock()
+			if e.srv == srv {
+				e.loginURL = u
+			}
+			e.mu.Unlock()
+			return u, nil
+		}
+	}
 }
 
 // waitUp 等节点 Running，拿到自身 IP 后再配地址和路由。

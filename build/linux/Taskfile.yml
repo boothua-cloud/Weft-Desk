@@ -166,11 +166,12 @@ tasks:
       - wails3 tool package -name "{{.APP_NAME}}" -format archlinux -config ./build/linux/nfpm/nfpm.yaml -out {{.ROOT_DIR}}/bin
 
   generate:dotdesktop:
-    summary: Generates a `.desktop` file
-    dir: build
+    summary: 校验手写的 .desktop（不再覆盖生成）
+    # build/linux/weft.desktop 是手写维护的：Icon、StartupWMClass、中文名都要对，
+    # wails3 generate 出来的没有 StartupWMClass，GNOME Dock 认不出应用。
     cmds:
+      - test -f {{.ROOT_DIR}}/build/linux/{{.APP_NAME}}.desktop
       - mkdir -p {{.ROOT_DIR}}/build/linux/appimage
-      - wails3 generate .desktop -name "{{.APP_NAME}}" -exec "{{.EXEC}}" -icon "{{.ICON}}" -outputfile "{{.ROOT_DIR}}/build/linux/{{.APP_NAME}}.desktop" -categories "{{.CATEGORIES}}"
     vars:
       APP_NAME: '{{.APP_NAME}}'
       EXEC: '{{.APP_NAME}}'

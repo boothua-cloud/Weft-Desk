@@ -262,6 +262,23 @@ function copyLogin() {
   navigator.clipboard?.writeText(props.state.loginURL)
   emit('notify', '登录链接已复制，粘到浏览器打开')
 }
+
+// 没配授权 Key 时，链接是引擎在登录流程里给的。给不到就主动催一次，
+// 不再让用户对着一个空的总览页猜。
+const authBusy = ref(false)
+async function fetchAuth() {
+  if (authBusy.value) return
+  authBusy.value = true
+  try {
+    const u = await api.loginURL()
+    emit('notify', u ? '授权链接已获取，粘到浏览器打开' : '控制面没给链接')
+    emit('refresh')
+  } catch (err: any) {
+    emit('notify', String(err?.message ?? err))
+  } finally {
+    authBusy.value = false
+  }
+}
 </script>
 
 <template>
@@ -313,6 +330,29 @@ function copyLogin() {
       </div>
       <div v-if="!connecting && !state?.connected && state?.lastError" class="notice warn" style="margin-top:14px;position:relative">
         上次启动失败：{{ state.lastError }}
+      </div>
+      <div v-if="state?.loginURL" class="notice warn" style="margin-top:14px">
+        <div class="spread" style="gap:10px">
+          <div style="min-width:0">
+            <b style="font-size:12px">首次需要完成授权</b>
+            <div class="mono" style="margin-top:5px;word-break:break-all;opacity:.85">{{ state.loginURL }}</div>
+          </div>
+          <button class="btn sm" @click="copyLogin">复制登录链接</button>
+        </div>
+        <div style="font-size:11px;margin-top:8px">在浏览器里完成授权后节点自动上线，以后重开不用再登录。</div>
+      </div>
+      <div v-else-if="!state?.connected && state?.endpoint" class="notice info" style="margin-top:14px">
+        <div class="spread" style="gap:10px">
+          <div style="min-width:0">
+            <b style="font-size:12px">这次连接要在浏览器里授权</b>
+            <div style="font-size:11px;margin-top:4px;opacity:.85">
+              没填授权 Key 时，节点得在控制面的网页上批准一次。拿链接后粘到浏览器打开即可。
+            </div>
+          </div>
+          <button class="btn sm" :disabled="authBusy" @click="fetchAuth">
+            <span v-if="authBusy" class="spinner"></span>{{ authBusy ? '获取中…' : '获取授权链接' }}
+          </button>
+        </div>
       </div>
       <div class="hero-ip">
         {{ state?.connected ? (state?.selfIP || '—') : '—' }}
@@ -458,16 +498,6 @@ function copyLogin() {
       </div>
     </div>
 
-    <div v-if="state?.loginURL" class="notice warn" style="margin-top:14px">
-      <div class="spread" style="gap:10px">
-        <div style="min-width:0">
-          <b style="font-size:12px">首次需要完成授权</b>
-          <div class="mono" style="margin-top:5px;word-break:break-all;opacity:.85">{{ state.loginURL }}</div>
-        </div>
-        <button class="btn sm" @click="copyLogin">复制登录链接</button>
-      </div>
-      <div style="font-size:11px;margin-top:8px">在浏览器里完成授权后节点自动上线，以后重开不用再登录。</div>
-    </div>
     <template v-if="renewOpen">
       <div class="mask" @click="renewOpen = false"></div>
       <div class="drawer">

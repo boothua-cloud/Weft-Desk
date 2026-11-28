@@ -168,6 +168,13 @@ macOS 和 Windows 在真机上验证过完整流程。
 
 Linux 目前只针对 **Ubuntu 24.04 桌面版**：编译时链的是 `webkit2gtk-4.1`，22.04 的仓库里只有 4.0，装 `.deb` 会提示依赖不满足。提权和路由清理还需要更多实机验证。
 
+装完菜单里图标不对，先手动重建一次缓存：
+
+```bash
+sudo update-desktop-database /usr/share/applications
+sudo gtk-update-icon-cache -f -t /usr/share/icons/hicolor
+```
+
 ## 构建
 
 需要 Go 1.24+、Node 20+，以及 [Wails v3](https://v3alpha.wails.io/)。
