@@ -53,12 +53,12 @@ func maskString(p netip.Prefix) string {
 // systemRoutes 读系统路由表。只看网卡地址是不够的：
 // 内网网关可能通过静态路由提供 10.0.1.0/24 这类网段，
 // 这类路由不在接口地址里，漏掉就会把内网流量抢进隧道。
-func systemRoutes(exceptIface string) []LocalRoute {
+func systemRoutes(exceptIface string) []localRoute {
 	out, err := exec.Command("/usr/sbin/netstat", "-rn", "-f", "inet").Output()
 	if err != nil {
 		return nil
 	}
-	var res []LocalRoute
+	var res []localRoute
 	for _, line := range strings.Split(string(out), "\n") {
 		f := strings.Fields(line)
 		if len(f) < 4 || f[0] == "Destination" || f[0] == "default" {
@@ -72,7 +72,7 @@ func systemRoutes(exceptIface string) []LocalRoute {
 		if !ok {
 			continue
 		}
-		res = append(res, LocalRoute{Prefix: p, Iface: ifi})
+		res = append(res, localRoute{prefix: p, iface: ifi})
 	}
 	return res
 }

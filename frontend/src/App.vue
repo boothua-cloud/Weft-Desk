@@ -332,13 +332,13 @@ onUnmounted(() => {
           <template v-if="switchOpen">
             <div class="menu-panel">
               <div class="menu-label">切换服务端</div>
-              <button v-for="p in profiles" :key="p.id" class="menu-item profile-item" @click="pickProfile(p)">
+              <button v-for="p in profiles" :key="p.id" class="menu-item profile-item"
+                      :class="{ current: p.id === activeID }" @click="pickProfile(p)">
                 <span class="profile-item-text">
                   <b>{{ p.name }}</b>
                   <small>{{ p.baseURL || '未填地址' }}</small>
                 </span>
-                <span v-if="p.id === activeID" class="tag green" style="margin:0">当前</span>
-                <span v-else-if="switching === p.id" class="spinner"></span>
+                <span v-if="switching === p.id" class="spinner"></span>
               </button>
               <div class="menu-sep"></div>
               <button class="menu-item" @click="switchOpen = false; page = 'settings'">

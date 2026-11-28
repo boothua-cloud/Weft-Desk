@@ -45,12 +45,12 @@ func runCmd(name string, args ...string) error {
 }
 
 // systemRoutes 读内核路由表，避免把已由内网网关提供的网段抢进隧道。
-func systemRoutes(exceptIface string) []LocalRoute {
+func systemRoutes(exceptIface string) []localRoute {
 	out, err := exec.Command("ip", "-4", "route", "show").Output()
 	if err != nil {
 		return nil
 	}
-	var res []LocalRoute
+	var res []localRoute
 	for _, line := range strings.Split(string(out), "\n") {
 		f := strings.Fields(line)
 		if len(f) < 3 || f[0] == "default" {
@@ -69,7 +69,7 @@ func systemRoutes(exceptIface string) []LocalRoute {
 		if err != nil {
 			continue
 		}
-		res = append(res, LocalRoute{Prefix: p.Masked(), Iface: ifi})
+		res = append(res, localRoute{prefix: p.Masked(), iface: ifi})
 	}
 	return res
 }

@@ -461,11 +461,7 @@ func LooksLikeAPIKey(k string) bool {
 // CheckKey 是最便宜的一次鉴权：打 /api/v1/node，401/403 就代表钥匙不能用。
 // 不走 Probe，是因为启动和改配置时会频繁调用，没必要顺带拉 version 和 health。
 func (c *HeadscaleCP) CheckKey() error {
-	return c.CheckKeyWith(c.bearer())
-}
-
-// CheckKeyWith 把钥匙作为入参，纯粹为了让测试能绕开钥匙串。
-func (c *HeadscaleCP) CheckKeyWith(key string) error {
+	key := c.bearer()
 	if strings.TrimSpace(key) == "" {
 		return nil
 	}

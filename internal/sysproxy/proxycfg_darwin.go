@@ -17,8 +17,8 @@ func systemProxyURL(host string) *url.URL {
 	if err != nil {
 		return nil
 	}
-	fields, exceptions := ParseSCUtilProxy(string(out))
-	if Excepted(host, exceptions) {
+	fields, exceptions := parseSCUtilProxy(string(out))
+	if excepted(host, exceptions) {
 		return nil
 	}
 	pick := func(prefix string) *url.URL {
@@ -43,9 +43,9 @@ func systemProxyURL(host string) *url.URL {
 	return nil
 }
 
-// ParseSCUtilProxy 拆 scutil 的字典输出现。ExceptionsList 是个数组，
+// parseSCUtilProxy 拆 scutil 的字典输出现。ExceptionsList 是个数组，
 // 单独收一份，其余是 key : value。
-func ParseSCUtilProxy(text string) (map[string]string, []string) {
+func parseSCUtilProxy(text string) (map[string]string, []string) {
 	fields := map[string]string{}
 	var exceptions []string
 	inList := false
@@ -74,9 +74,9 @@ func ParseSCUtilProxy(text string) (map[string]string, []string) {
 	return fields, exceptions
 }
 
-// Excepted 判断目标是否在代理例外里。
+// excepted 判断目标是否在代理例外里。
 // 支持域名、*.通配、CIDR、<local>（不含点的主机名），够覆盖系统设置里常见的写法。
-func Excepted(host string, list []string) bool {
+func excepted(host string, list []string) bool {
 	h := strings.ToLower(strings.TrimSpace(host))
 	if h == "" {
 		return false

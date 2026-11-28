@@ -27,23 +27,23 @@ type proxyEntry struct {
 	token  string
 }
 
-// ProxyHub 给每个 tailnet 内地址在 127.0.0.1 上开一个 HTTP 反向代理。
+// proxyHub 给每个 tailnet 内地址在 127.0.0.1 上开一个 HTTP 反向代理。
 // tsnet 的网络栈在进程内，WebView 直接请求 100.x 有可能拿不到路由，
 // 必须经这层转发；这也意味着系统本身和其它程序完全不在 tailnet 内。
-type ProxyHub struct {
+type proxyHub struct {
 	mu       sync.Mutex
 	dial     dialFunc
 	items    map[string]*proxyEntry
 	insecure atomic.Bool
 }
 
-func NewProxyHub(d dialFunc) *ProxyHub {
-	return &ProxyHub{dial: d, items: map[string]*proxyEntry{}}
+func newProxyHub(d dialFunc) *proxyHub {
+	return &proxyHub{dial: d, items: map[string]*proxyEntry{}}
 }
 
-func (h *ProxyHub) SetInsecure(v bool) { h.insecure.Store(v) }
+func (h *proxyHub) setInsecure(v bool) { h.insecure.Store(v) }
 
-func (h *ProxyHub) Resolve(raw string) (string, error) {
+func (h *proxyHub) resolve(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if !strings.Contains(raw, "://") {
 		raw = "http://" + raw
@@ -150,7 +150,7 @@ func fragmentOf(u *url.URL) string {
 	return "#" + u.Fragment
 }
 
-func (h *ProxyHub) CloseAll() {
+func (h *proxyHub) closeAll() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for k, e := range h.items {

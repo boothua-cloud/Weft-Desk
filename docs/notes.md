@@ -33,7 +33,6 @@
 | `netio` | 端口转发与 SOCKS5 |
 | `appsync` | 应用书签同步 |
 | `desktop` | 桌面壳层：绑定入口、托盘、应用内窗口、终端诊断 |
-| `tests` | 全部单测，一个包 |
 | `update` | 自动更新（绑定方法在 `desktop` 包转发） |
 
 依赖是单向的：`model` 在最底下，`store`、`controlplane`、`engine` 依赖它；

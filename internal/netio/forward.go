@@ -56,25 +56,6 @@ const (
 	BindAny       = "0.0.0.0"
 )
 
-// Bind 返回当前的监听范围。界面上要显示它，测试也靠它确认没被悄悄改成
-// 对局域网开放 —— 这一项一旦变了，同网段的人就能借你的转发进内网。
-func (h *Hub) Bind() string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.bind
-}
-
-// ListenAddr 返回某条转发实际监听在哪个地址上；没起来就返回空串。
-func (h *Hub) ListenAddr(id string) string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	e, ok := h.entries[id]
-	if !ok || e.ln == nil {
-		return ""
-	}
-	return e.ln.Addr().String()
-}
-
 // NormalizeBind 只认这两个值，其余一律回落到仅本机，避免误开公网监听。
 func NormalizeBind(v string) string {
 	if v == BindAny {

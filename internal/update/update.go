@@ -97,7 +97,7 @@ func (m *Manager) Init() {
 	}
 	gh, err := github.New(github.Config{
 		Repository:   appinfo.UpdateRepo,
-		AssetMatcher: PickUpdateAsset,
+		AssetMatcher: pickUpdateAsset,
 	})
 	if err != nil {
 		log.Printf("[update] 初始化发布源失败: %v", err)
@@ -133,13 +133,13 @@ func (m *Manager) Init() {
 	log.Printf("[update] 更新器就绪，当前 v%s", appinfo.Version)
 }
 
-// PickUpdateAsset 决定每个平台下载哪个附件。
+// pickUpdateAsset 决定每个平台下载哪个附件。
 //
 // 不能用框架默认的匹配规则：它按文件名里有没有 goos 字样来挑，而我们的
 // mac 产物叫 macos（不是 darwin）；更要紧的是它会把便携版 zip 选中 ——
 // 那个包里是 weft.exe + wintun.dll 两个顶层条目，而替换逻辑要求压缩包
 // 解出来只能有一个顶层文件。
-func PickUpdateAsset(req updater.CheckRequest, assets []github.ReleaseAsset) int {
+func pickUpdateAsset(req updater.CheckRequest, assets []github.ReleaseAsset) int {
 	pick := func(match func(name string) bool) int {
 		for i, a := range assets {
 			if match(strings.ToLower(a.Name)) {
@@ -205,7 +205,7 @@ func (m *Manager) checkUpdate() UpdateStatus {
 		st.CanAutoUpdate = false
 		st.ManualReason = ""
 		if latest, ferr := fetchLatestRelease(ctx); ferr == nil && latest != nil {
-			if IsNewer(latest.TagName, appinfo.Version) {
+			if isNewer(latest.TagName, appinfo.Version) {
 				st.HasUpdate = true
 				st.State = "available"
 				st.LatestVersion = strings.TrimPrefix(latest.TagName, "v")
@@ -635,9 +635,9 @@ func jsonString(v any) string {
 	return string(b)
 }
 
-// IsNewer 只用于兜底路径的版本比较：拆成数字段比大小，容忍 v 前缀和
+// isNewer 只用于兜底路径的版本比较：拆成数字段比大小，容忍 v 前缀和
 // 段数不一致（0.1.4 vs 0.1.4.1）。
-func IsNewer(tag, current string) bool {
+func isNewer(tag, current string) bool {
 	a := strings.Split(strings.TrimPrefix(strings.TrimPrefix(tag, "v"), "V"), ".")
 	b := strings.Split(strings.TrimPrefix(strings.TrimPrefix(current, "v"), "V"), ".")
 	for i := 0; i < len(a) || i < len(b); i++ {
