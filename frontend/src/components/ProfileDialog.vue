@@ -106,6 +106,9 @@ async function save() {
           </div>
           <input class="input" :type="shownKey.api ? 'text' : 'password'" v-model="apiKey"
                  :placeholder="profile?.id ? '留空表示不修改' : 'hskey-apikey-…'" />
+          <div class="faint" style="font-size:10px;margin-top:4px">
+            填了才会出现「设备管理 / 人员管理 / 授权 Key / ACL 策略」
+          </div>
         </div>
         <div>
           <div class="spread" style="margin-bottom:5px">

@@ -21,6 +21,9 @@ const disconnecting = ref(false)
 const busyLabel = ref('')
 
 const peers = computed(() => props.state?.peers ?? [])
+// 没有管理 API Key 时，服务端相关的东西（设备到期、管理密钥）都不显示，
+// 那些卡片拿到数据也只会是空的
+const hasAPIKey = computed(() => !!props.state?.hasApiKey)
 const online = computed(() => peers.value.filter(p => p.online).length)
 const total = computed(() => peers.value.length)
 const routes = computed(() => props.state?.routes ?? [])
@@ -227,7 +230,7 @@ function copyLogin() {
       </div>
     </section>
 
-    <div v-if="expiringDevices.length" class="card" style="margin-bottom:14px">
+    <div v-if="hasAPIKey && expiringDevices.length" class="card" style="margin-bottom:14px">
       <h3 class="sec" style="color:var(--warn-text, #b4741a)">节点即将到期</h3>
       <div class="faint" style="font-size:11px;margin-bottom:8px">到期后节点会从 tailnet 断开，需要重新登录</div>
       <div v-for="d in expiringDevices" :key="d.id" class="row" style="gap:10px;margin-top:6px">
@@ -238,7 +241,7 @@ function copyLogin() {
     </div>
 
     <!-- 指标 -->
-    <div class="grid4" style="margin-bottom:14px">
+    <div :class="hasAPIKey ? 'grid4' : 'grid3'" style="margin-bottom:14px">
       <div class="card">
         <div class="metric-top">
           <div class="stat-label" style="margin:0">在线设备</div>
@@ -276,7 +279,7 @@ function copyLogin() {
         <div class="stat-sub">{{ state?.connected ? '隧道保持中' : '未运行' }}</div>
       </div>
 
-      <div class="card">
+      <div v-if="hasAPIKey" class="card">
         <div class="metric-top">
           <div class="stat-label" style="margin:0">管理密钥</div>
           <button v-if="state?.configured" class="btn sm ghost" :disabled="renewing" @click="openRenew">
@@ -288,7 +291,7 @@ function copyLogin() {
           <span v-if="keyDays !== null" style="font-size:13px;color:var(--faint);font-weight:400"> 天</span>
         </div>
         <div class="stat-sub">
-          {{ state?.configured ? (keyExpires || '未读取到有效期') : '未配置管理 API Key' }}
+          {{ keyExpires || '未读取到有效期' }}
         </div>
       </div>
     </div>

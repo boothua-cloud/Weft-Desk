@@ -881,6 +881,7 @@ func (s *WeftService) GetState() (string, error) {
 		Endpoint: cfg.BaseURL, Engine: e.Name(),
 		EngineReady: e.Available(), CLIReady: e.Available(),
 		LoginURL: e.LoginURL(), Configured: hasCredential(cfg),
+		HasAPIKey:    usableAPIKey(),
 		Capabilities: cap,
 		Platform:     runtime.GOOS,
 		AppVersion:   appVersion,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Events } from '@wailsio/runtime'
 import { api, type State } from './api'
 import { requestReload } from './bus'
@@ -53,21 +53,39 @@ const icons: Record<string, string> = {
   settings: 'M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5 13 13M13 3l-1.5 1.5M4.5 11.5 3 13',
   forwards: 'M2 5h8M8 2l3 3-3 3M14 11H6M8 8l-3 3 3 3',
 }
-const nav = [
-  { label: '总览', items: [{ key: 'overview', label: '隧道总览' }] },
-  { label: '服务端管理', items: [
-    { key: 'devices', label: '设备管理' },
-    { key: 'users', label: '人员管理' },
-    { key: 'keys', label: '授权 Key' },
-    { key: 'api', label: 'API Key' },
-    { key: 'acl', label: 'ACL 策略' },
-  ] },
-  { label: '工作台', items: [
-    { key: 'apps', label: '应用管理' },
-    { key: 'forwards', label: '端口转发' },
-    { key: 'settings', label: '连接设置' },
-  ] },
-]
+// 「服务端管理」这一组页面全靠管理 API Key，没有就整组不显示。
+// 判断以后端为准：空 Key 和节点 Auth Key 都不算（后者管理接口一律 401）。
+const managePages = ['devices', 'users', 'keys', 'api', 'acl']
+const hasAPIKey = computed(() => !!state.value?.hasApiKey)
+
+const nav = computed(() => {
+  const groups: { label: string; items: { key: string; label: string }[] }[] = [
+    { label: '总览', items: [{ key: 'overview', label: '隧道总览' }] },
+  ]
+  // 没有管理 API Key 时，这几个页面打开也只会是一串 401，
+  // 不如整组收起来，省得让人以为功能坏了
+  if (hasAPIKey.value) {
+    groups.push({
+      label: '服务端管理',
+      items: [
+        { key: 'devices', label: '设备管理' },
+        { key: 'users', label: '人员管理' },
+        { key: 'keys', label: '授权 Key' },
+        { key: 'api', label: 'API Key' },
+        { key: 'acl', label: 'ACL 策略' },
+      ],
+    })
+  }
+  groups.push({
+    label: '工作台',
+    items: [
+      { key: 'apps', label: '应用管理' },
+      { key: 'forwards', label: '端口转发' },
+      { key: 'settings', label: '连接设置' },
+    ],
+  })
+  return groups
+})
 const meta: Record<string, [string, string]> = {
   overview: ['隧道', '总览'], devices: ['服务端管理', '设备管理'],
   users: ['服务端管理', '人员管理'], keys: ['服务端管理', '密钥管理'],
@@ -80,6 +98,11 @@ const fixedLayout = computed(() => ['devices', 'users', 'keys', 'api', 'apps'].i
 const crumb = computed(() => meta[page.value]?.[0] ?? '总览')
 const title = computed(() => meta[page.value]?.[1] ?? '总览')
 const manageTab = computed(() => ['devices', 'users', 'keys', 'api'].includes(page.value) ? page.value : 'devices')
+// 密钥被删、换到没配 Key 的服务端、或者填的是 Auth Key：当前页可能正好停在
+// 一个已经不该出现的地方，退回总览。
+watch(hasAPIKey, (ok) => {
+  if (!ok && managePages.includes(page.value)) page.value = 'overview'
+})
 // 多服务端：顶栏那个胶囊点开就是切换器
 type Profile = { id: string; name: string; baseURL: string }
 const profiles = ref<Profile[]>([])
@@ -162,7 +185,12 @@ onMounted(async () => {
         page.value = 'settings'
         window.setTimeout(() => window.dispatchEvent(new CustomEvent('weft:open-profile')), 900)
       } else if (['overview', 'apps', 'forwards', 'acl', 'devices', 'users', 'keys', 'api', 'settings'].includes(target)) {
-        page.value = target
+        if (managePages.includes(target) && !hasAPIKey.value) {
+          notify('这张服务端还没配管理 API Key，设备 / 人员 / 密钥 / ACL 这些页面暂不显示')
+          page.value = 'overview'
+        } else {
+          page.value = target
+        }
       }
     })
   } catch { /* 忽略 */ }

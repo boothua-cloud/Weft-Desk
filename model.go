@@ -76,6 +76,7 @@ type State struct {
 	NetErr       string       `json:"netErr"`     // 路由配置错误
 	CLIReady     bool         `json:"cliReady"`   // 兼容旧前端：等价于 EngineReady
 	Configured   bool         `json:"configured"` // 是否已填控制面凭证
+	HasAPIKey    bool         `json:"hasApiKey"`  // 是否配了能用的管理 API Key（不是节点 Auth Key）
 	Uptime       string       `json:"uptime"`
 	Message      string       `json:"message"`
 	Capabilities Capabilities `json:"capabilities"`

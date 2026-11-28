@@ -565,6 +565,7 @@ table.tbl tr:last-child td { border-bottom: 0; }
 
 @media (max-width: 1080px) {
   .grid4 { grid-template-columns: repeat(2, 1fr); }
+  .grid3 { grid-template-columns: repeat(2, 1fr); }
   .grid2 { grid-template-columns: 1fr; }
 }
 

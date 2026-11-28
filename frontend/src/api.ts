@@ -31,6 +31,9 @@ export interface State {
   engineReady: boolean
   cliReady: boolean
   configured: boolean
+  // 是否配了能用的管理 API Key（空值或节点 Auth Key 都是 false）。
+  // 为 false 时服务端管理相关的入口整块不显示。
+  hasApiKey: boolean
   loginURL: string
   lastError: string
   platform: string

@@ -306,6 +306,20 @@ var headscaleCPImpl ControlPlane = (*headscaleCP)(nil)
 func newControlPlane(c Config) ControlPlane { return &headscaleCP{cfg: c} }
 
 func (c *headscaleCP) bearer() string { return strings.TrimSpace(secretGet(secretMain)) }
+
+// isAuthKey 判断这串钥匙是节点入网用的 Auth Key。
+// 它也能填进「管理 API Key」，但管理接口一律 401，界面不该把它当成能管服务端。
+func isAuthKey(k string) bool {
+	return strings.HasPrefix(k, "hskey-auth-") || strings.HasPrefix(k, "tskey-auth-")
+}
+
+// usableAPIKey 表示「管理 API 现在能用」：空值和 Auth Key 都不算。
+// 界面拿它决定是否显示服务端管理相关入口。
+func usableAPIKey() bool {
+	k := strings.TrimSpace(secretGet(secretMain))
+	return k != "" && !isAuthKey(k)
+}
+
 func (c *headscaleCP) url(p string) string {
 	return strings.TrimRight(c.cfg.BaseURL, "/") + p
 }
@@ -336,7 +350,7 @@ func (c *headscaleCP) Probe() (Capabilities, error) {
 		return cap, fmt.Errorf("未配置管理 API Key：在服务器上运行 `headscale apikeys create`，" +
 			"把结果填到「管理 API Key」（不是节点注册用的 Auth Key）")
 	}
-	if strings.HasPrefix(key, "hskey-auth-") || strings.HasPrefix(key, "tskey-auth-") {
+	if isAuthKey(key) {
 		return cap, fmt.Errorf("这是节点注册用的 Auth Key，不能用于管理 API。请用 `headscale apikeys create` 生成")
 	}
 	if _, err := doJSON("GET", c.url("/api/v1/node"), key, nil, &v); err != nil {
