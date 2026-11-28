@@ -302,12 +302,15 @@ type aclVerdict struct {
 // 能算的（IP/CIDR/区间/*/tag:）照实算，算不出来的（group:/autogroup:admin）
 // 必须返回 unknown，而不是当作不匹配。
 func aclEvaluate(rules []tailcfg.FilterRule, self, dst netip.Addr, port uint16, selfTags []string) aclVerdict {
-	// 空规则不等于「全部拒绝」：客户端还没拿到 netmap 时也是空。
-	// 这时候说「没放行」是纯粹的猜测。
+	// 0 条规则有两种相反的读法，客户端分不出来：服务端从来没下发过
+	// （老语义是放行一切），或者下发的就是空列表（等于拒绝一切）。
+	// 所以只能说不知道，不能说「没放行」。
+	// 另一种情况是 netmap 还没到，这时 DebugPacketFilterRules 会直接报错，
+	// 走不到这里。
 	if len(rules) == 0 {
 		return aclVerdict{
 			State: aclUnknown,
-			Note:  "客户端还没拿到包过滤规则（netmap 可能没同步完），判断不了",
+			Note:  "本机一条规则都没拿到，判断不了：服务端可能没配策略（默认放行），也可能下发的就是空规则（等于全拒）",
 		}
 	}
 	var maybe []string
@@ -341,7 +344,7 @@ func aclEvaluate(rules []tailcfg.FilterRule, self, dst netip.Addr, port uint16, 
 	if len(maybe) > 0 {
 		return aclVerdict{
 			State: aclUnknown,
-			Note:  "客户端算不出这条规则：" + maybe[0] + "。要确认只能在控制面看策略原文",
+			Note:  "客户端算不出这条规则：" + maybe[0] + "。要确认只能看服务端上的策略原文",
 		}
 	}
 	return aclVerdict{

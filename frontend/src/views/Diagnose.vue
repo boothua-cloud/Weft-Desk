@@ -163,7 +163,7 @@ function diagText(): string {
     L.push(`  端口 ${r.port} · ${r.path}${r.relay ? ' ' + r.relay : ''} · 握手 ${r.handshake}`)
     L.push(`  探测 ${r.pingMs >= 0 ? Math.round(r.pingMs) + 'ms' : '失败'}（丢 ${r.pingLost}/3） · 拨测 ${r.dialErr ? '失败 ' + r.dialErr : Math.round(r.dialMs) + 'ms'}`)
     if (r.dialErr) L.push('  ACL ' + aclLabel(r))
-    for (const h of r.hints) L.push('  - ' + h)
+    for (const h of hintList(r)) L.push('  - ' + h)
   }
   return L.join('\n')
 }
@@ -395,7 +395,8 @@ watch(
               <b v-if="reports[p.ip].dialCode === 'refused'" class="ok">已放行</b>
               <b v-else-if="!reports[p.ip].aclChecked" class="faint">没读到</b>
               <b v-else-if="reports[p.ip].aclState === 'allow'">放行了这个端口</b>
-              <b v-else-if="reports[p.ip].aclState === 'deny'" class="bad">规则里没有这条</b>
+              <b v-else-if="reports[p.ip].aclState === 'deny'" class="bad"
+                 :title="reports[p.ip].aclNote">规则里没有这条</b>
               <b v-else class="warn" :title="reports[p.ip].aclNote">判不了</b>
             </div>
             <div v-if="reports[p.ip].version" class="fact">

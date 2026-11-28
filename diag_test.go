@@ -134,9 +134,12 @@ func TestACLEvaluateUnknown(t *testing.T) {
 		t.Fatalf("autogroup:admin 算不出来: %+v", v)
 	}
 
-	// 空规则不是「全拒绝」：客户端还没拿到 netmap 时也是空
+	// 0 条规则不能判成拒绝：既可能服务端没下发（默认放行），
+	// 也可能是空规则（全拒），客户端分不出来，说明里要两种都提。
 	if v := aclEvaluate(nil, self, dst, 22, nil); v.State != aclUnknown {
 		t.Fatalf("空规则只能是 unknown: %+v", v)
+	} else if !strings.Contains(v.Note, "默认放行") || !strings.Contains(v.Note, "全拒") {
+		t.Fatalf("空规则的说明要写清两种可能: %q", v.Note)
 	}
 
 	// 同时有多条时，只要有一条能确定放行，就是放行
