@@ -77,7 +77,7 @@ const icons: Record<string, string> = {
   api: 'M6 3H5a2 2 0 0 0-2 2v2a2 2 0 0 1-2 2 2 2 0 0 1 2 2v2a2 2 0 0 0 2 2h1M10 3h1a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0-2 2v2a2 2 0 0 1-2 2h-1',
   acl: 'M8 1.5 14 4v4c0 3.5-2.5 5.5-6 6.5-3.5-1-6-3-6-6.5V4zM5.5 8l1.7 1.7L11 6',
   routes: 'M2 12h3.5c2 0 2.5-4 4.5-4H14M11.5 6 14 8l-2.5 2M2 4h3',
-  apps: 'M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z',
+  apps: 'M6.5 2.5h7v7M2.5 6.5h7v7h-7z',
   settings: 'M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5 13 13M13 3l-1.5 1.5M4.5 11.5 3 13',
   forwards: 'M2 5h8M8 2l3 3-3 3M14 11H6M8 8l-3 3 3 3',
   diagnose: 'M1 8h3l2-5 3 10 2-5h4',
