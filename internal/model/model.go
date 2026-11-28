@@ -91,6 +91,10 @@ type State struct {
 	CLIReady     bool       `json:"cliReady"`   // 兼容旧前端：等价于 EngineReady
 	Configured   bool       `json:"configured"` // 是否已填服务端凭证
 	HasAPIKey    bool       `json:"hasApiKey"`  // 是否配了能用的管理 API Key（不是节点 Auth Key）
+	// HasAuthKey 只回答「钥匙串里有没有节点注册密钥」。首次启动向导用它判断
+	// 这台机器是不是真的没配过：只认 Configured 的话，走浏览器授权的用户
+	// 每次升级都会被再问一遍服务端地址。
+	HasAuthKey bool `json:"hasAuthKey"`
 	// APIKeyIssue 是「为什么不算配了」：非空时界面要把它显示出来，
 	// 否则入口突然消失会让人以为软件坏了
 	APIKeyIssue  string       `json:"apiKeyIssue"`

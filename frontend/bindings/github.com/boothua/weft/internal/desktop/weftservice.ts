@@ -348,6 +348,16 @@ export function PeerPorts(): $CancellablePromise<string> {
 }
 
 /**
+ * PingPeer 采一个点，永远不返回 error。
+ * 
+ * 探测失败本身就是曲线的一部分（丢包），如果这里抛错，前端得在 catch 里
+ * 再补一个点，两处逻辑迟早对不上。失败原因放在样本里带回去。
+ */
+export function PingPeer(ip: string): $CancellablePromise<string> {
+    return $Call.ByID(2455892609, ip);
+}
+
+/**
  * ProfilesView 返回服务端列表和当前激活项，前端用来做切换器。
  */
 export function ProfilesView(): $CancellablePromise<string> {

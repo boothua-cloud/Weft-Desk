@@ -162,6 +162,51 @@ func (s *WeftService) Diagnose(ip string, port int) (string, error) {
 	return string(out), err
 }
 
+// PingSample 是延迟曲线上的一次采样。曲线在前端攒，后端不留历史：
+// 退出页面、换设备之后就不该再有人往对端发包。
+type PingSample struct {
+	Ms  float64 `json:"ms"` // -1 表示这次没有回应
+	At  string  `json:"at"`
+	Err string  `json:"err"`
+}
+
+// PingPeer 采一个点，永远不返回 error。
+//
+// 探测失败本身就是曲线的一部分（丢包），如果这里抛错，前端得在 catch 里
+// 再补一个点，两处逻辑迟早对不上。失败原因放在样本里带回去。
+func (s *WeftService) PingPeer(ip string) (string, error) {
+	sample := PingSample{Ms: -1, At: time.Now().Format(time.RFC3339)}
+	addr, err := netip.ParseAddr(strings.TrimSpace(ip))
+	if err != nil {
+		sample.Err = "不是有效的 IP"
+		return toJSON(sample)
+	}
+	s.mu.Lock()
+	eng := s.engine
+	s.mu.Unlock()
+	if eng == nil {
+		sample.Err = "还没连上"
+		return toJSON(sample)
+	}
+	p, ok := eng.(interface {
+		PingPeer(context.Context, netip.Addr) (float64, error)
+	})
+	if !ok {
+		sample.Err = "当前引擎不支持探测"
+		return toJSON(sample)
+	}
+	// 单次探测给 4 秒：disco 正常一两百毫秒就回来了，超时这么久基本就是丢了。
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	ms, perr := p.PingPeer(ctx, addr.Unmap())
+	if perr != nil {
+		sample.Err = perr.Error()
+		return toJSON(sample)
+	}
+	sample.Ms = ms
+	return toJSON(sample)
+}
+
 // PeerPorts 列出每台设备上「登记过的服务」——应用书签里的地址、
 // 端口转发规则里的目标端口。
 //

@@ -16,6 +16,7 @@ import Settings from './views/Settings.vue'
 import InfoDialog from './components/InfoDialog.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import UpdateDialog from './components/UpdateDialog.vue'
+import SetupWizard from './components/SetupWizard.vue'
 
 const page = ref('overview')
 // 侧栏折叠：看矩阵这类宽表格时把左边那一条收起来。记在本地，下次打开还是收着的
@@ -81,11 +82,34 @@ async function exportBundle() {
 // ⌘K 面板：页面、动作、设备、应用都在里面找。面板自己渲染，
 // 但动作真正执行的地方在 App，状态和页面切换都在这里
 const paletteOpen = ref(false)
+
+// 首次启动向导：新机器上把地址和两把钥匙按顺序问一遍。
+// 「跳过」也记一笔，跳过一次就不再自动冒出来；想再跑一回走 ⌘K 里的「初始化向导」
+const SETUP_KEY = 'weft.setup.done'
+const setupOpen = ref(false)
+function setupDone() {
+  setupOpen.value = false
+  try { localStorage.setItem(SETUP_KEY, '1') } catch { /* 隐私模式写不了 */ }
+  refresh()
+}
+// 已经在用的机器不弹：有管理 Key 或者注册 Key，都说明配过了。
+// 只看 configured 的话，走浏览器授权的用户每次升级都会被再问一遍地址。
+function maybeSetup() {
+  try { if (localStorage.getItem(SETUP_KEY) === '1') return } catch { /* 读不到就按没配过处理 */ }
+  const s = state.value
+  if (!s || s.mode === 'demo') return
+  if (s.configured || s.hasAuthKey) {
+    try { localStorage.setItem(SETUP_KEY, '1') } catch { /* 同上 */ }
+    return
+  }
+  setupOpen.value = true
+}
 async function paletteCommand(name: string) {
   paletteOpen.value = false
   if (name === 'refresh') { refreshAll(); return }
   if (name === 'theme') { toggleTheme(); return }
   if (name === 'help') { info.value = 'help'; return }
+  if (name === 'setup') { setupOpen.value = true; return }
   if (name === 'update') { openUpdate(); return }
   if (name === 'bundle') { exportBundle(); return }
   if (name === 'connect' || name === 'disconnect') {
@@ -333,6 +357,8 @@ onMounted(async () => {
   const first = refresh()
   pollTimer = window.setInterval(refresh, 3000)
   await Promise.race([first, new Promise((r) => window.setTimeout(r, 2500))])
+  // 状态到手之后才知道该不该问：没配过的新机器才弹向导
+  maybeSetup()
 
   // 启动动画至少露脸这么久，否则一闪而过，看着还是「没加载过程」。
   const rest = 900 - (Date.now() - revealedAt)
@@ -516,6 +542,7 @@ onUnmounted(() => {
     <UpdateDialog v-if="updateOpen" :state="state" @close="updateOpen = false" @notify="notify" />
     <CommandPalette v-if="paletteOpen" :state="state" @close="paletteOpen = false"
                     @navigate="openPalette" @command="paletteCommand" @notify="notify" />
+    <SetupWizard v-if="setupOpen" :state="state" @close="setupDone" @done="setupDone" @notify="notify" />
     <div v-if="toast" class="toast">{{ toast }}</div>
   </div>
 </template>

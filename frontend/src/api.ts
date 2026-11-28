@@ -98,6 +98,12 @@ export interface PeerPort {
   label: string
   kind: 'app' | 'forward'
 }
+// PingSample 是延迟曲线上的一次采样，ms 为负表示这次没回应。
+export interface PingSample {
+  ms: number
+  at: string
+  err: string
+}
 
 // PolicyVersion 是策略历史里的一版，和 Go 侧 model.go 对应。
 export interface PolicyVersion {
@@ -122,6 +128,9 @@ export interface State {
   // 是否配了能用的管理 API Key（空值或节点 Auth Key 都是 false）。
   // 为 false 时服务端管理相关的入口整块不显示。
   hasApiKey: boolean
+  // 钥匙串里有没有节点注册密钥。首次启动向导用它区分「新装的」和
+  // 「走浏览器授权、只是没填管理 Key」的老用户
+  hasAuthKey: boolean
   // 为什么不算配了：填的是 Auth Key、形状不对、或者服务端 401 拒绝。
   // 空串表示没配（就是没填），界面据此决定要不要显示一条提示
   apiKeyIssue: string
@@ -289,6 +298,8 @@ export const api = {
   diagnose: (ip: string, port: number) => parse<DiagReport>((WeftService as any).Diagnose(ip, port)),
   selfCheck: () => parse<SelfReport>((WeftService as any).SelfCheck()),
   peerPorts: () => parse<PeerPort[]>((WeftService as any).PeerPorts()),
+  // 单次 disco 探测，给延迟曲线用。失败也走返回值（ms = -1），不抛错
+  pingPeer: (ip: string) => parse<PingSample>((WeftService as any).PingPeer(ip)),
 
   // 节点
   devices: () => parse<Cached<Device>>(WeftService.ListDevices()),

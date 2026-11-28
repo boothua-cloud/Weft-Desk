@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { api, type State, type PeerInfo, type DiagReport, type SelfReport, type PeerPort } from '../api'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { api, type State, type PeerInfo, type DiagReport, type SelfReport, type PeerPort, type PingSample } from '../api'
 import { reloadTick } from '../bus'
+import LatencyChart from '../components/LatencyChart.vue'
 
 const props = defineProps<{ state: State | null }>()
 const emit = defineEmits(['notify', 'navigate'])
@@ -86,6 +87,52 @@ async function run(p: PeerInfo, at?: number) {
 function checkPort(p: PeerInfo, s: PeerPort) {
   port.value = s.port
   run(p, s.port)
+}
+
+// ---------- 延迟曲线 ----------
+// 同一时刻只盯一台设备：藏在后台的页面不该还在 ping 别人的机器。
+// 采样只留在内存里，来回切页就重来，不落库也不写日志。
+const CAP = 60 // 两秒一个点，正好两分钟
+const watchIP = ref('')
+const samples = ref<PingSample[]>([])
+let watchTimer: number | undefined
+let watchBusy = false
+
+function push(s: PingSample) {
+  const next = samples.value.concat(s)
+  if (next.length > CAP) next.splice(0, next.length - CAP)
+  samples.value = next
+}
+
+async function tick() {
+  const ip = watchIP.value
+  if (!ip || watchBusy) return
+  watchBusy = true
+  try {
+    const s = await api.pingPeer(ip)
+    // 采样回来时用户可能已经点了别的设备，这条就丢掉
+    if (watchIP.value === ip) push(s)
+  } catch (err: any) {
+    if (watchIP.value === ip) push({ ms: -1, at: new Date().toISOString(), err: String(err?.message ?? err) })
+  } finally {
+    watchBusy = false
+  }
+}
+
+function stopWatch() {
+  window.clearInterval(watchTimer)
+  watchTimer = undefined
+  watchIP.value = ''
+  samples.value = []
+}
+
+function toggleWatch(p: PeerInfo) {
+  if (!p.ip) return
+  if (watchIP.value === p.ip) { stopWatch(); return }
+  stopWatch()
+  watchIP.value = p.ip
+  tick() // 先出第一个点，别让人对着空图等两秒
+  watchTimer = window.setInterval(tick, 2000)
 }
 
 function isActive(p: PeerInfo, s: PeerPort): boolean {
@@ -197,11 +244,14 @@ onMounted(() => {
 // 连上/断开之后自检结果就过期了，跟着状态刷一次
 watch(
   () => props.state?.connected,
-  () => {
+  (c) => {
     runSelf()
     loadPorts()
+    // 断线之后采样只会是一条全红，停掉；重连后由用户自己再点
+    if (!c) stopWatch()
   },
 )
+onUnmounted(stopWatch)
 
 // 顶栏刷新：这一页原来只认「连接状态变了」，按钮点下去什么都不动。
 // 对端探测是快照，不自动重跑（会一直 ping 别人），只重新自检和刷服务列表。
@@ -351,9 +401,19 @@ watch(reloadTick, () => {
             <span class="path-pill" :class="p.curAddr ? 'direct' : 'relay'">{{ pathOf(p) }}</span>
             <span v-if="p.relay && !p.curAddr" class="faint relay-note">{{ p.relay }}</span>
           </div>
-          <button class="btn sm" :disabled="running[p.ip] || !state?.connected" @click="run(p)">
-            <span v-if="running[p.ip]" class="spinner"></span>{{ running[p.ip] ? '检查中…' : '检查' }}
-          </button>
+          <div class="row" style="flex:none;gap:6px">
+            <!-- 曲线是持续采样，跟「检查」分开：检查只回答现在通不通，
+                 曲线回答「一直稳不稳」 -->
+            <button class="btn sm" :class="{ primary: watchIP === p.ip }"
+                    :disabled="!state?.connected || !p.online"
+                    :title="p.online ? '每 2 秒探一次，看延迟和丢包随时间怎么变' : '设备离线，探不出东西'"
+                    @click="toggleWatch(p)">
+              {{ watchIP === p.ip ? '停止采样' : '延迟曲线' }}
+            </button>
+            <button class="btn sm" :disabled="running[p.ip] || !state?.connected" @click="run(p)">
+              <span v-if="running[p.ip]" class="spinner"></span>{{ running[p.ip] ? '检查中…' : '检查' }}
+            </button>
+          </div>
         </div>
 
         <div v-if="portsFor(p.ip).length" class="port-row">
@@ -367,6 +427,8 @@ watch(reloadTick, () => {
         </div>
 
         <div v-if="failures[p.ip]" class="notice warn" style="margin-top:10px">{{ failures[p.ip] }}</div>
+
+        <LatencyChart v-if="watchIP === p.ip" :samples="samples" :capacity="CAP" />
 
         <div v-if="reports[p.ip]" class="report">
           <div class="verdict" :class="verdictTone(reports[p.ip])">

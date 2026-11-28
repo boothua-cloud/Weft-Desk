@@ -1030,6 +1030,35 @@ func (e *systemTUNEngine) DiagPeer(ctx context.Context, ip netip.Addr, port uint
 	return rep, nil
 }
 
+// PingPeer 只做一次 disco 探测，给诊断页的曲线用。
+//
+// 不能复用 DiagPeer：那里一次要连发三次再加一次 TCP 拨测，跑一轮十几秒，
+// 拿来画「每两秒一个点」的曲线，点会稀到自己都看不出趋势。
+func (e *systemTUNEngine) PingPeer(ctx context.Context, ip netip.Addr) (float64, error) {
+	e.mu.Lock()
+	srv := e.srv
+	running := e.running
+	e.mu.Unlock()
+	if srv == nil || !running {
+		return -1, errors.New("还没连上")
+	}
+	lc, err := srv.LocalClient()
+	if err != nil {
+		return -1, fmt.Errorf("读取本地节点状态失败: %w", err)
+	}
+	pr, err := lc.Ping(ctx, ip, tailcfg.PingDisco)
+	if err != nil {
+		return -1, err
+	}
+	if pr == nil {
+		return -1, errors.New("没有回应")
+	}
+	if pr.Err != "" {
+		return -1, errors.New(pr.Err)
+	}
+	return pr.LatencySeconds * 1000, nil
+}
+
 func (e *systemTUNEngine) dialProbe(ctx context.Context, t DiagTarget, label string,
 	dial func(context.Context, string) (net.Conn, error)) string {
 	// 冷启动首个连接要等 wireguard 握手（重试间隔 5 秒），给足余量。

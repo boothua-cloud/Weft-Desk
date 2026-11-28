@@ -100,7 +100,12 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
             <section class="help-sec" id="help-s1">
               <h4><span class="step">1</span>填配置，连上第一个服务端</h4>
               <p>
-                「更多 → 连接设置 → 服务端」点<span class="hl">编辑</span>（或「+ 新增服务端」）打开表单：
+                新装的机器第一次打开会先弹一个<span class="hl">三步向导</span>：服务地址、两把钥匙、测一下接口通不通。
+                可以随时点「跳过」——跳过一次就不再自动出现，之后想重跑，按 <span class="mono">⌘K</span> 搜「初始化向导」。
+                已经配过服务端的机器不会被打扰。
+              </p>
+              <p style="margin-top:8px">
+                不用向导的话，在「更多 → 连接设置 → 服务端」点<span class="hl">编辑</span>（或「+ 新增服务端」）打开表单：
                 填服务端地址，比如 <span class="mono">https://hs.example.com</span>；Hostname 是本机在 tailnet 里的名字，可留空。
               </p>
               <figure class="shot">
@@ -396,6 +401,11 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
               <p style="margin-top:8px">
                 子网路由单独一张卡，每条按「通告 → 批准 → 接受 → 可达」四步标状态，断在哪一步就说哪一步。
                 全部检查完顶栏会给「几台通几台不通」，「复制诊断」把这一屏拼成文本，排查时直接发给别人。
+              </p>
+              <p style="margin-top:8px">
+                「检查」回答的是<span class="hl">现在通不通</span>，云栈还留着一条<span class="hl">延迟曲线</span>回答「一直稳不稳」：
+                在线设备右边的「延迟曲线」点开之后每 2 秒探一次，攒最近两分钟画成折线，头顶给当前、平均、最差和丢包率。
+                丢的那几次曲线会断开，底部标一道红条——掉下去和根本没回来是两件事。同一时刻只盯一台，切走或断线就停。
               </p>
               <p style="margin-top:8px">
                 要发的东西长一点，点「生成诊断包」，打成一个 zip：版本和平台、脱敏后的配置、本机自检结果、

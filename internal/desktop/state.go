@@ -30,6 +30,7 @@ func (s *WeftService) GetState() (string, error) {
 		LoginURL: e.LoginURL(), Configured: hasCredential(cfg),
 		HasAPIKey:    hasKey,
 		APIKeyIssue:  keyWhy,
+		HasAuthKey:   strings.TrimSpace(secret.Get(secret.Auth)) != "",
 		Capabilities: cap,
 		Platform:     runtime.GOOS,
 		AppVersion:   appinfo.Version,
