@@ -12,18 +12,20 @@ func (s *WeftService) GetHelperStatus() (string, error) {
 // InstallHelper 安装常驻助手：一次授权，之后连接零弹窗。
 func (s *WeftService) InstallHelper() (string, error) {
 	if err := engine.InstallHelper(); err != nil {
+		s.audit("安装系统助手", helperLabelSafe(), err)
 		return "", err
 	}
-	s.store.AddAudit("安装系统助手", helperLabelSafe())
+	s.audit("安装系统助手", helperLabelSafe(), nil)
 	st, _ := toJSON(engine.HelperStatus())
 	return st, nil
 }
 
 func (s *WeftService) UninstallHelper() (string, error) {
 	if err := engine.UninstallHelper(); err != nil {
+		s.audit("移除系统助手", helperLabelSafe(), err)
 		return "", err
 	}
-	s.store.AddAudit("移除系统助手", helperLabelSafe())
+	s.audit("移除系统助手", helperLabelSafe(), nil)
 	st, _ := toJSON(engine.HelperStatus())
 	return st, nil
 }

@@ -338,6 +338,56 @@ func normalizeTags(raw string) []string {
 	return out
 }
 
+// mergeTags 合并两串标签，add=false 时改成从 have 里去掉 want。
+// 批量打标签要先走这里：headscale 的 tags 接口是整体覆盖，
+// 直接写新标签会把设备上原有的冲掉。
+func mergeTags(have, want []string, add bool) []string {
+	drop := map[string]bool{}
+	if !add {
+		for _, w := range want {
+			drop[w] = true
+		}
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(have)+len(want))
+	for _, t := range have {
+		t = strings.TrimSpace(t)
+		if t == "" || drop[t] || seen[t] {
+			continue
+		}
+		seen[t] = true
+		out = append(out, t)
+	}
+	if add {
+		for _, t := range want {
+			if t == "" || seen[t] {
+				continue
+			}
+			seen[t] = true
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// audit 记一条写操作，成功失败都记。profile 取当前服务端的名字：
+// 换过服务端之后，回看记录还能分清这条是在哪台上做的。
+func (s *WeftService) audit(action, target string, err error) {
+	s.mu.Lock()
+	name, base, id := "", s.cfg.BaseURL, s.cfg.ActiveID
+	for _, p := range s.cfg.Profiles {
+		if p.ID == id {
+			name = p.Name
+			break
+		}
+	}
+	s.mu.Unlock()
+	if name == "" {
+		name = store.ProfileLabel(base, "默认")
+	}
+	s.store.AddAudit(name, action, target, err)
+}
+
 // manageErr 统一未配置/离线时的返回，避免每次都发一次必然 401 的请求。
 func (s *WeftService) manageErr() string {
 	s.mu.Lock()

@@ -75,9 +75,10 @@ func (s *WeftService) SetCredential(ctx context.Context, kind, value string) err
 		return nil
 	}
 	if err := secret.Set(key, value); err != nil {
+		s.audit("更新凭证", kind, err)
 		return err
 	}
-	s.store.AddAudit("更新凭证", kind)
+	s.audit("更新凭证", kind, nil)
 	return nil
 }
 
@@ -117,12 +118,13 @@ func (s *WeftService) TestConnection() (string, error) {
 	}
 	s.mu.Unlock()
 	if err != nil {
+		s.audit("测试连接", cap.ProbeMessage, err)
 		return "", err
 	}
 	s.mu.Lock()
 	s.cap = cap
 	s.mu.Unlock()
-	s.store.AddAudit("测试连接", cap.ProbeMessage)
+	s.audit("测试连接", cap.ProbeMessage, nil)
 	return cap.ProbeMessage, nil
 }
 
@@ -209,7 +211,7 @@ func (s *WeftService) EnsureAPIKeyFresh(window time.Duration) (bool, error) {
 	if err := cp.ExpireAPIKey(self.Prefix, self.ID); err != nil {
 		log.Printf("[keys] 吊销旧 API Key 失败（新密钥已生效）: %v", err)
 	}
-	s.store.AddAudit("自动续期管理密钥", cfg.BaseURL+" · 剩余 "+left.Round(time.Hour).String())
+	s.audit("自动续期管理密钥", cfg.BaseURL+" · 剩余 "+left.Round(time.Hour).String(), nil)
 	log.Printf("[keys] 管理密钥已自动续期，旧 Key %s 剩余 %v", self.Prefix, left.Round(time.Hour))
 	return true, nil
 }
@@ -243,10 +245,14 @@ func (s *WeftService) RenewAPIKey(days int) error {
 	}
 	fresh, err := cp.CreateAPIKey(days)
 	if err != nil {
-		return fmt.Errorf("创建新密钥失败: %w", err)
+		err = fmt.Errorf("创建新密钥失败: %w", err)
+		s.audit("手动续期管理密钥", fmt.Sprintf("%d 天", days), err)
+		return err
 	}
 	if err := secret.Set(secret.Main, fresh); err != nil {
-		return fmt.Errorf("保存新密钥失败: %w", err)
+		err = fmt.Errorf("保存新密钥失败: %w", err)
+		s.audit("手动续期管理密钥", fmt.Sprintf("%d 天", days), err)
+		return err
 	}
 	if self == nil {
 		// 认不出来就没法吊销旧的，留着两把有效密钥容易搞混
@@ -255,7 +261,7 @@ func (s *WeftService) RenewAPIKey(days int) error {
 	if err := cp.ExpireAPIKey(self.Prefix, self.ID); err != nil {
 		log.Printf("[keys] 吊销旧密钥失败（新密钥已生效）: %v", err)
 	}
-	s.store.AddAudit("手动续期管理密钥", fmt.Sprintf("有效期重置为 %d 天", days))
+	s.audit("手动续期管理密钥", fmt.Sprintf("有效期重置为 %d 天", days), nil)
 	return nil
 }
 

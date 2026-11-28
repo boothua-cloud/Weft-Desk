@@ -89,7 +89,7 @@ func (s *WeftService) SaveConfig(ctx context.Context, raw string) error {
 		hook(c)
 	}
 	s.reload()
-	s.store.AddAudit("保存配置", c.ControlPlane+" · "+c.BaseURL)
+	s.audit("保存配置", c.ControlPlane+" · "+c.BaseURL, nil)
 	s.autoConnect()
 	return nil
 }
@@ -169,7 +169,7 @@ func (s *WeftService) SwitchProfile(id string) error {
 	s.mu.Unlock()
 
 	s.reload()
-	s.store.AddAudit("切换服务端", target.Name+" · "+target.BaseURL)
+	s.audit("切换服务端", target.Name+" · "+target.BaseURL, nil)
 	s.autoConnect()
 	return nil
 }
@@ -290,10 +290,10 @@ func (s *WeftService) DeleteProfile(ctx context.Context, id string) error {
 	if deletingActive {
 		store.LoadProfileSecrets(next)
 		s.reload()
-		s.store.AddAudit("删除服务端", id)
+		s.audit("删除服务端", id, nil)
 		s.autoConnect()
 	} else {
-		s.store.AddAudit("删除服务端", id)
+		s.audit("删除服务端", id, nil)
 	}
 	return nil
 }
@@ -429,7 +429,7 @@ func (s *WeftService) SaveProfileRaw(ctx context.Context, raw string) (string, e
 		s.reload()
 		s.autoConnect()
 	}
-	s.store.AddAudit("保存服务端", p.Name+" · "+p.BaseURL)
+	s.audit("保存服务端", p.Name+" · "+p.BaseURL, nil)
 	return id, nil
 }
 

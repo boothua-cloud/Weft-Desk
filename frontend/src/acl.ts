@@ -51,9 +51,23 @@ export interface AclForm {
   hasIPRules: boolean
 }
 
+/** 一处可自动修的问题。只放数据，不放函数：能序列化、能断言。 */
+export interface AclFix {
+  id: 'group-prefix' | 'tag-prefix' | 'src-group-prefix' | 'src-member-name' | 'group-member-name'
+  label: string
+  /** 组 / 规则下标 */
+  at?: number
+  /** 组内成员下标 */
+  pos?: number
+  token?: string
+  to?: string
+}
+
 export interface AclIssue {
   level: 'error' | 'warn'
   text: string
+  /** 改法唯一的问题才带这个；没有就只说明，不给按钮 */
+  fix?: AclFix
 }
 
 export type ParseResult = { ok: true; form: AclForm } | { ok: false; error: string }
@@ -386,26 +400,38 @@ export function validateAcl(form: AclForm, ctx: ValidateCtx = {}): AclIssue[] {
   const tagNames = new Set(form.tagOwners.map((t) => tagKey(t.name)).filter(Boolean))
 
   const dup = new Set<string>()
-  for (const g of form.groups) {
+  form.groups.forEach((g, gi) => {
     const n = g.name.trim()
-    if (!n) { issues.push({ level: 'error', text: '有用户组没填名字' }); continue }
+    if (!n) { issues.push({ level: 'error', text: '有用户组没填名字' }); return }
     const k = groupKey(n)
-    if (k !== n) issues.push({ level: 'warn', text: `「${n}」会补成 ${k}（服务端要求 group: 开头）` })
+    if (k !== n) {
+      issues.push({
+        level: 'warn',
+        text: `「${n}」会补成 ${k}（服务端要求 group: 开头）`,
+        fix: { id: 'group-prefix', label: `改成 ${k}`, at: gi, to: k },
+      })
+    }
     if (dup.has(k)) issues.push({ level: 'error', text: `用户组「${k}」重复定义` })
     dup.add(k)
     if (!g.values.length) issues.push({ level: 'warn', text: `用户组「${k}」没有成员` })
-  }
+  })
 
   const dupTag = new Set<string>()
-  for (const t of form.tagOwners) {
+  form.tagOwners.forEach((t, ti) => {
     const n = t.name.trim()
-    if (!n) { issues.push({ level: 'error', text: '有标签没填名字' }); continue }
+    if (!n) { issues.push({ level: 'error', text: '有标签没填名字' }); return }
     const k = tagKey(n)
-    if (k !== n) issues.push({ level: 'warn', text: `「${n}」会补成 ${k}（服务端要求 tag: 开头）` })
+    if (k !== n) {
+      issues.push({
+        level: 'warn',
+        text: `「${n}」会补成 ${k}（服务端要求 tag: 开头）`,
+        fix: { id: 'tag-prefix', label: `改成 ${k}`, at: ti, to: k },
+      })
+    }
     if (dupTag.has(k)) issues.push({ level: 'error', text: `标签「${k}」重复定义` })
     dupTag.add(k)
     if (!t.values.length) issues.push({ level: 'warn', text: `标签「${k}」没有归属` })
-  }
+  })
 
   // hosts 别名：名字重复会互相覆盖，地址写错规则就指到别处去
   const hostNames = new Set<string>()
@@ -457,16 +483,23 @@ export function validateAcl(form: AclForm, ctx: ValidateCtx = {}): AclIssue[] {
   }
   const knownDst = new Set([...(ctx.hosts ?? []), ...(ctx.devices ?? [])].map((v) => v.trim()).filter(Boolean))
 
-  for (const g of form.groups) {
+  form.groups.forEach((g, gi) => {
     const n = g.name.trim()
-    if (!n) continue
-    for (const v of g.values) {
-      if (v.startsWith('autogroup:') || v.startsWith('group:') || v.startsWith('tag:')) continue
+    if (!n) return
+    g.values.forEach((v, vi) => {
+      if (v.startsWith('autogroup:') || v.startsWith('group:') || v.startsWith('tag:')) return
       if (known.size && !known.has(v)) {
-        issues.push({ level: 'warn', text: `用户组「${n}」的成员${unknownMember(v)}` })
+        const hint = near(v)
+        issues.push({
+          level: 'warn',
+          text: `用户组「${n}」的成员${unknownMember(v)}`,
+          fix: hint
+            ? { id: 'group-member-name', label: `改成 ${hint}`, at: gi, pos: vi, token: v, to: userToken(hint) }
+            : undefined,
+        })
       }
-    }
-  }
+    })
+  })
 
   form.acls.forEach((r, i) => {
     const at = `第 ${i + 1} 条规则`
@@ -486,11 +519,22 @@ export function validateAcl(form: AclForm, ctx: ValidateCtx = {}): AclIssue[] {
       // 组名没写前缀（admin 而不是 group:admin）时，保存会自动补，这里说明一下
       const bareRef = groupNames.has('group:' + s.replace(/@$/, ''))
       if (bareRef) {
-        issues.push({ level: 'warn', text: `${at}的来源「${tokenLabel(s)}」会按 group:${tokenLabel(s)} 处理` })
+        issues.push({
+          level: 'warn',
+          text: `${at}的来源「${tokenLabel(s)}」会按 group:${tokenLabel(s)} 处理`,
+          fix: { id: 'src-group-prefix', label: `写成 group:${tokenLabel(s)}`, at: i, token: s, to: 'group:' + tokenLabel(s) },
+        })
         continue
       }
       if (known.size && !known.has(s)) {
-        issues.push({ level: 'warn', text: `${at}的来源${unknownMember(s)}` })
+        const hint = near(s)
+        issues.push({
+          level: 'warn',
+          text: `${at}的来源${unknownMember(s)}`,
+          fix: hint
+            ? { id: 'src-member-name', label: `改成 ${hint}`, at: i, token: s, to: userToken(hint) }
+            : undefined,
+        })
       }
     }
     for (const d of r.dst) {
@@ -540,6 +584,46 @@ export function validateAcl(form: AclForm, ctx: ValidateCtx = {}): AclIssue[] {
   return issues
 }
 
+// 一键修：只在改法唯一时才会被调到。改完返回一句人话，界面拿它当提示；
+// 什么都没改到就返回空串，界面不会假装修好了。
+export function applyFix(form: AclForm, fix: AclFix): string {
+  switch (fix.id) {
+    case 'group-prefix': {
+      const g = fix.at == null ? undefined : form.groups[fix.at]
+      if (!g || !fix.to) return ''
+      const from = g.name
+      if (from === fix.to) return ''
+      g.name = fix.to
+      return `用户组「${from}」补成 ${fix.to}`
+    }
+    case 'tag-prefix': {
+      const t = fix.at == null ? undefined : form.tagOwners[fix.at]
+      if (!t || !fix.to) return ''
+      const from = t.name
+      if (from === fix.to) return ''
+      t.name = fix.to
+      return `标签「${from}」补成 ${fix.to}`
+    }
+    case 'group-member-name': {
+      const g = fix.at == null ? undefined : form.groups[fix.at]
+      const v = g && fix.pos != null ? g.values[fix.pos] : undefined
+      if (!g || v === undefined || !fix.to) return ''
+      g.values[fix.pos as number] = fix.to
+      return `「${tokenLabel(v)}」改成 ${tokenLabel(fix.to)}`
+    }
+    case 'src-group-prefix':
+    case 'src-member-name': {
+      const r = fix.at == null ? undefined : form.acls[fix.at]
+      if (!r || !fix.to) return ''
+      const idx = r.src.indexOf(fix.token ?? '')
+      if (idx < 0) return ''
+      r.src[idx] = fix.to
+      return `第 ${(fix.at ?? 0) + 1} 条规则的来源「${tokenLabel(fix.token ?? '')}」改成 ${tokenLabel(fix.to)}`
+    }
+  }
+  return ''
+}
+
 // ---------- 服务与端口 ----------
 
 // 常用服务。ACL 落地时仍然是端口号，这里只是把「22」翻译成「SSH」，
@@ -569,13 +653,28 @@ const SERVICE_BY_PORT = new Map(SERVICES.map((s) => [s.port, s]))
 
 export function portLabel(port: string): string {
   if (port === '*') return '全部端口'
+  const r = splitPortRange(port)
+  if (r) return `端口范围 ${r[0]} – ${r[1]}`
   const s = SERVICE_BY_PORT.get(port)
   return s ? `${s.label} · ${port}` : port
 }
 
 export function portShort(port: string): string {
   if (port === '*') return '全部端口'
+  const r = splitPortRange(port)
+  if (r) return `${r[0]}–${r[1]}`
   return SERVICE_BY_PORT.get(port)?.short ?? port
+}
+
+// 端口段写成 8000-8100，界面显示成 8000–8100（短横线换成连接号，跟规格写法区分开）。
+// 起止顺序反了也认，返回时已经排好。
+export function splitPortRange(port: string): [number, number] | null {
+  const m = /^(\d{1,5})-(\d{1,5})$/.exec(port.trim())
+  if (!m) return null
+  const a = Number(m[1])
+  const b = Number(m[2])
+  if (a < 1 || b > 65535) return null
+  return a <= b ? [a, b] : [b, a]
 }
 
 // 端口排序：全部端口在前，其余按数字

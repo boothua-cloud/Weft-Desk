@@ -103,7 +103,7 @@ func (s *WeftService) OpenApp(id string) error {
 			time.Sleep(700 * time.Millisecond)
 			win.SetURL(u)
 		}(w, target)
-		s.store.AddAudit("打开应用", a.Name)
+		s.audit("打开应用", a.Name, nil)
 		return nil
 	}
 	return fmt.Errorf("未找到应用: %s", id)
@@ -142,5 +142,5 @@ func (s *WeftService) OpenInBrowser(id string) error {
 }
 
 func (s *WeftService) ListAudit() (string, error) {
-	return wrap(s.store.ListAudit())
+	return wrap(s.store.ListAudit(2000))
 }

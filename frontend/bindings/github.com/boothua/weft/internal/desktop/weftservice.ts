@@ -33,6 +33,10 @@ export function BackfillIPs(confirmed: boolean): $CancellablePromise<number> {
     return $Call.ByID(2066106723, confirmed);
 }
 
+export function BatchExpiry(ids: string[] | null, expire: boolean): $CancellablePromise<string> {
+    return $Call.ByID(3406666540, ids, expire);
+}
+
 /**
  * CheckPolicy 只校验语法，不写入服务端。
  */
@@ -85,6 +89,10 @@ export function DeleteDevice(id: string): $CancellablePromise<void> {
 
 export function DeleteForward(id: string): $CancellablePromise<void> {
     return $Call.ByID(2263908499, id);
+}
+
+export function DeletePolicyTemplate(id: number): $CancellablePromise<void> {
+    return $Call.ByID(1415524634, id);
 }
 
 /**
@@ -149,6 +157,24 @@ export function ExpireAuthKey(id: string): $CancellablePromise<void> {
 
 export function ExpireDevice(id: string): $CancellablePromise<void> {
     return $Call.ByID(351642920, id);
+}
+
+/**
+ * ExportDiagBundle 生成一个可以直接发给别人看的诊断包。
+ * 
+ * 生成过程不发任何网络请求（除了本机已有的状态），自检和分层诊断各有超时，
+ * 服务端挂着也能出包——出问题的时候恰恰最需要它。
+ */
+export function ExportDiagBundle(): $CancellablePromise<string> {
+    return $Call.ByID(414758692);
+}
+
+/**
+ * ExportText 把一段文本存成文件，供「导出 CSV」这类功能用。
+ * 返回落盘路径；用户取消时返回空串和 nil，界面不用当成错误。
+ */
+export function ExportText(filename: string, content: string): $CancellablePromise<string> {
+    return $Call.ByID(269140072, filename, content);
 }
 
 export function ForwardSnippet(id: string): $CancellablePromise<string> {
@@ -248,6 +274,14 @@ export function ListForwards(): $CancellablePromise<string> {
  */
 export function ListPolicyHistory(): $CancellablePromise<string> {
     return $Call.ByID(1519653041);
+}
+
+/**
+ * ListPolicyTemplates 返回全部模板，带原文：模板不大，一次取回去，
+ * 应用的时候不用再发一次请求。
+ */
+export function ListPolicyTemplates(): $CancellablePromise<string> {
+    return $Call.ByID(2128478650);
 }
 
 export function ListUsers(): $CancellablePromise<string> {
@@ -391,6 +425,13 @@ export function SavePolicy(content: string): $CancellablePromise<void> {
 }
 
 /**
+ * SavePolicyTemplate 把当前策略（含未保存的改动）存成模板。同名直接覆盖。
+ */
+export function SavePolicyTemplate(name: string, content: string): $CancellablePromise<string> {
+    return $Call.ByID(2329172872, name, content);
+}
+
+/**
  * SaveProfile 把当前连接配置另存为一个新的服务端条目，并立即切过去。
  */
 export function SaveProfile(name: string): $CancellablePromise<void> {
@@ -469,6 +510,10 @@ export function SetUIPrefs(raw: string): $CancellablePromise<string> {
  */
 export function SwitchProfile(id: string): $CancellablePromise<void> {
     return $Call.ByID(3572193470, id);
+}
+
+export function TagDevices(ids: string[] | null, tags: string, add: boolean): $CancellablePromise<string> {
+    return $Call.ByID(3062311522, ids, tags, add);
 }
 
 export function TestConnection(): $CancellablePromise<string> {

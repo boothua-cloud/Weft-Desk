@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { api, type State, type Device, type User, type AuthKey, type APIKey } from '../api'
+import { api, type State, type Device, type User, type AuthKey, type APIKey, type Cached } from '../api'
 import Pick from '../components/Pick.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useConfirm } from '../confirm'
@@ -19,6 +19,8 @@ const userFilter = ref('')
 const tagFilter = ref('')
 const busy = ref(false)
 const loading = ref(false)
+// 服务端连不上时列表回退到本地缓存，这里记下来给页面顶部的灰条用
+const cacheInfo = ref<{ updatedAt: string; error?: string } | null>(null)
 // 吊销 / 删除都不可逆，统一先弹确认
 const { confirmBox, askConfirm, closeConfirm } = useConfirm()
 
@@ -108,22 +110,40 @@ const shownKeys = computed(() => keys.value.filter(k => {
   return true
 }))
 
+function noteCache(c: Cached<unknown>) {
+  cacheInfo.value = c.source === 'cache' ? { updatedAt: c.updatedAt, error: c.error } : null
+}
+
+// 缓存态下不让写：这时候拼出来的请求只会等到超时或 401，
+// 用户以为在改，其实什么都没发生。等连接回来自动恢复。
+const offlineHint = '服务端连不上，先恢复连接'
+const stale = computed(() => !!cacheInfo.value)
+const locked = computed(() => busy.value || stale.value)
+function blocked(): boolean {
+  if (!stale.value) return false
+  emit('notify', '服务端连不上，先恢复连接再改')
+  return true
+}
+
 async function load() {
   loading.value = true
   const t0 = Date.now()
   try {
-    if (props.tab === 'devices') devices.value = (await api.devices()).items
-    else if (props.tab === 'users') {
-      users.value = (await api.users()).items
+    if (props.tab === 'devices') {
+      const r = await api.devices(); devices.value = r.items; noteCache(r)
+    } else if (props.tab === 'users') {
+      const r = await api.users(); users.value = r.items; noteCache(r)
       // 列表里要显示每个成员名下的设备数，顺带取一份
       if (!devices.value.length) {
         try { devices.value = (await api.devices()).items } catch { /* 统计不到就不显示 */ }
       }
     }
     else if (props.tab === 'keys') {
-      keys.value = (await api.authKeys()).items
+      const r = await api.authKeys(); keys.value = r.items; noteCache(r)
       if (!users.value.length) users.value = (await api.users()).items
-    } else apiKeys.value = (await api.apiKeys()).items
+    } else {
+      const r = await api.apiKeys(); apiKeys.value = r.items; noteCache(r)
+    }
   } catch (err: any) {
     emit('notify', '加载失败：' + (err?.message ?? err))
   } finally {
@@ -340,6 +360,7 @@ function openKeyForm() {
   drawer.value = 'key'
 }
 async function createKey() {
+  if (blocked()) return
   if (!form.value.user) { emit('notify', '请选择归属用户'); return }
   busy.value = true
   try {
@@ -352,6 +373,7 @@ async function createKey() {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 function expireKey(k: AuthKey) {
+  if (blocked()) return
   askConfirm({
     title: '吊销这把授权 Key？',
     desc: `${k.key}\n吊销后立即失效，且无法恢复。已经用它注册过的节点不受影响。`,
@@ -367,6 +389,7 @@ function expireKey(k: AuthKey) {
   })
 }
 function deleteKey(k: AuthKey) {
+  if (blocked()) return
   askConfirm({
     title: '删除这把授权 Key？',
     desc: `${k.key}\n删除后记录彻底消失，无法恢复。已经用它注册过的节点不受影响。`,
@@ -390,6 +413,7 @@ function openApiKeyForm() {
   drawer.value = 'apikey'
 }
 async function createApiKey() {
+  if (blocked()) return
   busy.value = true
   try {
     generated.value = await api.createAPIKey(apiKeyForm.value.days)
@@ -399,6 +423,7 @@ async function createApiKey() {
   finally { busy.value = false }
 }
 function expireApiKey(k: APIKey) {
+  if (blocked()) return
   askConfirm({
     title: '吊销这个 API Key？',
     desc: `${k.prefix}\n吊销后立即失效，正在用它的客户端马上失去管理权限，无法恢复。`,
@@ -414,6 +439,7 @@ function expireApiKey(k: APIKey) {
   })
 }
 function deleteApiKey(k: APIKey) {
+  if (blocked()) return
   askConfirm({
     title: '删除这个 API Key？',
     desc: `${k.prefix}\n删除后记录彻底消失，无法恢复。想留痕就吊销。`,
@@ -436,6 +462,7 @@ function openUserForm() {
   drawer.value = 'user'
 }
 async function createUser() {
+  if (blocked()) return
   const name = userForm.value.name.trim()
   if (!name) { emit('notify', '成员名称不能为空'); return }
   if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
@@ -476,7 +503,7 @@ function openUserEdit(u: User) {
   drawer.value = 'useredit'
 }
 async function saveUserName() {
-  if (!userEdit.value) return
+  if (blocked() || !userEdit.value) return
   const v = editUserNewName.value.trim()
   if (!v) { emit('notify', '名称不能为空'); return }
   if (!/^[a-zA-Z0-9._-]+$/.test(v)) {
@@ -500,12 +527,14 @@ function startRename(u: User) {
 }
 async function commitRename(u: User) {
   const v = editUserName.value.trim()
+  if (blocked()) { editingUser.value = ''; return }
   editingUser.value = ''
   if (!v || v === (u.rawName || u.name)) return
   try { await api.renameUser(u.id, v); await load(); emit('notify', '已重命名') }
   catch (err: any) { emit('notify', '重命名失败：' + (err?.message ?? err)) }
 }
 function deleteUser(u: User) {
+  if (blocked()) return
   const who = u.rawName || u.name || '该成员'
   askConfirm({
     title: '删除这个成员？',
@@ -524,7 +553,94 @@ function deleteUser(u: User) {
 // ---------- 通用 ----------
 
 // 所有写操作走这里：失败就把服务端原文抛出来，不做假成功
+// ---------- 批量操作 ----------
+// 勾选只在设备页用。表头那格是全选，选的是「当前筛选结果」而不是整张表，
+// 筛完再全选是常规用法，全选到看不见的行反而危险。
+const picked = ref<Set<string>>(new Set())
+const batchMode = ref<'' | 'tag'>('')
+const batchTag = ref('')
+
+const allPicked = computed(() =>
+  shownDevices.value.length > 0 && shownDevices.value.every((d) => picked.value.has(d.id)),
+)
+
+function togglePick(id: string) {
+  const next = new Set(picked.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  picked.value = next
+}
+
+function togglePickAll() {
+  if (allPicked.value) {
+    picked.value = new Set()
+    return
+  }
+  picked.value = new Set(shownDevices.value.map((d) => d.id))
+}
+
+function clearPick() {
+  picked.value = new Set()
+  batchMode.value = ''
+  batchTag.value = ''
+}
+
+// 换页签 / 重拉列表后旧的 id 可能已经不在了，直接清掉最省事
+watch(reloadTick, clearPick)
+watch(() => props.tab, clearPick)
+
+async function applyBatchTag(add: boolean) {
+  if (blocked()) return
+  const tags = batchTag.value.trim()
+  if (!tags) return
+  const ids = [...picked.value]
+  busy.value = true
+  try {
+    const r = await api.tagDevices(ids, tags, add)
+    const verb = add ? '打标签' : '去标签'
+    emit('notify', r.failed.length
+      ? `${verb}完成 ${r.done} 台，失败 ${r.failed.length} 台：${r.failed[0].name || r.failed[0].id} ${r.failed[0].error}`
+      : `${verb}完成，共 ${r.done} 台`)
+    if (!r.failed.length) clearPick()
+    await load()
+  } catch (err: any) {
+    emit('notify', '批量打标签失败：' + (err?.message ?? err))
+  } finally {
+    busy.value = false
+  }
+}
+
+async function batchExpiry(expire: boolean) {
+  if (blocked()) return
+  const ids = [...picked.value]
+  const label = expire ? '登出' : '取消到期'
+  askConfirm({
+    title: `${label}选中的 ${ids.length} 台设备？`,
+    desc: expire
+      ? '这些设备会立即掉线，下次要用得重新授权。'
+      : '取消到期后这些设备长期有效，不会再因为密钥过期掉线。',
+    ok: label,
+    tone: expire ? 'danger' : 'primary',
+    action: async () => {
+      busy.value = true
+      try {
+        const r = await api.batchExpiry(ids, expire)
+        emit('notify', r.failed.length
+          ? `${label}完成 ${r.done} 台，失败 ${r.failed.length} 台`
+          : `${label}完成，共 ${r.done} 台`)
+        clearPick()
+        await load()
+      } catch (err: any) {
+        emit('notify', label + '失败：' + (err?.message ?? err))
+      } finally {
+        busy.value = false
+      }
+    },
+  })
+}
+
 async function run(label: string, fn: () => Promise<void>) {
+  if (blocked()) return
   busy.value = true
   try {
     await fn()
@@ -553,6 +669,14 @@ function splitList(v: string) {
 
 <template>
   <div class="page-flex">
+    <!-- 服务端连不上时列表其实是本地缓存，时间和原因都写出来 -->
+    <div v-if="cacheInfo" class="notice info cache-line">
+      <span>
+        服务端连不上，下面是 {{ cacheInfo.updatedAt || '上次' }} 的缓存
+        <span v-if="cacheInfo.error" class="faint" :title="cacheInfo.error">（{{ cacheInfo.error }}）</span>
+      </span>
+      <button class="link-btn" :disabled="loading" @click="load">重试</button>
+    </div>
     <div class="spread" style="margin-bottom:16px;flex-shrink:0">
       <div class="faint" style="font-size:11.5px">实时数据</div>
       <div class="row">
@@ -560,14 +684,16 @@ function splitList(v: string) {
           <span v-if="loading" class="spinner"></span>{{ loading ? '刷新中…' : '刷新' }}
         </button>
         <template v-if="tab === 'devices'">
-          <button class="btn ghost" @click="backfill"
+          <button class="btn ghost" :disabled="stale" @click="backfill"
                   title="给没有 IP 的节点补分配地址。正常注册都有 IP，一般不用点">同步节点 IP</button>
-          <button class="btn ghost" @click="openDebug">手动添加节点</button>
-          <button class="btn" @click="openAuth">待审批请求</button>
-          <button class="btn primary" @click="openRegister">＋ 注册设备</button>
+          <button class="btn ghost" :disabled="stale" :title="stale ? offlineHint : ''" @click="openDebug">手动添加节点</button>
+          <button class="btn" :disabled="stale" :title="stale ? offlineHint : ''" @click="openAuth">待审批请求</button>
+          <button class="btn primary" :disabled="stale" :title="stale ? offlineHint : ''" @click="openRegister">＋ 注册设备</button>
         </template>
-        <button v-else-if="tab === 'keys'" class="btn primary" @click="openKeyForm">＋ 新建授权 Key</button>
-        <button v-else-if="tab === 'api'" class="btn primary" @click="openApiKeyForm">＋ 新建 API Key</button>
+        <button v-else-if="tab === 'keys'" class="btn primary" :disabled="stale" :title="stale ? offlineHint : ''"
+                @click="openKeyForm">＋ 新建授权 Key</button>
+        <button v-else-if="tab === 'api'" class="btn primary" :disabled="stale" :title="stale ? offlineHint : ''"
+                @click="openApiKeyForm">＋ 新建 API Key</button>
       </div>
     </div>
 
@@ -607,10 +733,20 @@ function splitList(v: string) {
       <div v-if="loading" class="load-overlay"><span class="spinner"></span>加载中…</div>
       <table class="tbl">
         <thead><tr>
+          <th style="width:34px"><button type="button" class="pick-box" :class="{ on: allPicked }"
+                :title="allPicked ? '取消全选' : '选中当前列表'" @click="togglePickAll">
+            <svg v-if="allPicked" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.3 4.9 8.8 9.6 3.4"/></svg>
+          </button></th>
           <th style="width:22%">设备</th><th>成员</th><th style="width:130px">IP</th><th style="width:80px">连接</th><th>标签</th><th>最后在线</th><th style="width:70px">状态</th><th style="width:70px"></th>
         </tr></thead>
         <tbody>
-          <tr v-for="d in shownDevices" :key="d.id" style="cursor:pointer" @click="openDevice(d)">
+          <tr v-for="d in shownDevices" :key="d.id" :class="{ 'picked-row': picked.has(d.id) }" style="cursor:pointer" @click="openDevice(d)">
+            <td @click.stop><button type="button" class="pick-box" :class="{ on: picked.has(d.id) }"
+                   :title="picked.has(d.id) ? '取消选中' : '选中'" @click="togglePick(d.id)">
+              <svg v-if="picked.has(d.id)" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.3 4.9 8.8 9.6 3.4"/></svg>
+            </button></td>
             <td><div class="cell-main">{{ d.name }}</div><div class="cell-sub">{{ d.registerMethod }} · {{ d.hostname }}</div></td>
             <td>{{ d.user || '—' }}</td>
             <td class="mono" style="font-size:11px;line-height:1.5">
@@ -627,7 +763,7 @@ function splitList(v: string) {
             <td><span class="tag" :class="statusTag(d.status)">{{ d.status }}</span></td>
             <td><button class="btn ghost sm" @click.stop="openDevice(d)">管理</button></td>
           </tr>
-          <tr v-if="!shownDevices.length"><td colspan="8">
+          <tr v-if="!shownDevices.length"><td colspan="9">
             <div class="empty-state">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h5"/></svg>
               <b>{{ devices.length ? '没有符合条件的设备' : '还没有设备接入' }}</b>
@@ -636,13 +772,31 @@ function splitList(v: string) {
           </td></tr>
         </tbody>
       </table>
+
+      <!-- 选中后从底部浮出来，不占表格空间 -->
+      <div v-if="picked.size && tab === 'devices'" class="batch-bar">
+        <span class="batch-count">已选 {{ picked.size }} 台</span>
+        <template v-if="batchMode === 'tag'">
+          <input class="input batch-input" v-model="batchTag" placeholder="tag:server, tag:db"
+                 @keyup.enter="applyBatchTag(true)" />
+          <button class="btn sm primary" :disabled="locked || !batchTag.trim()" @click="applyBatchTag(true)">加上</button>
+          <button class="btn sm" :disabled="locked || !batchTag.trim()" @click="applyBatchTag(false)">去掉</button>
+          <button class="btn sm ghost" @click="batchMode = ''">返回</button>
+        </template>
+        <template v-else>
+          <button class="btn sm" :disabled="locked" @click="batchMode = 'tag'">打标签</button>
+          <button class="btn sm" :disabled="locked" @click="batchExpiry(false)">取消到期</button>
+          <button class="btn sm danger" :disabled="locked" @click="batchExpiry(true)">登出</button>
+          <button class="btn sm ghost" :disabled="locked" @click="clearPick">清除</button>
+        </template>
+      </div>
     </div>
 
     <!-- 成员 -->
     <div v-else-if="tab === 'users'" style="display:flex;flex-direction:column;min-height:0;flex:1">
       <div class="spread" style="margin-bottom:14px;flex-shrink:0">
         <span class="faint" style="font-size:11px">共 {{ users.length }} 个成员</span>
-        <button class="btn primary" :disabled="!canCreateUser" @click="openUserForm">＋ 新建成员</button>
+        <button class="btn primary" :disabled="!canCreateUser || stale" @click="openUserForm">＋ 新建成员</button>
       </div>
       <div class="card table-scroll" style="padding:0;position:relative">
         <div v-if="loading" class="load-overlay"><span class="spinner"></span>加载中…</div>
@@ -674,8 +828,8 @@ function splitList(v: string) {
                   <button class="btn ghost sm" @click="editingUser = ''">取消</button>
                 </template>
                 <template v-else>
-                  <button class="btn ghost sm" :disabled="!canCreateUser" @click="openUserEdit(u)">编辑</button>
-                  <button class="btn ghost sm" :disabled="!canCreateUser" @click="deleteUser(u)">删除</button>
+                  <button class="btn ghost sm" :disabled="!canCreateUser || stale" @click="openUserEdit(u)">编辑</button>
+                  <button class="btn ghost sm" :disabled="!canCreateUser || stale" @click="deleteUser(u)">删除</button>
                 </template>
               </td>
             </tr>
@@ -710,7 +864,7 @@ function splitList(v: string) {
             <td>{{ k.expires || '—' }}</td><td>{{ k.created || '—' }}</td>
             <td><span class="tag" :class="statusTag(k.status)">{{ k.status }}</span></td>
             <td class="row" style="justify-content:flex-end">
-              <button class="btn ghost sm" :disabled="k.status !== '有效' && k.status !== '已使用'"
+              <button class="btn ghost sm" :disabled="stale || (k.status !== '有效' && k.status !== '已使用')"
                       title="立即作废，无法恢复；已注册的节点不受影响"
                       @click="expireKey(k)">吊销</button>
               <button class="btn ghost sm" @click="deleteKey(k)">删除</button>
@@ -738,7 +892,7 @@ function splitList(v: string) {
             <td>{{ k.expires || '—' }}</td><td>{{ k.created || '—' }}</td><td>{{ k.lastSeen || '—' }}</td>
             <td><span class="tag" :class="statusTag(k.status)">{{ k.status }}</span></td>
             <td class="row" style="justify-content:flex-end">
-              <button class="btn ghost sm" :disabled="k.status !== '有效'" title="立即作废，正在使用该 Key 的客户端会失去管理权限"
+              <button class="btn ghost sm" :disabled="stale || k.status !== '有效'" title="立即作废，正在使用该 Key 的客户端会失去管理权限"
                       @click="expireApiKey(k)">吊销</button>
               <button class="btn ghost sm" @click="deleteApiKey(k)">删除</button>
             </td>
@@ -784,7 +938,7 @@ function splitList(v: string) {
             <label class="field-label">重命名</label>
             <div class="row">
               <input class="input" v-model="edit.name" />
-              <button class="btn sm" :disabled="busy" @click="saveRename">保存</button>
+              <button class="btn sm" :disabled="locked" @click="saveRename">保存</button>
             </div>
           </div>
 
@@ -792,7 +946,7 @@ function splitList(v: string) {
             <label class="field-label">标签（逗号分隔）</label>
             <div class="row">
               <input class="input mono" v-model="edit.tags" placeholder="tag:server,tag:prod" />
-              <button class="btn sm" :disabled="busy" @click="saveTags">保存</button>
+              <button class="btn sm" :disabled="locked" @click="saveTags">保存</button>
             </div>
           </div>
 
@@ -804,16 +958,16 @@ function splitList(v: string) {
                 <span class="mono">{{ r }}</span>
                 <button class="switch" :class="{ on: checkedRoutes.has(r) }" @click="toggleRoute(r)"></button>
               </div>
-              <button class="btn sm" style="margin-top:8px" :disabled="busy" @click="saveRoutes">保存路由</button>
+              <button class="btn sm" style="margin-top:8px" :disabled="locked" @click="saveRoutes">保存路由</button>
             </div>
           </div>
 
           <div class="row" style="margin-top:18px;gap:8px">
-            <button class="btn sm" :disabled="busy" @click="expireDev">立即到期</button>
-            <button class="btn sm" :disabled="busy" @click="cancelExpiry">取消到期</button>
+            <button class="btn sm" :disabled="locked" @click="expireDev">立即到期</button>
+            <button class="btn sm" :disabled="locked" @click="cancelExpiry">取消到期</button>
           </div>
           <button class="btn sm danger" style="width:100%;margin-top:10px"
-                  :disabled="busy" @click="removeDev">
+                  :disabled="locked" @click="removeDev">
             删除设备
           </button>
         </template>
@@ -843,10 +997,10 @@ function splitList(v: string) {
             要改去提供方改，或者删了重建。
           </div>
           <div class="row" style="gap:8px">
-            <button class="btn primary" style="flex:1;height:38px" :disabled="busy" @click="saveUserName">
+            <button class="btn primary" style="flex:1;height:38px" :disabled="locked" @click="saveUserName">
               {{ busy ? '保存中…' : '保存名称' }}
             </button>
-            <button class="btn danger" style="flex:none" :disabled="busy"
+            <button class="btn danger" style="flex:none" :disabled="locked"
                     @click="userEdit && deleteUser({ id: userEdit.id, name: userEdit.rawName } as User)">删除</button>
           </div>
         </template>
@@ -873,7 +1027,7 @@ function splitList(v: string) {
             <label class="field-label">头像地址</label>
             <input class="input mono" v-model="userForm.pictureUrl" placeholder="选填，https://…" />
           </div>
-          <button class="btn primary" style="width:100%;height:38px" :disabled="busy" @click="createUser">
+          <button class="btn primary" style="width:100%;height:38px" :disabled="locked" @click="createUser">
             <span v-if="busy" class="spinner"></span>{{ busy ? '创建中…' : '创建成员' }}
           </button>
           <div class="notice info" style="margin-top:16px">
@@ -891,7 +1045,7 @@ function splitList(v: string) {
             <label class="field-label">预授权 Key</label>
             <input class="input mono" v-model="reg.key" placeholder="hskey-auth-…" />
           </div>
-          <button class="btn primary" style="width:100%;height:38px" :disabled="busy" @click="doRegister">注册</button>
+          <button class="btn primary" style="width:100%;height:38px" :disabled="locked" @click="doRegister">注册</button>
         </template>
 
         <!-- 认证请求 -->
@@ -904,15 +1058,15 @@ function splitList(v: string) {
             <input class="input mono" v-model="auth.authID" placeholder="用 headscale nodes list 查看" />
           </div>
           <div class="row" style="gap:8px">
-            <button class="btn primary" style="flex:1" :disabled="busy" @click="approveAuth">批准</button>
-            <button class="btn danger" style="flex:1" :disabled="busy" @click="rejectAuth">拒绝</button>
+            <button class="btn primary" style="flex:1" :disabled="locked" @click="approveAuth">批准</button>
+            <button class="btn danger" style="flex:1" :disabled="locked" @click="rejectAuth">拒绝</button>
           </div>
           <div style="height:1px;background:var(--line);margin:18px 0"></div>
           <div class="field">
             <label class="field-label">或用 Auth ID 直接注册到成员</label>
             <Pick v-model="auth.user" :options="userOptions" placeholder="请先创建成员" />
           </div>
-          <button class="btn" style="width:100%" :disabled="busy" @click="registerAuth">注册</button>
+          <button class="btn" style="width:100%" :disabled="locked" @click="registerAuth">注册</button>
         </template>
 
         <!-- 调试建节点 -->
@@ -925,7 +1079,7 @@ function splitList(v: string) {
           <div class="field"><label class="field-label">预授权 Key</label><input class="input mono" v-model="debugForm.key" /></div>
           <div class="field"><label class="field-label">节点名</label><input class="input" v-model="debugForm.name" /></div>
           <div class="field"><label class="field-label">路由（逗号分隔，可空）</label><input class="input mono" v-model="debugForm.routes" placeholder="10.0.0.0/24" /></div>
-          <button class="btn primary" style="width:100%;height:38px" :disabled="busy" @click="doDebug">创建</button>
+          <button class="btn primary" style="width:100%;height:38px" :disabled="locked" @click="doDebug">创建</button>
         </template>
 
         <!-- 新建 API Key -->
@@ -935,7 +1089,7 @@ function splitList(v: string) {
               <label class="field-label">有效期</label>
               <Pick v-model="apiKeyForm.days" :options="dayOptions" />
             </div>
-            <button class="btn primary" style="width:100%;height:38px" :disabled="busy" @click="createApiKey">生成</button>
+            <button class="btn primary" style="width:100%;height:38px" :disabled="locked" @click="createApiKey">生成</button>
           </template>
           <template v-else>
             <div class="notice warn" style="margin-bottom:14px">仅显示一次，关闭后无法再查看明文。</div>
@@ -971,7 +1125,7 @@ function splitList(v: string) {
                 用这个 Key 注册的节点会自动带上这些标签，对应 headscale 的 aclTags
               </div>
             </div>
-            <button class="btn primary" style="width:100%;height:38px" :disabled="busy" @click="createKey">生成 Key</button>
+            <button class="btn primary" style="width:100%;height:38px" :disabled="locked" @click="createKey">生成 Key</button>
           </template>
           <template v-else>
             <div class="notice warn" style="margin-bottom:14px">仅显示一次，关闭后无法再查看明文。</div>

@@ -11,6 +11,7 @@ import Acl from './views/Acl.vue'
 import Apps from './views/Apps.vue'
 import Forwards from './views/Forwards.vue'
 import Diagnose from './views/Diagnose.vue'
+import Audit from './views/Audit.vue'
 import Settings from './views/Settings.vue'
 import InfoDialog from './components/InfoDialog.vue'
 import UpdateDialog from './components/UpdateDialog.vue'
@@ -65,6 +66,17 @@ function refreshFromMenu() {
   closeMenu()
   refreshAll()
 }
+// 出问题时最常用的动作：把版本、配置、自检、日志打成一个包，
+// 生成过程不再发网络请求，断网也能出
+async function exportBundle() {
+  closeMenus()
+  try {
+    const path = await api.exportDiag()
+    notify(path ? '诊断包已保存到 ' + path : '已取消')
+  } catch (err: any) {
+    notify('生成诊断包失败：' + (err?.message ?? err))
+  }
+}
 const state = ref<State | null>(null)
 const toast = ref('')
 let toastTimer: number | undefined
@@ -81,6 +93,7 @@ const icons: Record<string, string> = {
   settings: 'M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.5 1.5M11.5 11.5 13 13M13 3l-1.5 1.5M4.5 11.5 3 13',
   forwards: 'M2 5h8M8 2l3 3-3 3M14 11H6M8 8l-3 3 3 3',
   diagnose: 'M1 8h3l2-5 3 10 2-5h4',
+  audit: 'M3 2.5h10v13H3zM5.5 5.5h5M5.5 8.5h5M5.5 11.5h3',
 }
 // 「服务端管理」这一组页面全靠管理 API Key，没有就整组不显示。
 // 判断以后端为准：空 Key 和节点 Auth Key 都不算（后者管理接口一律 401）。
@@ -112,6 +125,7 @@ const nav = computed(() => {
       { key: 'apps', label: '应用管理' },
       { key: 'forwards', label: '端口转发' },
       { key: 'diagnose', label: '连接诊断' },
+      { key: 'audit', label: '操作记录' },
       { key: 'settings', label: '连接设置' },
     ],
   })
@@ -123,11 +137,11 @@ const meta: Record<string, [string, string]> = {
   users: ['服务端管理', '人员管理'], keys: ['服务端管理', '密钥管理'],
   api: ['服务端管理', '密钥管理'], acl: ['服务端管理', 'ACL 策略'],
   apps: ['工作台', '应用管理'], forwards: ['工作台', '端口转发'],
-  diagnose: ['工作台', '连接诊断'],
+  diagnose: ['工作台', '连接诊断'], audit: ['工作台', '操作记录'],
   settings: ['设置', '连接设置'],
 }
 // 这几个页面是列表型：头部与筛选条固定，只有表格自己滚动
-const fixedLayout = computed(() => ['devices', 'users', 'keys', 'api', 'apps', 'acl', 'diagnose'].includes(page.value))
+const fixedLayout = computed(() => ['devices', 'users', 'keys', 'api', 'apps', 'acl', 'diagnose', 'audit'].includes(page.value))
 const crumb = computed(() => meta[page.value]?.[0] ?? '总览')
 const title = computed(() => meta[page.value]?.[1] ?? '总览')
 const manageTab = computed(() => ['devices', 'users', 'keys', 'api'].includes(page.value) ? page.value : 'devices')
@@ -392,6 +406,9 @@ onUnmounted(() => {
               <button class="menu-item" @click="toggleTheme">
                 <span>{{ darkMode ? '切换到亮色' : '切换到暗色' }}</span>
               </button>
+              <button class="menu-item" @click="exportBundle">
+                <span>生成诊断包</span>
+              </button>
               <button class="menu-item" @click="menuOpen = false; info = 'help'">
                 <span>帮助手册</span>
               </button>
@@ -433,6 +450,7 @@ onUnmounted(() => {
         <Apps v-else-if="page === 'apps'" :state="state" @notify="notify" />
         <Forwards v-else-if="page === 'forwards'" :state="state" @notify="notify" />
         <Diagnose v-else-if="page === 'diagnose'" :state="state" @notify="notify" @navigate="page = $event" />
+        <Audit v-else-if="page === 'audit'" @notify="notify" />
         <Settings v-else :state="state" @refresh="refresh" @notify="notify" />
       </div>
     </main>

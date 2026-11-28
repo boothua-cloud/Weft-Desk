@@ -60,7 +60,10 @@ CREATE TABLE IF NOT EXISTS policy_history (
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, detail TEXT NOT NULL, created_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS cache (
+CREATE TABLE IF NOT EXISTS policy_templates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, content TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+);CREATE TABLE IF NOT EXISTS cache (
   k TEXT PRIMARY KEY, v TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS forwards (
@@ -74,6 +77,12 @@ CREATE TABLE IF NOT EXISTS forwards (
 	// 老库补列：ALTER 在列已存在时会报错，这里直接忽略。
 	_, _ = s.db.Exec(`ALTER TABLE apps ADD COLUMN browser INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE apps ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''`)
+	// 审计补列：profile 记这条操作属于哪台服务端，target 记对象，
+	// result/error 记成败。老记录只有 action/detail，读的时候兜底。
+	_, _ = s.db.Exec(`ALTER TABLE audit ADD COLUMN profile TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE audit ADD COLUMN target TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE audit ADD COLUMN result TEXT NOT NULL DEFAULT 'ok'`)
+	_, _ = s.db.Exec(`ALTER TABLE audit ADD COLUMN error TEXT NOT NULL DEFAULT ''`)
 	// 空时间当「现在」处理：升级上来的书签默认算本机最新，
 	// 第一次同步不会被对端覆盖掉。
 	_, _ = s.db.Exec(`UPDATE apps SET updated_at=? WHERE updated_at=''`, time.Now().Format(time.RFC3339))
@@ -282,13 +291,35 @@ func (s *Store) AddPolicyHistory(content, etag string) error {
 	return err
 }
 
-func (s *Store) AddAudit(action, detail string) {
-	_, _ = s.db.Exec(`INSERT INTO audit(action,detail,created_at) VALUES(?,?,?)`,
-		action, detail, time.Now().Format(time.RFC3339))
+// AddAudit 记一条写操作。失败也记：排查「点了没反应」时，
+// 一条 result=fail 带错误原文的记录比什么线索都没有强。
+// err 为 nil 表示成功。
+func (s *Store) AddAudit(profile, action, target string, err error) {
+	result, msg := "ok", ""
+	if err != nil {
+		result = "fail"
+		msg = err.Error()
+		if len(msg) > 600 {
+			msg = msg[:600] + "…"
+		}
+	}
+	_, _ = s.db.Exec(`INSERT INTO audit(profile,action,target,result,error,detail,created_at)
+      VALUES(?,?,?,?,?,'',?)`,
+		profile, action, target, result, msg, time.Now().Format(time.RFC3339))
+	// 只留最近 2000 条：再多翻不动，也没人会去翻
+	_, _ = s.db.Exec(`DELETE FROM audit WHERE id NOT IN (
+      SELECT id FROM audit ORDER BY id DESC LIMIT 2000)`)
 }
 
-func (s *Store) ListAudit() ([]model.AuditEvent, error) {
-	rows, err := s.db.Query(`SELECT created_at,action,detail FROM audit ORDER BY id DESC LIMIT 20`)
+// ListAudit 返回最近的记录，新的在前。limit<=0 时给 2000 条（够页面自己筛）。
+func (s *Store) ListAudit(limit int) ([]model.AuditEvent, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 2000
+	}
+	rows, err := s.db.Query(`SELECT created_at,action,
+      CASE WHEN target<>'' THEN target ELSE detail END,
+      profile,target,result,error
+      FROM audit ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -296,12 +327,79 @@ func (s *Store) ListAudit() ([]model.AuditEvent, error) {
 	out := []model.AuditEvent{}
 	for rows.Next() {
 		var e model.AuditEvent
-		if err = rows.Scan(&e.Time, &e.Action, &e.Detail); err != nil {
+		if err = rows.Scan(&e.Time, &e.Action, &e.Detail, &e.Profile, &e.Target, &e.Result, &e.Error); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// ---------- 策略模板 ----------
+
+// PolicyTemplate 是一份存下来的策略，可以套到任意服务端上。
+type PolicyTemplate struct {
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	Content string `json:"content"`
+	Source  string `json:"source"`
+	At      string `json:"at"`
+}
+
+func (s *Store) ListPolicyTemplates() ([]PolicyTemplate, error) {
+	rows, err := s.db.Query(`SELECT id,name,content,source,created_at FROM policy_templates ORDER BY id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []PolicyTemplate{}
+	for rows.Next() {
+		var t PolicyTemplate
+		if err = rows.Scan(&t.ID, &t.Name, &t.Content, &t.Source, &t.At); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// SavePolicyTemplate 同名覆盖：模板不是历史，留一堆同名版本没有意义。
+func (s *Store) SavePolicyTemplate(name, content, source string) (int64, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return 0, fmt.Errorf("模板要有个名字")
+	}
+	var id int64
+	err := s.db.QueryRow(`SELECT id FROM policy_templates WHERE name=?`, name).Scan(&id)
+	if err == nil {
+		_, err = s.db.Exec(`UPDATE policy_templates SET content=?,source=?,created_at=? WHERE id=?`,
+			content, source, time.Now().Format(time.RFC3339), id)
+		return id, err
+	}
+	if err != sql.ErrNoRows {
+		return 0, err
+	}
+	res, err := s.db.Exec(`INSERT INTO policy_templates(name,content,source,created_at) VALUES(?,?,?,?)`,
+		name, content, source, time.Now().Format(time.RFC3339))
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (s *Store) DeletePolicyTemplate(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM policy_templates WHERE id=?`, id)
+	return err
+}
+
+func (s *Store) PolicyTemplate(id int64) (PolicyTemplate, error) {
+	var t PolicyTemplate
+	err := s.db.QueryRow(`SELECT id,name,content,source,created_at FROM policy_templates WHERE id=?`, id).
+		Scan(&t.ID, &t.Name, &t.Content, &t.Source, &t.At)
+	if err == sql.ErrNoRows {
+		return t, fmt.Errorf("这份模板已经删了")
+	}
+	return t, err
 }
 
 // profileLabel 给服务端起个能认出来的名字：取域名，没有就用兜底。

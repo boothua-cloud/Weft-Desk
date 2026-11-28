@@ -13,7 +13,7 @@ const dataDir = computed(() =>
   props.state?.dataDir || (isMac.value ? '~/Library/Application Support/Weft' : '%AppData%\\Weft'),
 )
 
-// 目录：顺手当章节索引，正文里那 15 节按顺序排
+// 目录：顺手当章节索引，正文里那 16 节按顺序排
 const helpToc = [
   '填配置，连上服务端',
   '总览',
@@ -25,6 +25,7 @@ const helpToc = [
   '应用管理',
   '端口转发',
   '连接诊断',
+  '操作记录',
   '连接设置',
   '左下角那组按钮',
   '托盘和退出',
@@ -171,8 +172,14 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
                 让节点立即到期或取消到期、删除设备。删除会连同它的路由一起消失，正在连的客户端会断开。
               </p>
               <p style="margin-top:8px">
+                要一次处理好几台，就在第一列勾上（表头那格选的是当前筛选结果，不是整张表），底部浮出一条：
+                <span class="hl">打标签</span>、<span class="hl">取消到期</span>、<span class="hl">登出</span>、清除。
+                打标签是合并，服务端 tags 接口整份替换，直接写会把原有的冲掉；中间有一台失败不影响其余，
+                做完汇总「完成几台、失败几台」，失败的第一台带原因。
+              </p>
+              <p style="margin-top:8px">
                 路由不用逐台点进去：左侧「子网路由」把所有设备通告的网段列在一张表里，待批准的排前面，出口节点（<span class="mono">0.0.0.0/0</span>）单独标出来，
-                行上直接批准或撤销，也能一次全部批准。
+                行上直接批准或撤销，也能一次全部批准，或者勾几条点「批准选中」。批量删除没有，一次误选十几台的代价太大。
               </p>
               <figure class="shot">
                 <img src="/help/routes.png" alt="子网路由" />
@@ -259,13 +266,27 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
               </figure>
               <p style="margin-top:10px">
                 <span class="hl">规则</span>：一条规则读作「谁 → 哪些设备 → 哪些端口」。目标按端口分组，端口能从常用服务（SSH、HTTPS、MySQL…）里选，
-                也能手写 <span class="mono">8000-8100</span> 或「全部端口」；一条规则可以加多组目标。
-                策略为空时页面会给三个起点模板：只访问自己的设备、管理员全通其他人各管各的、保持全部互通。
+                也能在底部那个框里手填：<span class="mono">8080</span> 一个、<span class="mono">22,80</span> 几个、
+                <span class="mono">8000-8100</span> 一段，三种混着写也行，回车加入。端口段在卡片里显示成
+                <span class="mono">8000–8100</span>，底色跟单个端口分得开。一条规则可以加多组目标。
+                策略为空时页面会给三个起点：只访问自己的设备、管理员全通其他人各管各的、保持全部互通。
               </p>
               <p style="margin-top:8px">
                 矩阵按当前规则推演：行是人（和标签），列是设备，每格显示实际能通的端口。
                 某个成员一行全空说明写漏了，矩阵会自动展开；某列没人访问只提示，那多半是故意的隔离。
-                改完点「校验」看本地和服务端的检查结果，再点「保存并应用」。
+              </p>
+              <p style="margin-top:8px">
+                改完点「校验」看本地和服务端的检查结果。有些条目右边带一个按钮，
+                比如把 <span class="mono">admin</span> 改成 <span class="mono">group:admin</span>、把
+                <span class="mono">tag:Server</span> 改成 <span class="mono">tag:server</span>——
+                这类改法唯一，点一下就好；目标写了组、设备不存在这些改法不唯一，只写说明不给按钮，
+                自动补等于替你拿主意。
+              </p>
+              <p style="margin-top:8px">
+                「保存并应用」不会直接写。先弹一个对比框，列出线上和待保存差在哪几行、<span class="mono">+3 / −1</span> 多少行，
+                确认了才发；风险提示也写在这个框里，不会连着弹两次。<span class="mono">⌘S</span> 走同一条路。
+                基线是打开对比框时重新拉的：页面上的原文可能是几分钟前读的，别人期间改过就对不上。
+                没有改动就直接说没有改动，不弹框。
               </p>
               <figure class="shot">
                 <img src="/help/acl-source.png" alt="源码" />
@@ -279,6 +300,11 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
               <p style="margin-top:8px">
                 顶栏的<span class="hl">历史</span>留着每次保存前的版本，最近 20 版。点一版能看到它和线上差在哪，
                 确认没问题再点「回到这一版」；回滚本身也会把当前版本记进历史，点错了还能回去。
+              </p>
+              <p style="margin-top:8px">
+                旁边的<span class="hl">模板</span>可以把当前这份策略存下来，换服务端也能拿来用。抽屉上半是自己存的，
+                可以应用、改名、删除；下半还是那三个起点。应用模板只是填进表单，存不存由「保存并应用」决定，
+                同名保存会先问一句再覆盖。
               </p>
             </section>
 
@@ -359,10 +385,33 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
                 子网路由单独一张卡，每条按「通告 → 批准 → 接受 → 可达」四步标状态，断在哪一步就说哪一步。
                 全部检查完顶栏会给「几台通几台不通」，「复制诊断」把这一屏拼成文本，排查时直接发给别人。
               </p>
+              <p style="margin-top:8px">
+                要发的东西长一点，点「生成诊断包」，打成一个 zip：版本和平台、脱敏后的配置、本机自检结果、
+                完整诊断快照、日志末尾 800 行。管理密钥和授权 Key 整段换成
+                <span class="mono">&lt;redacted&gt;</span>，邮箱中间打码，<span class="mono">100.64.x.x</span>
+                只留前两段，网址去掉路径和参数（域名保留，诊断要看服务端通不通）。
+                自检和诊断各限时 6 秒，服务端停着也能出包，超时的项写「超时」。生成完在访达里选中文件，
+                直接拖进聊天窗口。
+              </p>
             </section>
 
             <section class="help-sec" id="help-s11">
-              <h4><span class="step">11</span>连接设置</h4>
+              <h4><span class="step">11</span>操作记录</h4>
+              <p>
+                改设备、改成员、动 Key、存策略、批量操作，都会在这里记一条：时间、动作、对象、结果。
+                排查「刚才那下到底成没成」不用再翻日志。
+              </p>
+              <p style="margin-top:8px">
+                失败的行点一下展开，能看到服务端返回的原文。<span class="hl">筛选</span>是本地做的：关键字匹配动作和对象，
+                再叠结果和时间范围，改条件不发请求。默认保留最近 2000 条，更早的按时间裁掉。
+              </p>
+              <p style="margin-top:8px">
+                「导出 CSV」把当前筛选结果写成文件，带 BOM，Excel 打开中文不乱码。要发给别人排查就用这个。
+              </p>
+            </section>
+
+            <section class="help-sec" id="help-s12">
+              <h4><span class="step">12</span>连接设置</h4>
               <p>
                 上半部分是服务端列表：可以放多个 Headscale，点「切换」切过去，也支持编辑、重命名、删除。
                 每个服务端有独立的节点身份和凭证，切换时断开隧道再重连，不会把上一个 tailnet 的登录态带过去。
@@ -381,8 +430,8 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
               </ul>
             </section>
 
-            <section class="help-sec" id="help-s12">
-              <h4><span class="step">12</span>左下角那组按钮与快捷键</h4>
+            <section class="help-sec" id="help-s13">
+              <h4><span class="step">13</span>左下角那组按钮与快捷键</h4>
               <p>
                 侧栏最下面是当前<span class="hl">服务端</span>：名字、绿点（连接状态），点开可以切换服务端，
                 菜单底部是「管理服务端…」。它下面一排三枚按钮——主题、刷新、<span class="hl">更多</span>
@@ -398,16 +447,16 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
               </p>
             </section>
 
-            <section class="help-sec" id="help-s13">
-              <h4><span class="step">13</span>托盘和退出</h4>
+            <section class="help-sec" id="help-s14">
+              <h4><span class="step">14</span>托盘和退出</h4>
               <p>
                 关窗口只是收起，程序还在托盘里跑，隧道不断。托盘菜单从上到下是：当前状态、连接 / 断开连接、显示主窗口、
                 帮助手册、设置、关于云栈、退出云栈。要真正退出用「退出云栈」{{ isMac ? '或 ⌘Q' : '' }}。
               </p>
             </section>
 
-            <section class="help-sec" id="help-s14">
-              <h4><span class="step">14</span>连不上怎么排查</h4>
+            <section class="help-sec" id="help-s15">
+              <h4><span class="step">15</span>连不上怎么排查</h4>
               <p>连不上先走一遍「连接诊断」：能分清是对端离线、链路不通、ACL 挡了，还是对端没开服务。下面是它管不到的部分。</p>
               <ul>
                 <li>起不来先看总览页大卡片：「上次启动失败：…」那句就是原因。</li>
@@ -421,8 +470,8 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
               </ul>
             </section>
 
-            <section class="help-sec" id="help-s15">
-              <h4><span class="step">15</span>已知边界</h4>
+            <section class="help-sec" id="help-s16">
+              <h4><span class="step">16</span>已知边界</h4>
               <ul>
                 <li>只对接 Headscale 的 <span class="mono">/api/v1</span>，不兼容 Tailscale 官方接口。</li>
                 <li>不做 MagicDNS（统一用 IP）、不做 Exit Node、不做 Taildrop。</li>

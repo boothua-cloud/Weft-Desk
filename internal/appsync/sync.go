@@ -210,7 +210,7 @@ func (s *Server) handleApps(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if added+updated > 0 {
-			s.st.AddAudit("接收应用同步", fmt.Sprintf("来自 %s：新增 %d、更新 %d", p.Host, added, updated))
+			s.st.AddAudit("", "接收应用同步", fmt.Sprintf("来自 %s：新增 %d、更新 %d", p.Host, added, updated), nil)
 		}
 		writeJSON(w, model.SyncResult{Peer: p.Host, Added: added, Updated: updated, Skipped: skipped, Total: len(merged)})
 
@@ -253,7 +253,7 @@ func (s *Server) Pull(target, token string) (model.SyncResult, error) {
 		name = target
 	}
 	if added+updated > 0 {
-		s.st.AddAudit("拉取应用同步", fmt.Sprintf("来自 %s：新增 %d、更新 %d", name, added, updated))
+		s.st.AddAudit("", "拉取应用同步", fmt.Sprintf("来自 %s：新增 %d、更新 %d", name, added, updated), nil)
 	}
 	return model.SyncResult{Peer: name, Added: added, Updated: updated, Skipped: skipped, Total: len(merged)}, nil
 }
@@ -282,7 +282,7 @@ func (s *Server) Push(target, token string) (model.SyncResult, error) {
 		res.Peer = target
 	}
 	if res.Added+res.Updated > 0 {
-		s.st.AddAudit("推送应用同步", fmt.Sprintf("到 %s：新增 %d、更新 %d", res.Peer, res.Added, res.Updated))
+		s.st.AddAudit("", "推送应用同步", fmt.Sprintf("到 %s：新增 %d、更新 %d", res.Peer, res.Added, res.Updated), nil)
 	}
 	return res, nil
 }

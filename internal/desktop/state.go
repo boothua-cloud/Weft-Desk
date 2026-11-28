@@ -222,13 +222,14 @@ func (s *WeftService) Connect() (string, error) {
 			}()
 			return "", fmt.Errorf("创建虚拟网卡要管理员授权。已在系统弹窗里请求，点「是」后云栈会以管理员身份重启并自动连接")
 		}
+		s.audit("连接隧道", s.engine.Name(), err)
 		return "", err
 	}
 	s.mu.Lock()
 	s.connected = true
 	s.started = time.Now()
 	s.mu.Unlock()
-	s.store.AddAudit("连接隧道", s.engine.Name())
+	s.audit("连接隧道", s.engine.Name(), nil)
 	// 节点是异步上线的，但 Server.Dial 会等待 Running，所以监听可以先开。
 	if err := s.startForwards(); err != nil {
 		log.Printf("拉起端口转发失败: %v", err)
@@ -241,12 +242,13 @@ func (s *WeftService) Disconnect() (string, error) {
 	s.stopSyncServer()
 	s.stopForwards()
 	if err := s.engine.Down(); err != nil {
+		s.audit("断开隧道", s.engine.Name(), err)
 		return "", err
 	}
 	s.mu.Lock()
 	s.connected = false
 	s.started = time.Time{}
 	s.mu.Unlock()
-	s.store.AddAudit("断开隧道", s.engine.Name())
+	s.audit("断开隧道", s.engine.Name(), nil)
 	return s.GetState()
 }

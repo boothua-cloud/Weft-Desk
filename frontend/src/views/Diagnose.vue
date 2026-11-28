@@ -35,6 +35,16 @@ function portsFor(ip: string): PeerPort[] {
   return ports.value.filter((s) => s.ip === ip)
 }
 
+// 复制出来的是文字，贴到聊天里还会被截断；诊断包把配置、自检、日志一起带上
+async function bundle() {
+  try {
+    const path = await api.exportDiag()
+    emit('notify', path ? '诊断包已保存到 ' + path : '已取消')
+  } catch (err: any) {
+    emit('notify', '生成诊断包失败：' + (err?.message ?? err))
+  }
+}
+
 async function runSelf() {
   selfBusy.value = true
   try {
@@ -230,6 +240,7 @@ watch(reloadTick, () => {
             <span v-if="busy" class="spinner"></span>{{ busy ? '检查中…' : '全部检查' }}
           </button>
           <button class="btn sm" @click="copyAll">复制诊断</button>
+          <button class="btn sm" @click="bundle">生成诊断包</button>
         </div>
       </div>
 

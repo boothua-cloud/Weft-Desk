@@ -175,6 +175,9 @@ type PolicyVersion struct {
 type Policy struct {
 	Content   string `json:"content"`
 	UpdatedAt string `json:"updatedAt"`
+	// live 是刚从服务端读到的；cache 表示服务端不通，内容是本地缓存，
+	// UpdatedAt 也就是缓存的写入时间
+	Source string `json:"source"`
 }
 
 type AppBookmark struct {
@@ -381,9 +384,16 @@ type ForwardView struct {
 }
 
 type AuditEvent struct {
-	Time   string `json:"time"`
-	Action string `json:"action"`
-	Detail string `json:"detail"`
+	Time string `json:"time"`
+	// Action 是做了什么，Target 是对谁做的；Detail 给老界面用，
+	// 新记录里它等于 Target，老记录里还是当年的那句话。
+	Action  string `json:"action"`
+	Detail  string `json:"detail"`
+	Profile string `json:"profile"`
+	Target  string `json:"target"`
+	// ok / fail。失败的记录带服务端或本机的错误原文。
+	Result string `json:"result"`
+	Error  string `json:"error"`
 }
 
 // defaultHostname 默认拿本机主机名当节点名，装完不用想名字就能连。

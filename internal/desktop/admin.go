@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/boothua/weft/internal/model"
+	"github.com/boothua/weft/internal/store"
 )
 
 // 成员与密钥：用户、授权 Key、管理 Key、ACL 策略、服务端健康。
@@ -23,9 +24,10 @@ func (s *WeftService) CreateUser(ctx context.Context, name, displayName, email, 
 	}
 	u, err := s.cp.CreateUser(name, displayName, email, pictureURL)
 	if err != nil {
+		s.audit("创建成员", name, err)
 		return "", err
 	}
-	s.store.AddAudit("创建成员", u.RawName)
+	s.audit("创建成员", u.RawName, nil)
 	return wrapOne(u)
 }
 
@@ -34,9 +36,10 @@ func (s *WeftService) RenameUser(ctx context.Context, id, name string) error {
 		return errNotMainWindow
 	}
 	if err := s.cp.RenameUser(id, name); err != nil {
+		s.audit("重命名成员", id+" → "+name, err)
 		return err
 	}
-	s.store.AddAudit("重命名成员", id+" → "+name)
+	s.audit("重命名成员", id+" → "+name, nil)
 	return nil
 }
 
@@ -45,9 +48,10 @@ func (s *WeftService) DeleteUser(ctx context.Context, id string) error {
 		return errNotMainWindow
 	}
 	if err := s.cp.DeleteUser(id); err != nil {
+		s.audit("删除成员", id, err)
 		return err
 	}
-	s.store.AddAudit("删除成员", id)
+	s.audit("删除成员", id, nil)
 	return nil
 }
 
@@ -66,17 +70,19 @@ func (s *WeftService) CreateAuthKey(ctx context.Context, user string, reusable, 
 	}
 	key, err := s.cp.CreateAuthKey(user, reusable, ephemeral, days, normalizeTags(tags))
 	if err != nil {
+		s.audit("生成授权 Key", user, err)
 		return "", err
 	}
-	s.store.AddAudit("生成授权 Key", user)
+	s.audit("生成授权 Key", user, nil)
 	return key, nil
 }
 
 func (s *WeftService) ExpireAuthKey(id string) error {
 	if err := s.cp.ExpireAuthKey(id); err != nil {
+		s.audit("失效授权 Key", id, err)
 		return err
 	}
-	s.store.AddAudit("失效授权 Key", id)
+	s.audit("失效授权 Key", id, nil)
 	return nil
 }
 
@@ -85,9 +91,10 @@ func (s *WeftService) DeleteAuthKey(ctx context.Context, id string) error {
 		return errNotMainWindow
 	}
 	if err := s.cp.DeleteAuthKey(id); err != nil {
+		s.audit("删除授权 Key", id, err)
 		return err
 	}
-	s.store.AddAudit("删除授权 Key", id)
+	s.audit("删除授权 Key", id, nil)
 	return nil
 }
 
@@ -106,17 +113,19 @@ func (s *WeftService) CreateAPIKey(ctx context.Context, days int) (string, error
 	}
 	key, err := s.cp.CreateAPIKey(days)
 	if err != nil {
+		s.audit("创建 API Key", fmt.Sprintf("%d 天", days), err)
 		return "", err
 	}
-	s.store.AddAudit("创建 API Key", fmt.Sprintf("%d 天", days))
+	s.audit("创建 API Key", fmt.Sprintf("%d 天", days), nil)
 	return key, nil
 }
 
 func (s *WeftService) ExpireAPIKey(prefix, id string) error {
 	if err := s.cp.ExpireAPIKey(prefix, id); err != nil {
+		s.audit("失效 API Key", prefix, err)
 		return err
 	}
-	s.store.AddAudit("失效 API Key", prefix)
+	s.audit("失效 API Key", prefix, nil)
 	return nil
 }
 
@@ -125,9 +134,10 @@ func (s *WeftService) DeleteAPIKey(ctx context.Context, prefix, id string) error
 		return errNotMainWindow
 	}
 	if err := s.cp.DeleteAPIKey(prefix, id); err != nil {
+		s.audit("删除 API Key", prefix, err)
 		return err
 	}
-	s.store.AddAudit("删除 API Key", prefix)
+	s.audit("删除 API Key", prefix, nil)
 	return nil
 }
 
@@ -136,8 +146,18 @@ func (s *WeftService) DeleteAPIKey(ctx context.Context, prefix, id string) error
 func (s *WeftService) GetPolicy() (string, error) {
 	p, err := s.cp.Policy()
 	if err != nil {
+		// 服务端连不上时给最后一次拿到的原文。策略是改坏代价最大的东西，
+		// 界面上宁可标着「这是某时的缓存」，也别让人对着空白页发呆
+		var cached model.Policy
+		if ts, ok := s.store.CacheRead(s.cacheKey("policy"), &cached); ok {
+			cached.UpdatedAt = fmtTime(parseTS(ts))
+			cached.Source = "cache"
+			return wrapOne(cached)
+		}
 		return "", err
 	}
+	p.Source = "live"
+	_ = s.store.CachePut(s.cacheKey("policy"), p)
 	return wrapOne(p)
 }
 
@@ -152,9 +172,10 @@ func (s *WeftService) SavePolicy(ctx context.Context, content string) error {
 		old = p.Content
 	}
 	if err := s.cp.SavePolicy(content); err != nil {
+		s.audit("保存 ACL 策略", fmt.Sprintf("%d 字节", len(content)), err)
 		return err
 	}
-	s.store.AddAudit("保存 ACL 策略", fmt.Sprintf("%d 字节", len(content)))
+	s.audit("保存 ACL 策略", fmt.Sprintf("%d 字节", len(content)), nil)
 	if old != "" && strings.TrimSpace(old) != strings.TrimSpace(content) {
 		_ = s.store.AddPolicyHistory(old, "")
 		_ = s.store.PrunePolicyHistory(20)
@@ -190,15 +211,69 @@ func (s *WeftService) RestorePolicy(ctx context.Context, id int64) error {
 		return err
 	}
 	if err := s.SavePolicy(ctx, body); err != nil {
+		s.audit("回滚 ACL 策略", fmt.Sprintf("回到第 %d 版", id), err)
 		return err
 	}
-	s.store.AddAudit("回滚 ACL 策略", fmt.Sprintf("回到第 %d 版", id))
+	s.audit("回滚 ACL 策略", fmt.Sprintf("回到第 %d 版", id), nil)
 	return nil
 }
 
 // CheckPolicy 只校验语法，不写入服务端。
 func (s *WeftService) CheckPolicy(content string) error {
 	return s.cp.CheckPolicy(content)
+}
+
+// ---------- 策略模板 ----------
+
+// ListPolicyTemplates 返回全部模板，带原文：模板不大，一次取回去，
+// 应用的时候不用再发一次请求。
+func (s *WeftService) ListPolicyTemplates() (string, error) {
+	items, err := s.store.ListPolicyTemplates()
+	if err != nil {
+		return "", err
+	}
+	return wrapOne(items)
+}
+
+// SavePolicyTemplate 把当前策略（含未保存的改动）存成模板。同名直接覆盖。
+func (s *WeftService) SavePolicyTemplate(ctx context.Context, name, content string) (string, error) {
+	if !s.callerAllowed(ctx) {
+		return "", errNotMainWindow
+	}
+	if strings.TrimSpace(content) == "" {
+		return "", fmt.Errorf("策略是空的，没什么可存的")
+	}
+	id, err := s.store.SavePolicyTemplate(name, content, s.profileName())
+	if err != nil {
+		s.audit("保存策略模板", name, err)
+		return "", err
+	}
+	s.audit("保存策略模板", name, nil)
+	return wrapOne(map[string]any{"id": id, "name": strings.TrimSpace(name)})
+}
+
+func (s *WeftService) DeletePolicyTemplate(ctx context.Context, id int64) error {
+	if !s.callerAllowed(ctx) {
+		return errNotMainWindow
+	}
+	if err := s.store.DeletePolicyTemplate(id); err != nil {
+		s.audit("删除策略模板", fmt.Sprintf("第 %d 份", id), err)
+		return err
+	}
+	s.audit("删除策略模板", fmt.Sprintf("第 %d 份", id), nil)
+	return nil
+}
+
+// profileName 是当前服务端条目的显示名，没起名字就用域名。
+func (s *WeftService) profileName() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.cfg.Profiles {
+		if p.ID == s.cfg.ActiveID {
+			return p.Name
+		}
+	}
+	return store.ProfileLabel(s.cfg.BaseURL, "默认")
 }
 
 // ---------- 服务端状态 ----------

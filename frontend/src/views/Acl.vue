@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { api, type State, type PolicyDoc, type Device, type User, type PolicyVersion } from '../api'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { api, type State, type PolicyDoc, type Device, type User, type PolicyVersion, type PolicyTemplate } from '../api'
 import { reloadTick } from '../bus'
 import ChipsInput from '../components/ChipsInput.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -10,6 +10,7 @@ import TokenField from '../components/TokenField.vue'
 import { useConfirm } from '../confirm'
 import { diffStat, keepContext, lineDiff, type DiffLine } from '../diff'
 import {
+  applyFix,
   auditAcl,
   explainPolicyError,
   flattenDst,
@@ -67,6 +68,12 @@ const check = ref<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null)
 const busy = ref(false)
 const loading = ref(false)
 const checking = ref(false)
+// 服务端不通时读到的是本地缓存，页面顶部要标出来
+const cacheInfo = ref<{ updatedAt: string } | null>(null)
+// 手里是缓存就不能存：这时候的线上现状不知道，写回去会盖掉别人的改动。
+// 页面里的编辑照旧允许，只是「保存并应用」按不动。
+const stale = computed(() => !!cacheInfo.value)
+const staleHint = '服务端连不上，先恢复连接再保存'
 // 服务端 policy.mode: file 时接口只能读不能写。存一次就记住，
 // 免得用户反复点「保存并应用」看同一个 500。
 const policyLocked = ref(false)
@@ -109,6 +116,30 @@ const highRisks = computed(() => risks.value.filter((r) => r.level === 'high').l
 const riskOpen = ref(false)
 const currentText = computed(() => (formMode.value && form.value ? serializeAcl(form.value) : text.value))
 const dirty = computed(() => currentText.value.trim() !== baseline.value.trim())
+
+// 保存前预览：线上 → 待保存 的行级差异，风险提示并进这个窗，
+// 不再先弹一次「有风险」再弹一次「确认保存」
+const previewOpen = ref(false)
+const previewLines = ref<DiffLine[]>([])
+const previewStat = computed(() => diffStat(previewLines.value))
+
+function confirmSave() {
+  previewOpen.value = false
+  doSave()
+}
+
+// 校验条上的一键修。只处理改法唯一的几类，改完校验结果自己会重算
+function runFix(it: AclIssue) {
+  if (!form.value || !it.fix) return
+  const note = applyFix(form.value, it.fix)
+  if (!note) {
+    emit('notify', '这条没改到，可能刚才已经被别处改过')
+    return
+  }
+  emit('notify', note)
+  // 组名改了要重新归组目标，否则矩阵还按旧名字找列
+  syncEdits()
+}
 
 const updatedLabel = computed(() => {
   const raw = doc.value.updatedAt
@@ -198,6 +229,7 @@ async function load() {
       api.users().catch(() => null),
     ])
     doc.value = p
+    cacheInfo.value = p.source === 'cache' ? { updatedAt: p.updatedAt } : null
     devices.value = dv?.items ?? []
     users.value = us?.items ?? []
     text.value = doc.value.content
@@ -222,6 +254,20 @@ async function load() {
 }
 onMounted(load)
 watch(reloadTick, load)
+
+// ⌘S / Ctrl+S 和点「保存并应用」走同一条路，同样先看差异再落盘
+function onSaveKey(e: KeyboardEvent) {
+  if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 's') return
+  e.preventDefault()
+  if (previewOpen.value) {
+    confirmSave()
+    return
+  }
+  if (readOnly.value || busy.value || !dirty.value) return
+  save()
+}
+onMounted(() => window.addEventListener('keydown', onSaveKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', onSaveKey))
 
 // 风险条目点一下跳到那条规则：先切回规则页签，再滚到卡片并闪一下边
 function jumpRule(i: number) {
@@ -293,7 +339,7 @@ async function validate() {
 }
 
 async function save() {
-  if (readOnly.value) return
+  if (readOnly.value || busy.value) return
   if (formMode.value) {
     if (!form.value) return
     if (errorCount.value) {
@@ -302,19 +348,37 @@ async function save() {
       return
     }
   }
-  // 风险不挡保存，但要人在按下之前知道自己在放什么过去
-  if (risks.value.length) {
-    const high = highRisks.value
-    askConfirm({
-      title: `有 ${risks.value.length} 条风险规则`,
-      desc: `${risks.value[0].title}。${high ? `其中 ${high} 条是高危。` : ''}保存后立即生效。`,
-      ok: '仍然保存',
-      tone: 'primary',
-      action: () => doSave(),
-    })
+  const next = currentText.value
+  // 基线在打开预览时重新拉：页面里的 doc 可能是几分钟前读的，
+  // 别人期间改过，拿旧内容比出来的差异是假的
+  let live = ''
+  try {
+    const doc = await api.policy()
+    if (doc.source === 'cache') {
+      // 拿到的是本地缓存，等于不知道线上现在长什么样，这时候写回去
+      // 会把别人期间改的内容整份盖掉
+      check.value = { kind: 'err', text: '服务端连不上，读不到线上策略。恢复连接再保存，免得把别人的改动盖掉。' }
+      emit('notify', '服务端连不上，未保存')
+      return
+    }
+    live = doc.content
+  } catch (err: any) {
+    emit('notify', '读不到线上策略（' + (err?.message ?? err) + '），跳过对比直接保存')
+    await doSave()
     return
   }
-  await doSave()
+  // 用线上的规范形态当基线。带注释的原文直接比，会把注释全算成删除，
+  // 一屏红绿里看不出真正动的是哪一行
+  const p = parseAcl(live)
+  const base = p.ok ? serializeAcl(p.form) : live
+  previewLines.value = keepContext(lineDiff(base, next))
+  const st = previewStat.value
+  if (!st.add && !st.del) {
+    check.value = { kind: 'ok', text: '和线上一致，没有要保存的改动。' }
+    emit('notify', '没有改动')
+    return
+  }
+  previewOpen.value = true
 }
 
 async function doSave() {
@@ -338,6 +402,78 @@ async function doSave() {
   } finally {
     busy.value = false
   }
+}
+
+// ---------- 模板 ----------
+// 模板存本地库，跟服务端无关：换一台服务端也能套用同一份起点。
+const tplOpen = ref(false)
+const tplList = ref<PolicyTemplate[]>([])
+const tplName = ref('')
+const tplErr = ref('')
+const tplBusy = ref(false)
+
+async function openTemplates() {
+  tplOpen.value = true
+  tplErr.value = ''
+  try {
+    tplList.value = await api.policyTemplates()
+  } catch (err: any) {
+    tplErr.value = '读取模板失败：' + (err?.message ?? err)
+  }
+}
+
+async function saveAsTemplate() {
+  const name = tplName.value.trim()
+  if (!name) {
+    tplErr.value = '给这份模板起个名字'
+    return
+  }
+  tplBusy.value = true
+  try {
+    await api.savePolicyTemplate(name, currentText.value)
+    tplName.value = ''
+    tplErr.value = ''
+    tplList.value = await api.policyTemplates()
+    emit('notify', `已存为模板「${name}」`)
+  } catch (err: any) {
+    tplErr.value = '保存失败：' + (err?.message ?? err)
+  } finally {
+    tplBusy.value = false
+  }
+}
+
+// 套用只是把内容填进表单，不写服务端；要生效还得点保存
+function useTemplate(t: PolicyTemplate) {
+  const r = parseAcl(t.content)
+  if (!r.ok) {
+    tplErr.value = '这份模板打不开：' + r.error
+    return
+  }
+  form.value = r.form
+  hadComments.value = r.form.hadComments
+  syncEdits()
+  if (mode.value === 'source') text.value = serializeAcl(r.form)
+  tplOpen.value = false
+  check.value = { kind: 'warn', text: `已套用模板「${t.name}」，检查后点保存才生效。` }
+  emit('notify', '模板已套用，还没保存')
+}
+
+function removeTemplate(t: PolicyTemplate) {
+  askConfirm({
+    title: `删掉模板「${t.name}」？`,
+    desc: '只删本地这份，线上策略不受影响。',
+    ok: '删除',
+    tone: 'danger',
+    action: async () => {
+      try {
+        await api.deletePolicyTemplate(t.id)
+        tplList.value = tplList.value.filter((x) => x.id !== t.id)
+        emit('notify', '已删除')
+      } catch (err: any) {
+        tplErr.value = '删除失败：' + (err?.message ?? err)
+      }
+    },
+  })
 }
 
 // ---------- 策略历史 ----------
@@ -517,6 +653,7 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
           <span v-if="loading" class="load-hint" style="margin:0 8px 0 0">
             <span class="spinner"></span>读取中…
           </span>
+          <button class="btn" :disabled="loading" @click="openTemplates">模板</button>
           <button class="btn" :disabled="loading" @click="openHistory">历史</button>
           <button class="btn" :disabled="loading" @click="load">
             <span v-if="loading" class="spinner"></span>{{ loading ? '刷新中…' : '刷新' }}
@@ -525,12 +662,17 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
           <button class="btn" :disabled="checking || loading" @click="validate">
             <span v-if="checking" class="spinner"></span>{{ checking ? '校验中…' : '校验' }}
           </button>
-          <button class="btn primary" :disabled="busy || readOnly || !dirty" @click="save">
+          <button class="btn primary" :disabled="busy || readOnly || stale || !dirty"
+                  :title="stale ? staleHint : ''" @click="save">
             {{ busy ? '保存中…' : '保存并应用' }}
           </button>
         </div>
       </div>
 
+      <div v-if="cacheInfo" class="notice info acl-notice cache-line">
+        <span>服务端连不上，读到的是 {{ cacheInfo.updatedAt || '上次' }} 的缓存。要保存得先恢复连接。</span>
+        <button class="link-btn" :disabled="loading" @click="load">重试</button>
+      </div>
       <div v-if="policyLocked" class="notice warn acl-notice">
         这台 headscale 的策略存在文件里（<code>policy.mode: file</code>），接口只能读，这里保存不了。
         要在这里改：把 config.yaml 的 <code>policy.mode</code> 改成 <code>database</code> 并重启，再用
@@ -543,14 +685,20 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
         <div class="slim-head">
           <span class="slim-tag">{{ errorCount ? `${errorCount} 条错误` : `${issues.length} 条提示` }}</span>
           <span class="slim-text">{{ issuesLead?.text }}</span>
+          <button v-if="issuesLead?.fix" type="button" class="link-btn slim-fix"
+                  @click="runFix(issuesLead)">
+            {{ issuesLead.fix.label }}
+          </button>
           <button v-if="issues.length > 1" type="button" class="link-btn slim-toggle"
                   @click="issuesOpen = !issuesOpen">
             {{ issuesOpen ? '收起' : `还有 ${issues.length - 1} 条` }}
           </button>
         </div>
         <div v-if="issuesOpen && issues.length > 1" class="slim-list">
-          <div v-for="(it, i) in issues.slice(1)" :key="i" :style="it.level === 'error' ? 'color:var(--danger)' : ''">
-            {{ it.level === 'error' ? '错误' : '提示' }} · {{ it.text }}
+          <div v-for="(it, i) in issues.slice(1)" :key="i" class="slim-row"
+               :style="it.level === 'error' ? 'color:var(--danger)' : ''">
+            <span>{{ it.level === 'error' ? '错误' : '提示' }} · {{ it.text }}</span>
+            <button v-if="it.fix" type="button" class="link-btn" @click="runFix(it)">{{ it.fix.label }}</button>
           </div>
         </div>
       </div>
@@ -888,6 +1036,82 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
         可能是 YAML，或结构不是标准写法。改好再点「规则」。
       </div>
     </div>
+    <!-- 保存前预览：线上 → 待保存。风险也在这一个窗里说完，不再叠第二个确认框 -->
+    <template v-if="previewOpen">
+      <div class="mask" @click="previewOpen = false"></div>
+      <div class="save-dialog">
+        <div class="save-head">
+          <div>
+            <h3 class="sec" style="margin:0">保存前确认</h3>
+            <p class="hist-note">左边是线上现在的内容，右边是这次要写进去的。保存后立即对全部设备生效。</p>
+          </div>
+          <span class="diff-stat">
+            <b class="d-add">+{{ previewStat.add }}</b>
+            <b class="d-del">−{{ previewStat.del }}</b>
+          </span>
+        </div>
+
+        <div v-if="risks.length" class="save-risk">
+          <span class="risk-dot" :class="risks[0].level"></span>
+          <span>
+            其中 {{ risks.length }} 条规则等于没设防{{ highRisks ? `（${highRisks} 条高危）` : '' }}：{{ risks[0].title }}
+          </span>
+        </div>
+
+        <div class="diff-box save-diff">
+          <div v-for="(l, i) in previewLines" :key="i" class="diff-line" :class="l.kind">
+            <span class="diff-sign">{{ l.kind === 'add' ? '+' : l.kind === 'del' ? '−' : l.kind === 'gap' ? '' : ' ' }}</span>
+            <span class="diff-text">{{ l.kind === 'gap' ? '· · ·' : l.text || ' ' }}</span>
+          </div>
+        </div>
+
+        <div class="save-foot">
+          <button class="btn" :disabled="busy" @click="previewOpen = false">取消</button>
+          <button class="btn primary" :disabled="busy" @click="confirmSave">
+            {{ busy ? '保存中…' : '确认保存' }}
+          </button>
+        </div>
+      </div>
+    </template>
+
+    <!-- 模板抽屉：列表在本地，套用只填表单 -->
+    <template v-if="tplOpen">
+      <div class="mask" @click="tplOpen = false"></div>
+      <div class="hist-drawer">
+        <div class="spread">
+          <h3 class="sec" style="margin:0">策略模板</h3>
+          <button class="btn ghost sm" @click="tplOpen = false">✕</button>
+        </div>
+        <p class="hist-note">存在本机，换服务端也能用。套用只是填进表单，不会直接写线上。</p>
+
+        <div v-if="tplErr" class="notice warn" style="margin-top:10px">{{ tplErr }}</div>
+        <div v-if="!tplList.length && !tplErr" class="hist-empty">
+          还没有模板。把调好的策略存成模板，下次换服务端直接套。
+        </div>
+
+        <div class="hist-list">
+          <div v-for="t in tplList" :key="t.id" class="tpl-item">
+            <div style="min-width:0">
+              <div class="cell-main">{{ t.name }}</div>
+              <div class="cell-sub">来自 {{ t.source || '未记录' }} · {{ fmtWhen(t.at) }}</div>
+            </div>
+            <div class="row" style="gap:6px">
+              <button class="btn sm primary" :disabled="readOnly" @click="useTemplate(t)">套用</button>
+              <button class="btn sm ghost" @click="removeTemplate(t)">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="tpl-save">
+          <input class="input" v-model="tplName" placeholder="给当前策略起个名字"
+                 @keyup.enter="saveAsTemplate" />
+          <button class="btn primary" :disabled="tplBusy || !tplName.trim()" @click="saveAsTemplate">
+            {{ tplBusy ? '保存中…' : '存为模板' }}
+          </button>
+        </div>
+      </div>
+    </template>
+
     <!-- 策略历史抽屉：放在整条 v-if 链之后，插在中间会让 v-else 断掉 -->
     <template v-if="histOpen">
       <div class="mask" @click="histOpen = false"></div>
@@ -1335,7 +1559,7 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
 }
 
 .hist-drawer {
-  position: absolute;
+  position: fixed;
   right: 0;
   top: 0;
   bottom: 0;
@@ -1413,6 +1637,74 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
 .diff-line.gap { color: var(--faint); }
 .diff-sign { flex: none; width: 8px; user-select: none; }
 .diff-text { flex: 1; min-width: 0; }
+
+/* 保存前确认：居中一个窗，高度按视口收，差异区自己滚 */
+.save-dialog {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(760px, calc(100vw - 80px));
+  max-height: calc(100vh - 90px);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 22px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-pop);
+  z-index: 4;
+}
+.save-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.save-risk {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--warn) 26%, transparent);
+  border-radius: 8px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.save-risk .risk-dot { margin-top: 6px; }
+.save-diff { margin-top: 12px; min-height: 160px; }
+.tpl-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+.tpl-item + .tpl-item { margin-top: 0; }
+.tpl-save {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.tpl-save .input { flex: 1; }
+.save-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+.slim-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.slim-row .link-btn { flex: none; }
+.slim-fix { flex: none; }
 
 .host-row {
   display: grid;
@@ -1427,86 +1719,6 @@ function applyTemplate(kind: 'open' | 'self' | 'admin') {
   color: var(--faint);
   line-height: 1.7;
 }
-
-.hist-drawer {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 480px;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border-left: 1px solid var(--line);
-  box-shadow: var(--shadow-pop);
-  padding: 20px;
-  z-index: 3;
-  animation: weft-slide .22s cubic-bezier(.22, .8, .3, 1);
-}
-.hist-note { margin: 6px 0 0; font-size: 11px; color: var(--faint); line-height: 1.7; }
-.hist-empty {
-  margin-top: 14px;
-  padding: 22px 0;
-  text-align: center;
-  font-size: 11.5px;
-  color: var(--faint);
-}
-.hist-list {
-  margin-top: 10px;
-  flex: 1;
-  min-height: 60px;
-  overflow-y: auto;
-}
-.hist-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 9px 10px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: none;
-  text-align: left;
-  font-size: 11.5px;
-}
-.hist-item:hover { background: var(--surface-3); }
-.hist-item.on {
-  background: var(--surface-3);
-  border-color: var(--line);
-}
-.hist-time { font-family: var(--mono); font-size: 11px; }
-.hist-item + .hist-item { margin-top: 2px; }
-.hist-detail {
-  flex-shrink: 0;
-  max-height: 62%;
-  display: flex;
-  flex-direction: column;
-  margin-top: 10px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-}
-.hist-detail-head { font-size: 11px; margin-bottom: 8px; }
-.diff-stat { display: flex; gap: 10px; font-family: var(--mono); font-size: 11px; }
-.d-add { color: var(--ok); font-weight: 600; }
-.d-del { color: var(--danger); font-weight: 600; }
-.diff-box {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 8px 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-2);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  line-height: 1.7;
-}
-.diff-line { display: flex; gap: 6px; padding: 0 8px; white-space: pre; }
-.diff-line.add { background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok); }
-.diff-line.del { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
-.diff-line.gap { color: var(--faint); }
-.diff-sign { flex: none; width: 8px; user-select: none; }
-.diff-text { flex: 1; min-width: 0; }
 
 .host-row { border-top: 1px dashed var(--line-soft); }
 .approve-row { display: flex; flex-direction: column; gap: 5px; padding: 6px 0; }

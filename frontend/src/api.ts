@@ -219,7 +219,7 @@ export interface APIKey {
   id: string; prefix: string; expires: string; created: string; lastSeen: string; status: string
   isCurrent?: boolean
 }
-export interface PolicyDoc { content: string; updatedAt: string }
+export interface PolicyDoc { content: string; updatedAt: string; source?: string }
 export interface HealthInfo { database: boolean }
 export interface AppBookmark { id: string; name: string; url: string; group: string; icon: string; browser: boolean; updatedAt: string }
 // SyncInfo 是应用书签同步的当前状态，和 Go 侧 SyncInfo 对应。
@@ -234,7 +234,15 @@ export interface SyncInfo {
   error: string
 }
 export interface SyncResult { peer: string; added: number; updated: number; skipped: number; total: number }
-export interface AuditEvent { time: string; action: string; detail: string }
+export interface AuditEvent {
+  time: string; action: string; detail: string
+  profile: string; target: string
+  // ok / fail；失败时 error 是服务端或本机的原文
+  result: string; error: string
+}
+export interface BatchFail { id: string; name: string; error: string }
+export interface BatchResult { done: number; failed: BatchFail[] }
+export interface PolicyTemplate { id: number; name: string; content: string; source: string; at: string }
 export interface Cached<T> { items: T[]; source: string; updatedAt: string; error?: string }
 export interface HelperStatus {
   installed: boolean; running: boolean; socket: string; version: string; note: string; logTail: string
@@ -272,6 +280,9 @@ export const api = {
   loginURL: (): Promise<string> => (WeftService as any).GetLoginURL(),
   health: () => parse<HealthInfo>(WeftService.GetHealth()),
   audit: () => parse<AuditEvent[]>(WeftService.ListAudit()),
+  exportText: (filename: string, content: string): Promise<string> =>
+    WeftService.ExportText(filename, content),
+  exportDiag: (): Promise<string> => WeftService.ExportDiagBundle(),
   testPeer: (host: string, port: number, via: string) => WeftService.TestPeer(host, port, via),
   diagnose: (ip: string, port: number) => parse<DiagReport>((WeftService as any).Diagnose(ip, port)),
   selfCheck: () => parse<SelfReport>((WeftService as any).SelfCheck()),
@@ -288,6 +299,11 @@ export const api = {
   expireDevice: (id: string) => WeftService.ExpireDevice(id),
   disableDeviceExpiry: (id: string) => WeftService.DisableDeviceExpiry(id),
   approveRoutes: (id: string, routes: string) => WeftService.ApproveRoutes(id, routes),
+  // 批量：后端逐个发请求，失败不中断，最后给汇总
+  tagDevices: (ids: string[], tags: string, add: boolean) =>
+    parse<BatchResult>(WeftService.TagDevices(ids, tags, add)),
+  batchExpiry: (ids: string[], expire: boolean) =>
+    parse<BatchResult>(WeftService.BatchExpiry(ids, expire)),
   backfillIPs: (confirmed: boolean) => WeftService.BackfillIPs(confirmed),
   debugCreateNode: (user: string, key: string, name: string, routes: string) =>
     parse<Device>(WeftService.DebugCreateNode(user, key, name, routes)),
@@ -326,6 +342,12 @@ export const api = {
   policy: () => parse<PolicyDoc>(WeftService.GetPolicy()),
   savePolicy: (content: string) => WeftService.SavePolicy(content),
   checkPolicy: (content: string) => WeftService.CheckPolicy(content),
+
+  // 策略模板：存在本地库，跨服务端可用
+  policyTemplates: () => parse<PolicyTemplate[]>(WeftService.ListPolicyTemplates()),
+  savePolicyTemplate: (name: string, content: string) =>
+    parse<{ id: number; name: string }>(WeftService.SavePolicyTemplate(name, content)),
+  deletePolicyTemplate: (id: number) => WeftService.DeletePolicyTemplate(id),
 
   // 应用与书签
   apps: () => parse<AppBookmark[]>(WeftService.ListApps()),

@@ -95,17 +95,19 @@ func (s *WeftService) SaveForward(raw string) error {
 		r.Kind = "custom"
 	}
 	if err := s.store.SaveForward(r, int(time.Now().UnixNano()/1e6)); err != nil {
+		s.audit("保存端口映射", r.Name, err)
 		return err
 	}
-	s.store.AddAudit("保存端口映射", r.Name)
+	s.audit("保存端口映射", r.Name, nil)
 	return s.syncForwards()
 }
 
 func (s *WeftService) DeleteForward(id string) error {
 	if err := s.store.DeleteForward(id); err != nil {
+		s.audit("删除端口映射", id, err)
 		return err
 	}
-	s.store.AddAudit("删除端口映射", id)
+	s.audit("删除端口映射", id, nil)
 	return s.syncForwards()
 }
 
@@ -152,14 +154,17 @@ func (s *WeftService) SetForwardBind(bind string) error {
 	c := s.cfg
 	c.ForwardBind = bind
 	s.mu.Unlock()
+	label := map[string]string{"127.0.0.1": "仅本机", "0.0.0.0": "同网段可达"}[bind]
 	if err := s.store.SaveConfig(c); err != nil {
+		s.audit("转发监听", label, err)
 		return err
 	}
 	s.mu.Lock()
 	s.cfg = c
 	s.mu.Unlock()
-	s.store.AddAudit("转发监听", map[string]string{"127.0.0.1": "仅本机", "0.0.0.0": "同网段可达"}[bind])
-	return s.syncForwards()
+	err := s.syncForwards()
+	s.audit("转发监听", label, err)
+	return err
 }
 
 // SetForwardPower 是「启动 / 停止转发」总开关，不影响引擎连接状态。
@@ -167,8 +172,9 @@ func (s *WeftService) SetForwardPower(on bool) error {
 	s.mu.Lock()
 	s.forwardOn = on
 	s.mu.Unlock()
-	s.store.AddAudit("转发开关", map[bool]string{true: "启动", false: "停止"}[on])
-	return s.syncForwards()
+	err := s.syncForwards()
+	s.audit("转发开关", map[bool]string{true: "启动", false: "停止"}[on], err)
+	return err
 }
 
 func (s *WeftService) ForwardSnippet(id string) (string, error) {

@@ -941,6 +941,39 @@ html[data-theme="dark"] .help-body::-webkit-scrollbar-thumb {
 .content-fixed { overflow: hidden; display: flex; flex-direction: column; }
 .page-flex { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .table-scroll { flex: 1; min-height: 0; overflow: auto; }
+
+/* 批量选设备：勾选框自己画，不用原生 checkbox ——
+   原生那套在 WebView 里各平台长得不一样，而且给 :checked 赋值时
+   个别内核会补发 change，勾一个变成勾一片 */
+.pick-box {
+  display: grid; place-items: center;
+  width: 14px; height: 14px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background .12s, border-color .12s;
+}
+.pick-box:hover { border-color: var(--brand); }
+.pick-box.on { background: var(--brand); border-color: var(--brand); }
+.pick-box svg { width: 9px; height: 9px; display: block; }
+tr.picked-row > td { background: var(--brand-soft); }
+.batch-bar {
+  position: sticky; bottom: 0;
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -10px 24px rgba(8, 12, 18, .07);
+  z-index: 2;
+}
+.batch-count { font-size: 11.5px; font-weight: 600; color: var(--text); margin-right: 4px; white-space: nowrap; }
+.batch-input { width: 220px; height: 28px; }
+
+/* 缓存提示条：一行说完「哪天的数据 + 为什么不是新的」，右边给重试 */
+.cache-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .filter-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-shrink: 0; }
 .filter-bar .input { flex: none; }
 /* 原生 select 专用类：.select 是 Pick 下拉组件的样式，不能复用 */
