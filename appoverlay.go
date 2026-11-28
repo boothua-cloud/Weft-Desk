@@ -1,9 +1,7 @@
 package main
 
 import (
-	"crypto/rand"
 	"crypto/subtle"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"net"
@@ -13,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/boothua/weft/internal/engine"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -32,7 +31,7 @@ var (
 // 只有我们注入进去的那段脚本知道它。
 func ensureControlServer(svc *WeftService) int {
 	ctrlOnce.Do(func() {
-		tok, err := randHex(16)
+		tok, err := engine.RandHex(16)
 		if err != nil {
 			log.Printf("[ui] 生成窗口控制令牌失败: %v", err)
 			return
@@ -67,13 +66,6 @@ func ensureControlServer(svc *WeftService) int {
 }
 
 // randHex 生成 n 字节的十六进制随机串。
-func randHex(n int) (string, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
-}
 
 // windowAction 按窗口 ID 找到目标窗口再执行动作。
 func (s *WeftService) windowAction(id, action string) {

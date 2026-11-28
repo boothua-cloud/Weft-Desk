@@ -18,3 +18,7 @@ release
 # 不再由 wails3 generate 覆盖，所以必须进版本库
 # wails3 generate syso 的产物，编译前生成、编译后删掉，不进版本库
 *.syso
+
+# go build 的产物（wails3 build 输出到 bin/，直接 go build 会落在根目录）
+/weft
+/weft.exe

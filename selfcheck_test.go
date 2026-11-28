@@ -5,27 +5,31 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/boothua/weft/internal/controlplane"
+	"github.com/boothua/weft/internal/model"
+	"github.com/boothua/weft/internal/store"
 )
 
 type fakeDevices struct {
-	devs []Device
+	devs []model.Device
 	err  error
 }
 
-func (f fakeDevices) Devices(string) ([]Device, error) { return f.devs, f.err }
+func (f fakeDevices) Devices(string) ([]model.Device, error) { return f.devs, f.err }
 
 func TestRouteVerdictFourSteps(t *testing.T) {
 	cases := []struct {
 		name string
-		in   RouteCheck
+		in   model.RouteCheck
 		want string
 		tone string
 	}{
-		{"没批准", RouteCheck{Known: true, Advertised: true}, "服务端还没批准这条路由", "warn"},
-		{"批准了没接受", RouteCheck{Known: true, Approved: true}, "已批准，本机还没接受", "warn"},
-		{"接受了但路由器离线", RouteCheck{Known: true, Approved: true, Accepted: true}, "提供这条路由的设备离线", "bad"},
-		{"全通", RouteCheck{Known: true, Approved: true, Accepted: true, PeerOnline: true}, "可用", "ok"},
-		{"没 Key 时只看本机", RouteCheck{Accepted: true, PeerOnline: true}, "可用", "ok"},
+		{"没批准", model.RouteCheck{Known: true, Advertised: true}, "服务端还没批准这条路由", "warn"},
+		{"批准了没接受", model.RouteCheck{Known: true, Approved: true}, "已批准，本机还没接受", "warn"},
+		{"接受了但路由器离线", model.RouteCheck{Known: true, Approved: true, Accepted: true}, "提供这条路由的设备离线", "bad"},
+		{"全通", model.RouteCheck{Known: true, Approved: true, Accepted: true, PeerOnline: true}, "可用", "ok"},
+		{"没 Key 时只看本机", model.RouteCheck{Accepted: true, PeerOnline: true}, "可用", "ok"},
 	}
 	for _, c := range cases {
 		v, tone := routeVerdict(c.in)
@@ -38,8 +42,8 @@ func TestRouteVerdictFourSteps(t *testing.T) {
 // 本机只看得见「已接受」的路由，没批准的那些要靠管理接口补。
 // 补完得把「通告了但没接受」也列出来，否则用户永远只看到「内网不通」。
 func TestMergeAdvertisedAddsUnaccepted(t *testing.T) {
-	rows := []RouteCheck{{Prefix: "10.0.0.0/24", Peer: "a", PeerIP: "100.64.0.3", Accepted: true, PeerOnline: true}}
-	cp := fakeDevices{devs: []Device{
+	rows := []model.RouteCheck{{Prefix: "10.0.0.0/24", Peer: "a", PeerIP: "100.64.0.3", Accepted: true, PeerOnline: true}}
+	cp := fakeDevices{devs: []model.Device{
 		{Name: "a", IP: "100.64.0.3", Online: true, AdvertisedRoutes: "10.0.0.0/24", ApprovedRoutes: "10.0.0.0/24"},
 		{Name: "b", IP: "100.64.0.5", Online: true, AdvertisedRoutes: "192.168.5.0/24"},
 	}}
@@ -57,7 +61,7 @@ func TestMergeAdvertisedAddsUnaccepted(t *testing.T) {
 
 // 列表接口挂了就原样返回，不能把「问不到」当成「没有路由」。
 func TestMergeAdvertisedKeepsRowsOnError(t *testing.T) {
-	rows := []RouteCheck{{Prefix: "10.0.0.0/24", Accepted: true}}
+	rows := []model.RouteCheck{{Prefix: "10.0.0.0/24", Accepted: true}}
 	out := mergeAdvertised(rows, fakeDevices{err: errors.New("boom")})
 	if len(out) != 1 || out[0].Known {
 		t.Fatalf("应保持原样: %+v", out)
@@ -65,7 +69,7 @@ func TestMergeAdvertisedKeepsRowsOnError(t *testing.T) {
 }
 
 func TestFinishSelfNotRunning(t *testing.T) {
-	got := finishSelf(SelfReport{Engine: "system", Backend: "未启动"})
+	got := finishSelf(model.SelfReport{Engine: "system", Backend: "未启动"})
 	if got.Tone != "bad" || !strings.Contains(got.Verdict, "没在运行") {
 		t.Fatalf("引擎没起来要说清楚: %q %q", got.Verdict, got.Tone)
 	}
@@ -73,10 +77,10 @@ func TestFinishSelfNotRunning(t *testing.T) {
 
 // 界面把 health / routes / problems 当数组用，序列化成 null 就整页白屏。
 func TestSelfReportJSONShape(t *testing.T) {
-	healthy := SelfReport{
+	healthy := model.SelfReport{
 		Engine: "system", Backend: "Running", LoggedIn: true,
 		TUN: "utun3", SelfIP: "100.64.0.13",
-		Control: ControlStat{OK: true, Version: "0.23.0"},
+		Control: model.ControlStat{OK: true, Version: "0.23.0"},
 	}
 	b, err := json.Marshal(finishSelf(healthy))
 	if err != nil {
@@ -103,7 +107,7 @@ func TestTidyNetErr(t *testing.T) {
 
 // 未连接时 SelfCheck 也必须给出结论，而不是返回错误——这正是这一页存在的意义。
 func TestSelfCheckWithoutEngine(t *testing.T) {
-	store, err := OpenStore()
+	store, err := store.Open()
 	if err != nil {
 		t.Skip("没有本地数据库，跳过: ", err)
 	}
@@ -114,7 +118,7 @@ func TestSelfCheckWithoutEngine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("不该报错: %v", err)
 	}
-	var rep SelfReport
+	var rep model.SelfReport
 	if err := json.Unmarshal([]byte(raw), &rep); err != nil {
 		t.Fatal(err)
 	}
@@ -127,11 +131,11 @@ func TestSelfCheckWithoutEngine(t *testing.T) {
 // 「本机还没接受」。根因是 Device.IP 把 v4 和 v6 拼成了一个字符串，
 // 跟 netmap 里的 100.x 对不上，管理接口那条就当成新路由又加了一行。
 func TestMergeAdvertisedCollapsesSameRoute(t *testing.T) {
-	rows := []RouteCheck{{
+	rows := []model.RouteCheck{{
 		Prefix: "10.0.1.0/24", Peer: "ubuntu", PeerIP: "100.64.0.5",
 		Accepted: true, PeerOnline: true,
 	}}
-	cp := fakeDevices{devs: []Device{{
+	cp := fakeDevices{devs: []model.Device{{
 		Name: "ubuntu", IP: "100.64.0.5", IPs: []string{"100.64.0.5", "fd7a::5"},
 		Online: true, AdvertisedRoutes: "10.0.1.0/24", ApprovedRoutes: "10.0.1.0/24",
 	}}}
@@ -151,8 +155,8 @@ func TestMergeAdvertisedCollapsesSameRoute(t *testing.T) {
 // 设备在服务端改过名：netmap 给 hostname、管理接口给 givenName。
 // 这时只有 IP 能对上，也不能再冒第二行。
 func TestMergeAdvertisedMatchesByIPNotName(t *testing.T) {
-	rows := []RouteCheck{{Prefix: "10.0.1.0/24", Peer: "old-name", PeerIP: "100.64.0.5", Accepted: true}}
-	cp := fakeDevices{devs: []Device{{
+	rows := []model.RouteCheck{{Prefix: "10.0.1.0/24", Peer: "old-name", PeerIP: "100.64.0.5", Accepted: true}}
+	cp := fakeDevices{devs: []model.Device{{
 		Name: "ubuntu", IP: "100.64.0.5", Online: true,
 		AdvertisedRoutes: "10.0.1.0/24", ApprovedRoutes: "10.0.1.0/24",
 	}}}
@@ -163,19 +167,10 @@ func TestMergeAdvertisedMatchesByIPNotName(t *testing.T) {
 
 // 一个节点两个地址时，比较用的那一个必须是 100.x
 func TestPrimaryIP(t *testing.T) {
-	if got := primaryIP([]string{"fd7a:115c:a1e0::5", "100.64.0.5"}); got != "100.64.0.5" {
+	if got := controlplane.PrimaryIP([]string{"fd7a:115c:a1e0::5", "100.64.0.5"}); got != "100.64.0.5" {
 		t.Fatalf("优先取 IPv4: %q", got)
 	}
-	if got := primaryIP(nil); got != "" {
+	if got := controlplane.PrimaryIP(nil); got != "" {
 		t.Fatalf("没有地址要返回空: %q", got)
-	}
-}
-
-func TestRelayLabel(t *testing.T) {
-	if got := relayLabel("headscale"); got != "自建中继" {
-		t.Fatalf("headscale 内嵌中继不该原样显示: %q", got)
-	}
-	if got := relayLabel("hkg"); got != "hkg" {
-		t.Fatalf("公网区域照原样: %q", got)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/boothua/weft/internal/model"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -289,7 +290,7 @@ func (s *WeftService) tunnelRunning() bool {
 	return running
 }
 
-func (s *WeftService) prefs() Config {
+func (s *WeftService) prefs() model.Config {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.cfg

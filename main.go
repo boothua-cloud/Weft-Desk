@@ -11,6 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/boothua/weft/internal/appinfo"
+	"github.com/boothua/weft/internal/engine"
+	"github.com/boothua/weft/internal/model"
+	"github.com/boothua/weft/internal/store"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -33,30 +37,30 @@ func main() {
 
 	// 提权子进程只做一件事（装/卸登录自启任务），做完即退，不建界面。
 	// 这样「装系统助手」点一下就能完成，不需要用户自己去右键以管理员运行。
-	if handled, code := runPrivilegedAction(); handled {
+	if handled, code := engine.RunPrivilegedAction(); handled {
 		os.Exit(code)
 	}
 
 	log.Printf("[boot] 平台=%s/%s 管理员=%v 数据目录=%s",
-		runtime.GOOS, runtime.GOARCH, isElevated(), dataDirDisplay())
+		runtime.GOOS, runtime.GOARCH, engine.IsElevated(), appinfo.DataDirDisplay())
 
 	// 单实例：登录自启任务与手动双击会撞在一起，两个进程抢同一张 WinTun 网卡、
 	// 同一个 SQLite 文件、同一个 tsnet 状态目录。
 	// 提权重启（--elevate-connect）是替换上一个进程：旧进程正在退出并已交锁，
 	// 这里短暂等待接管即可，不能直接判定「已有实例」。
-	if isReplaceLaunch() {
-		if !acquireSingleInstanceWait(6 * time.Second) {
+	if engine.IsReplaceLaunch() {
+		if !engine.AcquireSingleInstanceWait(6 * time.Second) {
 			log.Printf("[boot] 提权重启后仍没能接管单实例锁，退出")
 			return
 		}
-	} else if !acquireSingleInstance() {
+	} else if !engine.AcquireSingleInstance() {
 		log.Printf("[boot] 已有实例在运行，本次启动直接退出")
-		notifyAlreadyRunning()
+		engine.NotifyAlreadyRunning()
 		return
 	}
 
 	// 以提权助手身份被拉起时，接管进程去建 TUN / 配路由，不进 GUI。
-	if maybeRunHelper() {
+	if engine.MaybeRunHelper() {
 		return
 	}
 
@@ -66,7 +70,7 @@ func main() {
 		return
 	}
 
-	store, err := OpenStore()
+	store, err := store.Open()
 	if err != nil {
 		log.Fatal("打开本地数据库失败: ", err)
 	}
@@ -234,7 +238,7 @@ func main() {
 	}
 	ui := newAppUI(app, svc, w)
 	svc.mu.Lock()
-	svc.prefsHook = func(cfg Config) { ui.applyTray(cfg.MinimizeToTray) }
+	svc.prefsHook = func(cfg model.Config) { ui.applyTray(cfg.MinimizeToTray) }
 	svc.revealHook = ui.reveal
 	svc.devToolsHook = func() {
 		if w != nil {
@@ -246,7 +250,7 @@ func main() {
 
 	// 连接时权限不足会以管理员身份重启自己并带上 --elevate-connect，
 	// 重启后把连接接上，用户不用再点一次「连接」。
-	if wantsAutoConnect() {
+	if engine.WantsAutoConnect() {
 		go func() {
 			time.Sleep(1200 * time.Millisecond)
 			log.Printf("[tunnel] 已以管理员身份重启，自动连接")
@@ -260,11 +264,7 @@ func main() {
 	// 12 秒是等启动动画走完、首次状态刷新落定，避免和连接流程抢带宽。
 	go func() {
 		time.Sleep(12 * time.Second)
-		st := svc.checkUpdate()
-		if st.HasUpdate {
-			log.Printf("[update] 发现新版本 v%s（当前 v%s）", st.LatestVersion, st.CurrentVersion)
-			app.Event.Emit(updateEventAvailable, st)
-		}
+		svc.checkUpdateQuiet()
 	}()
 
 	if err := app.Run(); err != nil {
@@ -276,7 +276,7 @@ func main() {
 // setupLogFile 把日志同时写到数据目录下的 weft.log。
 // GUI 程序在 Windows 上没有控制台，出问题时用户能把文件发过来。
 func setupLogFile() {
-	dir := dataDir()
+	dir := appinfo.DataDir()
 	if dir == "" {
 		return
 	}

@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/boothua/weft/internal/controlplane"
+	"github.com/boothua/weft/internal/model"
 )
 
 // 假 headscale：GET 给当前策略，PUT 换掉。
@@ -45,8 +48,8 @@ func newPolicyTestService(t *testing.T, current string) (*WeftService, *fakePoli
 	t.Cleanup(srv.Close)
 
 	store := newTestStore(t)
-	cfg := Config{BaseURL: srv.URL, ControlPlane: srv.URL}
-	svc := &WeftService{store: store, cfg: cfg, cp: newControlPlane(cfg)}
+	cfg := model.Config{BaseURL: srv.URL, ControlPlane: srv.URL}
+	svc := &WeftService{store: store, cfg: cfg, cp: controlplane.New(cfg)}
 	return svc, fake
 }
 

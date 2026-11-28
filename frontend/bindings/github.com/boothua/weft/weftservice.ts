@@ -14,9 +14,6 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as time$0 from "../../../time/models.js";
 
-/**
- * ApplyUpdate 用后台助手替换旧文件并重新拉起应用。调用后本进程会退出。
- */
 export function ApplyUpdate(): $CancellablePromise<void> {
     return $Call.ByID(405797804);
 }
@@ -43,9 +40,6 @@ export function CheckPolicy(content: string): $CancellablePromise<void> {
     return $Call.ByID(3058755207, content);
 }
 
-/**
- * CheckUpdate 供界面的「检查更新」调用。
- */
 export function CheckUpdate(): $CancellablePromise<string> {
     return $Call.ByID(1663671900);
 }
@@ -123,17 +117,10 @@ export function Disconnect(): $CancellablePromise<string> {
     return $Call.ByID(58482593);
 }
 
-/**
- * DownloadInstaller 用于当前安装位置不可写的情况：把安装包下到下载目录
- * 再打开它，剩下的交给系统安装器。
- */
 export function DownloadInstaller(): $CancellablePromise<string> {
     return $Call.ByID(3955549953);
 }
 
-/**
- * DownloadUpdate 下载并暂存新版。完成后调用 ApplyUpdate 重启生效。
- */
 export function DownloadUpdate(): $CancellablePromise<string> {
     return $Call.ByID(2718139518);
 }
@@ -282,9 +269,6 @@ export function OpenInBrowser(id: string): $CancellablePromise<void> {
     return $Call.ByID(144421748, id);
 }
 
-/**
- * OpenReleasePage 用系统浏览器打开发布页。
- */
 export function OpenReleasePage(): $CancellablePromise<void> {
     return $Call.ByID(2253741431);
 }
@@ -507,9 +491,6 @@ export function UninstallHelper(): $CancellablePromise<string> {
     return $Call.ByID(1503772403);
 }
 
-/**
- * UpdateInfo 返回当前更新状态，前端在弹窗打开时先拿一次。
- */
 export function UpdateInfo(): $CancellablePromise<string> {
     return $Call.ByID(2842617570);
 }

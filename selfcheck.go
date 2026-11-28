@@ -9,6 +9,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/boothua/weft/internal/controlplane"
+	"github.com/boothua/weft/internal/model"
 )
 
 // SelfCheck 是「连接诊断」页顶部的本机自检。
@@ -21,7 +24,7 @@ func (s *WeftService) SelfCheck() (string, error) {
 	eng, cfg := s.engine, s.cfg
 	s.mu.Unlock()
 
-	rep := SelfReport{At: time.Now().Format(time.RFC3339)}
+	rep := model.SelfReport{At: time.Now().Format(time.RFC3339)}
 	if eng == nil {
 		rep.Backend = "未启动"
 		rep.Verdict, rep.Tone = "引擎还没创建", "bad"
@@ -31,7 +34,7 @@ func (s *WeftService) SelfCheck() (string, error) {
 	rep.Engine = eng.Name()
 
 	if snap, ok := eng.(interface {
-		Snapshot(context.Context) (SelfReport, error)
+		Snapshot(context.Context) (model.SelfReport, error)
 	}); ok {
 		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 		sr, err := snap.Snapshot(ctx)
@@ -66,9 +69,9 @@ func (s *WeftService) SelfCheck() (string, error) {
 
 // probeControl 打一次 /version：这个端点不需要钥匙，能通就说明服务端可达，
 // 顺带拿到版本号。失败时把原因写清楚，别只给一个 false。
-func probeControl(baseURL string) ControlStat {
+func probeControl(baseURL string) model.ControlStat {
 	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	st := ControlStat{URL: base}
+	st := model.ControlStat{URL: base}
 	if base == "" {
 		st.Err = "没填服务端地址"
 		return st
@@ -82,7 +85,7 @@ func probeControl(baseURL string) ControlStat {
 	}
 	req.Header.Set("Accept", "application/json")
 	start := time.Now()
-	resp, err := clientFor().Do(req)
+	resp, err := controlplane.ClientFor().Do(req)
 	st.Ms = float64(time.Since(start).Microseconds()) / 1000
 	if err != nil {
 		st.Err = tidyNetErr(err)
@@ -123,7 +126,7 @@ func tidyNetErr(err error) string {
 // deviceLister 只要列表这一个方法：补路由状态不需要整个管理接口，
 // 测试也因此不用把几十个方法都实现一遍。
 type deviceLister interface {
-	Devices(user string) ([]Device, error)
+	Devices(user string) ([]model.Device, error)
 }
 
 // mergeAdvertised 用管理接口把「通告 / 批准」两列补上，并且把
@@ -133,13 +136,13 @@ type deviceLister interface {
 // 两个来源说的是同一条路由：netmap 只给「已接受」，管理接口给
 // 「已通告 / 已批准」。必须合成一行，否则页面上会同时出现
 // 「可用」和「本机还没接受」两条结论，看的人只会觉得这功能坏了。
-func mergeAdvertised(rows []RouteCheck, cp deviceLister) []RouteCheck {
+func mergeAdvertised(rows []model.RouteCheck, cp deviceLister) []model.RouteCheck {
 	devs, err := cp.Devices("")
 	if err != nil {
 		return collapseRoutes(rows)
 	}
-	byIP := make(map[string]Device, len(devs))
-	byName := make(map[string]Device, len(devs))
+	byIP := make(map[string]model.Device, len(devs))
+	byName := make(map[string]model.Device, len(devs))
 	for _, d := range devs {
 		if d.IP != "" {
 			byIP[d.IP] = d
@@ -172,7 +175,7 @@ func mergeAdvertised(rows []RouteCheck, cp deviceLister) []RouteCheck {
 	}
 	for _, d := range devs {
 		for _, p := range splitList(d.AdvertisedRoutes) {
-			rows = append(rows, RouteCheck{
+			rows = append(rows, model.RouteCheck{
 				Prefix: p, Peer: d.Name, PeerIP: d.IP,
 				Known:      true,
 				Advertised: true,
@@ -187,8 +190,8 @@ func mergeAdvertised(rows []RouteCheck, cp deviceLister) []RouteCheck {
 // collapseRoutes 把「同一个前缀 + 同一台设备」的行合成一条。
 // 合并规则是「任一边知道就算知道、任一边通就算通」——后到的
 // 管理接口永远不知道客户端接没接受，不能用它覆盖 Accepted。
-func collapseRoutes(rows []RouteCheck) []RouteCheck {
-	out := make([]RouteCheck, 0, len(rows))
+func collapseRoutes(rows []model.RouteCheck) []model.RouteCheck {
+	out := make([]model.RouteCheck, 0, len(rows))
 	byIP := make(map[string]int, len(rows))
 	byName := make(map[string]int, len(rows))
 	for _, r := range rows {
@@ -222,7 +225,7 @@ func collapseRoutes(rows []RouteCheck) []RouteCheck {
 	return out
 }
 
-func mergeRoute(a, b RouteCheck) RouteCheck {
+func mergeRoute(a, b model.RouteCheck) model.RouteCheck {
 	a.Known = a.Known || b.Known
 	a.Advertised = a.Advertised || b.Advertised
 	a.Approved = a.Approved || b.Approved
@@ -246,18 +249,8 @@ func hasRoute(list, prefix string) bool {
 	return false
 }
 
-// relayLabel 把 DERP 区域代码翻成一眼能懂的字。headscale 内嵌中继的
-// region code 就叫 "headscale"，原样显示像是服务端地址，
-// 用户会以为「出口」走的是服务端。
-func relayLabel(code string) string {
-	if strings.EqualFold(code, "headscale") {
-		return "自建中继"
-	}
-	return code
-}
-
 // routeVerdict 按四步往下走，停在哪一步就说哪一步的事。
-func routeVerdict(r RouteCheck) (string, string) {
+func routeVerdict(r model.RouteCheck) (string, string) {
 	switch {
 	case r.Known && !r.Approved:
 		return "服务端还没批准这条路由", "warn"
@@ -271,7 +264,7 @@ func routeVerdict(r RouteCheck) (string, string) {
 
 // finishSelf 把散落的字段收成一句结论。顺序按「越致命越先说」：
 // 引擎没起来 > 没登录 > TUN 没建 > 服务端不通 > 健康告警。
-func finishSelf(rep SelfReport) SelfReport {
+func finishSelf(rep model.SelfReport) model.SelfReport {
 	var bad, warn []string
 	if rep.Backend == "未启动" || rep.Backend == "读不到状态" || rep.Backend == "不支持自检" {
 		bad = append(bad, "引擎没在运行（"+rep.Backend+"）")
@@ -325,7 +318,7 @@ func finishSelf(rep SelfReport) SelfReport {
 		rep.Health = []string{}
 	}
 	if rep.Routes == nil {
-		rep.Routes = []RouteCheck{}
+		rep.Routes = []model.RouteCheck{}
 	}
 	return rep
 }

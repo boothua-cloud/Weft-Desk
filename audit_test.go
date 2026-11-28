@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/boothua/weft/internal/controlplane"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -69,15 +70,15 @@ func TestAppTargetURL(t *testing.T) {
 
 // 服务地址只接受带协议的 http/https，明文要在调用方那里被标出来。
 func TestValidateBaseURL(t *testing.T) {
-	if got, plain, err := validateBaseURL("https://hs.example.com/"); err != nil || plain || got != "https://hs.example.com" {
+	if got, plain, err := controlplane.ValidateBaseURL("https://hs.example.com/"); err != nil || plain || got != "https://hs.example.com" {
 		t.Errorf("https 应放行并去掉末尾斜杠: %q %v %v", got, plain, err)
 	}
-	if got, plain, err := validateBaseURL("http://10.0.0.2:8080"); err != nil || !plain || got != "http://10.0.0.2:8080" {
+	if got, plain, err := controlplane.ValidateBaseURL("http://10.0.0.2:8080"); err != nil || !plain || got != "http://10.0.0.2:8080" {
 		t.Errorf("http 应放行但标记明文: %q %v %v", got, plain, err)
 	}
 	for _, in := range []string{"", "hs.example.com", "ftp://hs", "https://"} {
-		if _, _, err := validateBaseURL(in); err == nil {
-			t.Errorf("validateBaseURL(%q) 应该拒绝", in)
+		if _, _, err := controlplane.ValidateBaseURL(in); err == nil {
+			t.Errorf("controlplane.ValidateBaseURL(%q) 应该拒绝", in)
 		}
 	}
 }

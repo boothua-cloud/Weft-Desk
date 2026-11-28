@@ -12,31 +12,39 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/boothua/weft/internal/appinfo"
+	"github.com/boothua/weft/internal/appsync"
+	"github.com/boothua/weft/internal/controlplane"
+	"github.com/boothua/weft/internal/engine"
+	"github.com/boothua/weft/internal/model"
+	"github.com/boothua/weft/internal/netio"
+	"github.com/boothua/weft/internal/secret"
+	"github.com/boothua/weft/internal/store"
+	"github.com/boothua/weft/internal/update"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // WeftService 是前端唯一入口。所有方法以 JSON 字符串交换数据。
 type WeftService struct {
-	store     *Store
+	store     *store.Store
 	app       *application.App
 	mu        sync.Mutex
-	cfg       Config
-	cp        ControlPlane
-	engine    TunnelEngine
-	cap       Capabilities
+	cfg       model.Config
+	cp        controlplane.ControlPlane
+	engine    engine.TunnelEngine
+	cap       model.Capabilities
 	connected bool
 	started   time.Time
-	fw        *forwardHub
+	fw        *netio.Hub
 	forwardOn bool // 隧道起来后端口映射是否应该监听
 	// prefsHook 在界面偏好（托盘开关等）变更后回调，用于即时生效，不重建引擎。
-	prefsHook func(Config)
+	prefsHook func(model.Config)
 	// revealHook 把启动时隐藏的主窗口显示出来，由前端在启动画面画好后调用。
 	revealHook func()
 	// devToolsHook 打开主窗口的 WebView 检查器。
@@ -46,9 +54,9 @@ type WeftService struct {
 	// keyProbe 是「服务端认不认这把管理 Key」的最近一次结论。
 	keyProbe keyProbe
 	// upd 是自动更新的运行态（框架的 Updater + 最近一次检查结果）。
-	upd *updateState
+	upd *update.Manager
 	// syncSrv 是应用书签同步的 tailnet 监听，只在开关打开时存在。
-	syncSrv *syncServer
+	syncSrv *appsync.Server
 	// mainWindowID 是主界面窗口的 ID。0 表示还不知道（放行，避免误伤启动流程）。
 	mainWindowID uint
 }
@@ -108,17 +116,18 @@ func (s *WeftService) RevealWindow() error {
 	return nil
 }
 
-func NewWeftService(store *Store) *WeftService {
+func NewWeftService(store *store.Store) *WeftService {
 	cfg, err := store.GetConfig()
 	if err != nil {
-		cfg = Config{ControlPlane: "headscale", TunnelEngine: "system", Hostname: defaultHostname(),
+		cfg = model.Config{ControlPlane: "headscale", TunnelEngine: "system", Hostname: appinfo.DefaultHostname(),
 			SocksEnabled: true, SocksPort: 1080, AutoForward: true}
 	}
 	// cap 必须给个初值：零值里 CanCreateUser=false，前端会把写操作按钮全禁掉
-	s := &WeftService{store: store, cfg: cfg, cap: defaultCapabilities(), upd: &updateState{}, syncSrv: &syncServer{}}
+	s := &WeftService{store: store, cfg: cfg, cap: defaultCapabilities()}
+	s.syncSrv = appsync.New(store, func() string { return s.syncToken(false) }, s.selfPlace, s.listenTailnet)
 	s.reload()
 	s.mu.Lock()
-	s.fw = newForwardHub(s.engine.Dialer())
+	s.fw = netio.New(s.engine.Dialer())
 	s.mu.Unlock()
 	return s
 }
@@ -139,12 +148,12 @@ func (s *WeftService) autoConnect() {
 	// 首次使用既没身份也没 Auth Key 时不自动连，否则一打开就弹管理员授权。
 	// 用户主动点「连接」时才走首次授权流程。
 	log.Printf("[boot] autoConnect 检查：autoConnect=%v engine=%v identity=%v authKey=%v baseURL=%s",
-		cfg.AutoConnect, eng != nil, hasNodeIdentity(cfg), secretGet(secretAuth) != "", cfg.BaseURL)
+		cfg.AutoConnect, eng != nil, hasNodeIdentity(cfg), secret.Get(secret.Auth) != "", cfg.BaseURL)
 	if !cfg.AutoConnect || eng == nil {
 		log.Printf("[boot] 跳过自动连接：开关已关或引擎为空")
 		return
 	}
-	if !hasNodeIdentity(cfg) && secretGet(secretAuth) == "" {
+	if !hasNodeIdentity(cfg) && secret.Get(secret.Auth) == "" {
 		log.Printf("[boot] 跳过自动连接：没有节点身份也没有 Auth Key（首次使用）")
 		return
 	}
@@ -184,20 +193,20 @@ func (s *WeftService) reload() {
 	old, cfg, fw := s.engine, s.cfg, s.fw
 	s.mu.Unlock()
 	if fw != nil {
-		fw.closeAll()
+		fw.CloseAll()
 	}
 	s.stopSyncServer() // 旧引擎一关，监听也得跟着撤
 	if old != nil {
 		old.Shutdown()
 	}
 	s.mu.Lock()
-	s.cp = newControlPlane(cfg)
-	s.engine = newTunnelEngine(cfg)
+	s.cp = controlplane.New(cfg)
+	s.engine = engine.New(cfg)
 	eng := s.engine
 	s.forwardOn = false
 	s.mu.Unlock()
 	if fw != nil {
-		fw.setDialer(eng.Dialer())
+		fw.SetDialer(eng.Dialer())
 	}
 }
 
@@ -209,7 +218,7 @@ func (s *WeftService) shutdown() {
 	s.mu.Unlock()
 	s.stopSyncServer()
 	if fw != nil {
-		fw.closeAll()
+		fw.CloseAll()
 	}
 	if e != nil {
 		e.Shutdown()
@@ -231,15 +240,15 @@ func (s *WeftService) cacheKey(name string) string {
 	return name + ":" + id
 }
 
-func cachedList[T any](st *Store, key string, fetch func() ([]T, error)) (string, error) {
+func cachedList[T any](st *store.Store, key string, fetch func() ([]T, error)) (string, error) {
 	items, err := fetch()
 	if err == nil {
 		_ = st.CachePut(key, items)
-		return toJSON(Cached[T]{Items: items, Source: "live", UpdatedAt: fmtTime(time.Now())})
+		return toJSON(model.Cached[T]{Items: items, Source: "live", UpdatedAt: fmtTime(time.Now())})
 	}
 	var cached []T
 	if ts, ok := st.CacheRead(key, &cached); ok {
-		return toJSON(Cached[T]{Items: cached, Source: "cache", UpdatedAt: fmtTime(parseTS(ts)), Error: err.Error()})
+		return toJSON(model.Cached[T]{Items: cached, Source: "cache", UpdatedAt: fmtTime(parseTS(ts)), Error: err.Error()})
 	}
 	return "", err
 }
@@ -285,7 +294,7 @@ func (s *WeftService) SaveConfig(ctx context.Context, raw string) error {
 	if !s.callerAllowed(ctx) {
 		return errNotMainWindow
 	}
-	var c Config
+	var c model.Config
 	if err := json.Unmarshal([]byte(raw), &c); err != nil {
 		return err
 	}
@@ -296,13 +305,13 @@ func (s *WeftService) SaveConfig(ctx context.Context, raw string) error {
 		c.TunnelEngine = "system"
 	}
 	if c.Hostname == "" {
-		c.Hostname = defaultHostname()
+		c.Hostname = appinfo.DefaultHostname()
 	}
 	if c.SocksPort == 0 {
 		c.SocksPort = 1080
 	}
 	if strings.TrimSpace(c.BaseURL) != "" {
-		base, plain, err := validateBaseURL(c.BaseURL)
+		base, plain, err := controlplane.ValidateBaseURL(c.BaseURL)
 		if err != nil {
 			return err
 		}
@@ -314,7 +323,7 @@ func (s *WeftService) SaveConfig(ctx context.Context, raw string) error {
 	// 导入的配置、老版本留下的配置都可能带着解析不了的 CA。
 	// 这里挡住，不然 reload 之后每次请求都只报一个看不懂的错误。
 	if ca := strings.TrimSpace(c.CACert); ca != "" {
-		if _, err := certPool(ca); err != nil {
+		if _, err := controlplane.CertPool(ca); err != nil {
 			return err
 		}
 	}
@@ -331,7 +340,7 @@ func (s *WeftService) SaveConfig(ctx context.Context, raw string) error {
 		return err
 	}
 	if c.AuthKey != "" {
-		if err := secretSet(secretAuth, c.AuthKey); err != nil {
+		if err := secret.Set(secret.Auth, c.AuthKey); err != nil {
 			return err
 		}
 	}
@@ -385,7 +394,7 @@ func (s *WeftService) SwitchProfile(id string) error {
 
 	// 1) 当前凭证存回旧 profile
 	cfg.ProfileID = oldID
-	profileSecrets(oldID)
+	store.ProfileSecrets(oldID)
 
 	// 2) 断开旧隧道（reload 里也会关，但先断开让界面立刻回到未连接）
 	s.mu.Lock()
@@ -414,7 +423,7 @@ func (s *WeftService) SwitchProfile(id string) error {
 	cfg.AuthKey = ""
 
 	// 4) 目标凭证写回固定条目，其余代码继续读固定 key
-	loadProfileSecrets(id)
+	store.LoadProfileSecrets(id)
 
 	if err := s.store.SaveConfig(cfg); err != nil {
 		return err
@@ -442,11 +451,11 @@ func (s *WeftService) SaveProfile(name string) error {
 
 	// 先把当前凭证归到当前 profile 名下，再复制一份给新 profile
 	cfg.ProfileID = cfg.ActiveID
-	profileSecrets(cfg.ActiveID)
-	if v := secretGet(secretMain); v != "" {
+	store.ProfileSecrets(cfg.ActiveID)
+	if v := secret.Get(secret.Main); v != "" {
 		// 新条目一开始沿用同一份凭证，用户可在设置里改
 		id := fmt.Sprintf("p%d", time.Now().UnixNano())
-		p := Profile{
+		p := model.Profile{
 			ID:              id,
 			Name:            name,
 			ControlPlane:    cfg.ControlPlane,
@@ -479,7 +488,7 @@ func (s *WeftService) DeleteProfile(ctx context.Context, id string) error {
 	cfg := s.cfg
 	s.mu.Unlock()
 
-	keep := make([]Profile, 0, len(cfg.Profiles))
+	keep := make([]model.Profile, 0, len(cfg.Profiles))
 	found := false
 	next := ""
 	for _, p := range cfg.Profiles {
@@ -540,11 +549,11 @@ func (s *WeftService) DeleteProfile(ctx context.Context, id string) error {
 	// 用 Delete 而不是写空串：钥匙串里不该留一堆空条目。
 	// 服务端那把 Key 不顺手吊销 —— 同一个管理 Key 可能还在别的地方用，
 	// 删本地配置不该把别人的钥匙作废。
-	secretDelete(secretMain + "." + id)
-	secretDelete(secretAuth + "." + id)
+	secret.Delete(secret.Main + "." + id)
+	secret.Delete(secret.Auth + "." + id)
 
 	if deletingActive {
-		loadProfileSecrets(next)
+		store.LoadProfileSecrets(next)
 		s.reload()
 		s.store.AddAudit("删除服务端", id)
 		s.autoConnect()
@@ -586,7 +595,7 @@ func (s *WeftService) SaveProfileRaw(ctx context.Context, raw string) (string, e
 	if in.Name == "" {
 		return "", fmt.Errorf("给这个服务端起个名字")
 	}
-	base, plain, err := validateBaseURL(in.BaseURL)
+	base, plain, err := controlplane.ValidateBaseURL(in.BaseURL)
 	if err != nil {
 		return "", err
 	}
@@ -609,20 +618,20 @@ func (s *WeftService) SaveProfileRaw(ctx context.Context, raw string) (string, e
 	// 当前激活的服务端：凭证还没归档的话先归到它名下，避免被覆盖
 	if changedActive {
 		cfg.ProfileID = cfg.ActiveID
-		profileSecrets(cfg.ActiveID)
+		store.ProfileSecrets(cfg.ActiveID)
 	}
 
 	hostname := strings.TrimSpace(in.Hostname)
 	if hostname == "" {
-		hostname = defaultHostname()
+		hostname = appinfo.DefaultHostname()
 	}
 	// CA 现在就解析一遍，填错了当场报，别等连不上再猜
 	if ca := strings.TrimSpace(in.CACert); ca != "" {
-		if _, err := certPool(ca); err != nil {
+		if _, err := controlplane.CertPool(ca); err != nil {
 			return "", err
 		}
 	}
-	p := Profile{
+	p := model.Profile{
 		ID:              id,
 		Name:            in.Name,
 		ControlPlane:    "headscale",
@@ -652,14 +661,14 @@ func (s *WeftService) SaveProfileRaw(ctx context.Context, raw string) (string, e
 
 	// 凭证：留空表示沿用原来的，要清掉得点弹窗里的「清空」
 	if v := strings.TrimSpace(in.APIKey); v != "" {
-		_ = secretSet(secretMain+"."+id, v)
+		_ = secret.Set(secret.Main+"."+id, v)
 	} else if in.ClearAPIKey {
-		secretDelete(secretMain + "." + id)
+		secret.Delete(secret.Main + "." + id)
 	}
 	if v := strings.TrimSpace(in.AuthKey); v != "" {
-		_ = secretSet(secretAuth+"."+id, v)
+		_ = secret.Set(secret.Auth+"."+id, v)
 	} else if in.ClearAuthKey {
-		secretDelete(secretAuth + "." + id)
+		secret.Delete(secret.Auth + "." + id)
 	}
 
 	if changedActive {
@@ -670,7 +679,7 @@ func (s *WeftService) SaveProfileRaw(ctx context.Context, raw string) (string, e
 		cfg.ControlInsecure = p.ControlInsecure
 		cfg.ControlPlane = p.ControlPlane
 		cfg.AuthKey = ""
-		loadProfileSecrets(id)
+		store.LoadProfileSecrets(id)
 	}
 
 	if err := s.store.SaveConfig(cfg); err != nil {
@@ -719,7 +728,7 @@ func (s *WeftService) RenameProfile(id, name string) error {
 }
 
 // syncProfileFromConfig 把顶层字段写回 profiles 里对应的那一项。
-func syncProfileFromConfig(c *Config) {
+func syncProfileFromConfig(c *model.Config) {
 	for i := range c.Profiles {
 		if c.Profiles[i].ID != c.ActiveID {
 			continue
@@ -735,7 +744,7 @@ func syncProfileFromConfig(c *Config) {
 			c.Profiles[i].ControlPlane = c.ControlPlane
 		}
 		if c.Profiles[i].Name == "" {
-			c.Profiles[i].Name = profileLabel(c.BaseURL, "服务端")
+			c.Profiles[i].Name = store.ProfileLabel(c.BaseURL, "服务端")
 		}
 		return
 	}
@@ -787,18 +796,18 @@ func (s *WeftService) SetCredential(ctx context.Context, kind, value string) err
 	if !s.callerAllowed(ctx) {
 		return errNotMainWindow
 	}
-	key := secretMain
+	key := secret.Main
 	switch kind {
 	case "auth":
-		key = secretAuth
+		key = secret.Auth
 	case "client":
-		key = secretClient
+		key = secret.Client
 	}
 	if value == "" {
-		secretDelete(key)
+		secret.Delete(key)
 		return nil
 	}
-	if err := secretSet(key, value); err != nil {
+	if err := secret.Set(key, value); err != nil {
 		return err
 	}
 	s.store.AddAudit("更新凭证", kind)
@@ -811,14 +820,14 @@ func (s *WeftService) RevealCredential(ctx context.Context, kind string) (string
 	if !s.callerAllowed(ctx) {
 		return "", errNotMainWindow
 	}
-	key := secretMain
+	key := secret.Main
 	switch kind {
 	case "auth":
-		key = secretAuth
+		key = secret.Auth
 	case "client":
-		key = secretClient
+		key = secret.Client
 	}
-	v := strings.TrimSpace(secretGet(key))
+	v := strings.TrimSpace(secret.Get(key))
 	if v == "" {
 		return "", fmt.Errorf("尚未设置")
 	}
@@ -829,15 +838,15 @@ func (s *WeftService) TestConnection() (string, error) {
 	cap, err := s.cp.Probe()
 	// 手动点「测试连接」得到的就是最新结论，直接记下来，
 	// 省得界面等下一轮轮询才知道这把钥匙到底行不行
-	key := strings.TrimSpace(secretGet(secretMain))
+	key := strings.TrimSpace(secret.Get(secret.Main))
 	s.mu.Lock()
 	switch {
 	case key == "":
 		s.keyProbe = keyProbe{}
 	case err == nil:
 		s.keyProbe = keyProbe{key: key, at: time.Now()}
-	case isRejected(err):
-		s.keyProbe = keyProbe{key: key, bad: true, msg: short([]byte(err.Error())), at: time.Now()}
+	case controlplane.IsRejected(err):
+		s.keyProbe = keyProbe{key: key, bad: true, msg: controlplane.Short([]byte(err.Error())), at: time.Now()}
 	}
 	s.mu.Unlock()
 	if err != nil {
@@ -851,7 +860,7 @@ func (s *WeftService) TestConnection() (string, error) {
 }
 
 // parseExpires 兼容几种时间写法。
-// APIKey.Expires 是 fmtTS 出来的「2006-01-02 15:04」（空格分隔），
+// APIKey.Expires 是 controlplane.FmtTS 出来的「2006-01-02 15:04」（空格分隔），
 // 直接按 RFC3339 解析会失败，之前自动续期就是卡在这里。
 func parseExpires(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
@@ -879,7 +888,7 @@ func (s *WeftService) EnsureAPIKeyFresh(window time.Duration) (bool, error) {
 	cp, cfg := s.cp, s.cfg
 	s.mu.Unlock()
 
-	cur := strings.TrimSpace(secretGet(secretMain))
+	cur := strings.TrimSpace(secret.Get(secret.Main))
 	if cur == "" || cp == nil {
 		return false, nil
 	}
@@ -888,9 +897,9 @@ func (s *WeftService) EnsureAPIKeyFresh(window time.Duration) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	var self *APIKey
+	var self *model.APIKey
 	for i := range keys {
-		if keyPrefixMatches(cur, keys[i].Prefix) {
+		if controlplane.KeyPrefixMatches(cur, keys[i].Prefix) {
 			self = &keys[i]
 			break
 		}
@@ -912,13 +921,13 @@ func (s *WeftService) EnsureAPIKeyFresh(window time.Duration) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("创建新密钥失败: %w", err)
 	}
-	if err := secretSet(secretMain, fresh); err != nil {
+	if err := secret.Set(secret.Main, fresh); err != nil {
 		// 新钥匙没存下来就别留着它：服务端那边会变成一把 90 天有效、
 		// 本地没有记录的管理凭据，谁也不知道它属于谁。
 		// 明文本里没有服务端 ID，只能回列表里按前缀认。
 		if keys, kerr := cp.APIKeys(); kerr == nil {
 			for i := range keys {
-				if !keyPrefixMatches(fresh, keys[i].Prefix) {
+				if !controlplane.KeyPrefixMatches(fresh, keys[i].Prefix) {
 					continue
 				}
 				if eerr := cp.ExpireAPIKey(keys[i].Prefix, keys[i].ID); eerr != nil {
@@ -950,7 +959,7 @@ func (s *WeftService) RenewAPIKey(days int) error {
 	if cp == nil {
 		return fmt.Errorf("尚未配置服务端")
 	}
-	cur := strings.TrimSpace(secretGet(secretMain))
+	cur := strings.TrimSpace(secret.Get(secret.Main))
 	if cur == "" {
 		return fmt.Errorf("还没有管理密钥，请先在连接设置里填一个")
 	}
@@ -958,9 +967,9 @@ func (s *WeftService) RenewAPIKey(days int) error {
 	if err != nil {
 		return err
 	}
-	var self *APIKey
+	var self *model.APIKey
 	for i := range keys {
-		if keyPrefixMatches(cur, keys[i].Prefix) {
+		if controlplane.KeyPrefixMatches(cur, keys[i].Prefix) {
 			self = &keys[i]
 			break
 		}
@@ -969,7 +978,7 @@ func (s *WeftService) RenewAPIKey(days int) error {
 	if err != nil {
 		return fmt.Errorf("创建新密钥失败: %w", err)
 	}
-	if err := secretSet(secretMain, fresh); err != nil {
+	if err := secret.Set(secret.Main, fresh); err != nil {
 		return fmt.Errorf("保存新密钥失败: %w", err)
 	}
 	if self == nil {
@@ -1000,8 +1009,8 @@ func (s *WeftService) watchAPIKeyExpiry() {
 // defaultCapabilities 是「还没探测过」时的取值。
 // 写操作先放行 —— 真不支持的话服务端会回错，不会假成功；
 // 一律给 false 反而会让 UI 把按钮禁掉，用户连试都试不了。
-func defaultCapabilities() Capabilities {
-	return Capabilities{
+func defaultCapabilities() model.Capabilities {
+	return model.Capabilities{
 		APIStyle: "v1 REST", CanCreateUser: true,
 		CanManageAPIKeys: true, CanManageACL: true,
 	}
@@ -1033,7 +1042,7 @@ func (s *WeftService) GetState() (string, error) {
 	e := s.engine // 和 cfg 一起取：reload 会在锁里换掉它
 	s.mu.Unlock()
 	hasKey, keyWhy := s.apiKeyStatus()
-	st := State{
+	st := model.State{
 		Connected: connected, ControlPlane: cfg.ControlPlane,
 		Endpoint: cfg.BaseURL, Engine: e.Name(),
 		EngineReady: e.Available(), CLIReady: e.Available(),
@@ -1042,10 +1051,10 @@ func (s *WeftService) GetState() (string, error) {
 		APIKeyIssue:  keyWhy,
 		Capabilities: cap,
 		Platform:     runtime.GOOS,
-		AppVersion:   appVersion,
-		DataDir:      dataDirDisplay(),
+		AppVersion:   appinfo.Version,
+		DataDir:      appinfo.DataDirDisplay(),
 	}
-	if pr, ok := e.(interface{ Peers() []PeerInfo }); ok {
+	if pr, ok := e.(interface{ Peers() []model.PeerInfo }); ok {
 		st.Peers = pr.Peers()
 	}
 	if le, ok := e.(interface{ LastError() string }); ok {
@@ -1094,11 +1103,11 @@ func (s *WeftService) GetState() (string, error) {
 // 顺序：空 → 形状不对 → 服务端确认过没有。最后一步必须等服务端真的点头：
 // 以前形状对就先显示，于是填一把假的整组菜单都冒出来，点进去全是 401。
 func (s *WeftService) apiKeyStatus() (bool, string) {
-	key := strings.TrimSpace(secretGet(secretMain))
+	key := strings.TrimSpace(secret.Get(secret.Main))
 	if key == "" {
 		return false, ""
 	}
-	if isAuthKey(key) {
+	if controlplane.IsAuthKey(key) {
 		return false, "这是节点注册的 Auth Key，管理接口不认。改用 `headscale apikeys create` 生成的 Key"
 	}
 	s.mu.Lock()
@@ -1110,7 +1119,7 @@ func (s *WeftService) apiKeyStatus() (bool, string) {
 		}
 		return true, ""
 	}
-	if !looksLikeAPIKey(key) {
+	if !controlplane.LooksLikeAPIKey(key) {
 		return false, "格式不正确：headscale 的管理 Key 以 `hskey-` 开头"
 	}
 	// 格式对、但还没跟服务端确认过，先不亮入口。
@@ -1125,8 +1134,8 @@ func (s *WeftService) apiKeyStatus() (bool, string) {
 // 由 GetState 触发：界面每 3 秒轮询一次，所以配好或清掉 Key 之后最多几秒，
 // 入口就会跟着出现/消失，不用在每个保存、切换的路径上各挂一份。
 func (s *WeftService) ensureAPIKeyProbe() {
-	key := strings.TrimSpace(secretGet(secretMain))
-	if key == "" || isAuthKey(key) {
+	key := strings.TrimSpace(secret.Get(secret.Main))
+	if key == "" || controlplane.IsAuthKey(key) {
 		return // 这两种情况 apiKeyStatus 已经能直接回答，不必打接口
 	}
 	s.mu.Lock()
@@ -1148,15 +1157,15 @@ func (s *WeftService) ensureAPIKeyProbe() {
 		} else {
 			_, err = cp.Devices("")
 		}
-		cur := strings.TrimSpace(secretGet(secretMain))
+		cur := strings.TrimSpace(secret.Get(secret.Main))
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		switch {
 		case cur != key:
 			// 问的过程中钥匙被改了，这次结论作废，下一轮重新问
 			s.keyProbe = keyProbe{}
-		case isRejected(err):
-			s.keyProbe = keyProbe{key: key, bad: true, msg: short([]byte(err.Error())), at: time.Now()}
+		case controlplane.IsRejected(err):
+			s.keyProbe = keyProbe{key: key, bad: true, msg: controlplane.Short([]byte(err.Error())), at: time.Now()}
 			log.Printf("[keys] 管理 Key 被拒绝，服务端管理入口已收起: %v", err)
 		case err == nil:
 			s.keyProbe = keyProbe{key: key, at: time.Now()}
@@ -1202,7 +1211,7 @@ func (s *WeftService) Connect() (string, error) {
 	if err := s.engine.Up(s.cfg); err != nil {
 		// Windows 权限不够不是错误终点：拉起一次 UAC，以管理员身份重启自己，
 		// 重启后自动连接。用户只需要在系统弹窗里点一次「是」。
-		if errors.Is(err, errNeedElevation) {
+		if errors.Is(err, engine.ErrNeedElevation) {
 			// 诊断模式（--diag）没有界面可重启，也不能替用户弹窗：
 			// 直接把话说清楚，让他在管理员终端里跑。
 			s.mu.Lock()
@@ -1213,8 +1222,8 @@ func (s *WeftService) Connect() (string, error) {
 			}
 			// 先把单实例锁交出去，提权后的新进程才能接管；
 			// 否则新进程会判定「已有实例」而直接退出，用户看到窗口一闪就没。
-			releaseSingleInstance()
-			if e := relaunchElevatedConnect(); e != nil {
+			engine.ReleaseSingleInstance()
+			if e := engine.RelaunchElevatedConnect(); e != nil {
 				return "", fmt.Errorf("%s（%v）。也可以先在设置页点「安装」配好登录自启，以后不用再授权", err, e)
 			}
 			log.Printf("[tunnel] 已请求管理员授权，授权后将以管理员身份重启并自动连接")
@@ -1273,15 +1282,15 @@ func (s *WeftService) manageErr() string {
 
 func (s *WeftService) ListDevices() (string, error) {
 	if msg := s.manageErr(); msg != "" {
-		return toJSON(Cached[Device]{Items: []Device{}, Source: "none", Error: msg})
+		return toJSON(model.Cached[model.Device]{Items: []model.Device{}, Source: "none", Error: msg})
 	}
-	return cachedList(s.store, s.cacheKey("devices"), func() ([]Device, error) { return s.cp.Devices("") })
+	return cachedList(s.store, s.cacheKey("devices"), func() ([]model.Device, error) { return s.cp.Devices("") })
 }
 
 // ListDevicesByUser 支持按成员过滤（对应 ?user=）。
 func (s *WeftService) ListDevicesByUser(user string) (string, error) {
 	if msg := s.manageErr(); msg != "" {
-		return toJSON(Cached[Device]{Items: []Device{}, Source: "none", Error: msg})
+		return toJSON(model.Cached[model.Device]{Items: []model.Device{}, Source: "none", Error: msg})
 	}
 	return wrap(s.cp.Devices(user))
 }
@@ -1379,7 +1388,7 @@ func (s *WeftService) DebugCreateNode(user, key, name, routes string) (string, e
 
 func (s *WeftService) ListUsers() (string, error) {
 	if msg := s.manageErr(); msg != "" {
-		return toJSON(Cached[User]{Items: []User{}, Source: "none", Error: msg})
+		return toJSON(model.Cached[model.User]{Items: []model.User{}, Source: "none", Error: msg})
 	}
 	return cachedList(s.store, s.cacheKey("users"), s.cp.Users)
 }
@@ -1422,7 +1431,7 @@ func (s *WeftService) DeleteUser(ctx context.Context, id string) error {
 
 func (s *WeftService) ListAuthKeys() (string, error) {
 	if msg := s.manageErr(); msg != "" {
-		return toJSON(Cached[AuthKey]{Items: []AuthKey{}, Source: "none", Error: msg})
+		return toJSON(model.Cached[model.AuthKey]{Items: []model.AuthKey{}, Source: "none", Error: msg})
 	}
 	return cachedList(s.store, s.cacheKey("authkeys"), s.cp.AuthKeys)
 }
@@ -1462,7 +1471,7 @@ func (s *WeftService) DeleteAuthKey(ctx context.Context, id string) error {
 
 func (s *WeftService) ListAPIKeys() (string, error) {
 	if msg := s.manageErr(); msg != "" {
-		return toJSON(Cached[APIKey]{Items: []APIKey{}, Source: "none", Error: msg})
+		return toJSON(model.Cached[model.APIKey]{Items: []model.APIKey{}, Source: "none", Error: msg})
 	}
 	return cachedList(s.store, s.cacheKey("apikeys"), s.cp.APIKeys)
 }
@@ -1544,7 +1553,7 @@ func (s *WeftService) GetPolicyVersion(id int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return wrapOne(Policy{Content: body})
+	return wrapOne(model.Policy{Content: body})
 }
 
 // RestorePolicy 把历史版本写回服务端。写之前当前版本会进历史，所以回滚也能后悔。
@@ -1609,8 +1618,8 @@ func wrapOne[T any](v T) (string, error) { return toJSON(v) }
 // hasNodeIdentity 判断是否曾经真正连上过。
 // 不用 tsnet 的 state 文件——它在 Start 时就会创建，会把「从没连成功」
 // 误判成已注册，导致每次启动都自动去弹授权。
-func hasNodeIdentity(c Config) bool {
-	p := connectedMarkPath(c)
+func hasNodeIdentity(c model.Config) bool {
+	p := engine.ConnectedMarkPath(c)
 	if p == "" {
 		return false
 	}
@@ -1618,23 +1627,9 @@ func hasNodeIdentity(c Config) bool {
 	return err == nil
 }
 
-func connectedMarkPath(c Config) string {
-	dir, err := tsnetStateDir(c)
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(dir, ".connected")
-}
-
-func markConnected(c Config) {
-	if p := connectedMarkPath(c); p != "" {
-		_ = os.WriteFile(p, []byte(time.Now().Format(time.RFC3339)), 0o600)
-	}
-}
-
 // hasCredential 判断管理 API Key 是否已写入钥匙串。
-func hasCredential(c Config) bool {
-	k := strings.TrimSpace(secretGet(secretMain))
+func hasCredential(c model.Config) bool {
+	k := strings.TrimSpace(secret.Get(secret.Main))
 	if k == "" {
 		return false
 	}
@@ -1679,7 +1674,7 @@ func (s *WeftService) ListApps() (string, error) {
 }
 
 func (s *WeftService) SaveApp(raw string) error {
-	var a AppBookmark
+	var a model.AppBookmark
 	if err := json.Unmarshal([]byte(raw), &a); err != nil {
 		return err
 	}
@@ -1834,14 +1829,14 @@ func (s *WeftService) syncForwards() error {
 		return nil
 	}
 	if !on {
-		_ = fw.apply(nil, false, cfg.SocksPort, cfg.ForwardBind)
+		_ = fw.Apply(nil, false, cfg.SocksPort, cfg.ForwardBind)
 		return nil
 	}
 	rules, err := s.store.ListForwards()
 	if err != nil {
 		return err
 	}
-	return fw.apply(rules, cfg.SocksEnabled, cfg.SocksPort, cfg.ForwardBind)
+	return fw.Apply(rules, cfg.SocksEnabled, cfg.SocksPort, cfg.ForwardBind)
 }
 
 func (s *WeftService) ListForwards() (string, error) {
@@ -1852,22 +1847,22 @@ func (s *WeftService) ListForwards() (string, error) {
 	s.mu.Lock()
 	cfg, on, fw, eng := s.cfg, s.forwardOn, s.fw, s.engine.Name()
 	s.mu.Unlock()
-	statuses := []ForwardStatus{}
-	socks := ForwardStatus{ID: "socks5", State: "disabled"}
+	statuses := []model.ForwardStatus{}
+	socks := model.ForwardStatus{ID: "socks5", State: "disabled"}
 	if fw != nil {
-		statuses, socks = fw.statuses(rules, cfg.SocksEnabled && on, cfg.SocksPort)
+		statuses, socks = fw.Statuses(rules, cfg.SocksEnabled && on, cfg.SocksPort)
 	}
-	return toJSON(ForwardView{
+	return toJSON(model.ForwardView{
 		Rules: rules, Statuses: statuses, Socks: socks,
 		SocksEnabled: cfg.SocksEnabled, SocksPort: cfg.SocksPort,
 		AutoForward: cfg.AutoForward, Power: on,
-		Bind:   normalizeBind(cfg.ForwardBind),
+		Bind:   netio.NormalizeBind(cfg.ForwardBind),
 		Engine: eng,
 	})
 }
 
 func (s *WeftService) SaveForward(raw string) error {
-	var r ForwardRule
+	var r model.ForwardRule
 	if err := json.Unmarshal([]byte(raw), &r); err != nil {
 		return err
 	}
@@ -1936,7 +1931,7 @@ func (s *WeftService) SetForwardOptions(autoForward, socksEnabled bool, socksPor
 // SetForwardBind 切换本地监听范围：仅本机（127.0.0.1）或同网段可达（0.0.0.0）。
 // 切换会重建所有监听器，已经建立的连接会断。
 func (s *WeftService) SetForwardBind(bind string) error {
-	bind = normalizeBind(bind)
+	bind = netio.NormalizeBind(bind)
 	s.mu.Lock()
 	c := s.cfg
 	c.ForwardBind = bind
@@ -1970,7 +1965,7 @@ func (s *WeftService) ForwardSnippet(id string) (string, error) {
 	s.mu.Unlock()
 	for _, r := range rules {
 		if r.ID == id {
-			return snippets(r, port)
+			return netio.Snippets(r, port)
 		}
 	}
 	return "", fmt.Errorf("未找到规则: %s", id)
@@ -1988,11 +1983,11 @@ func (s *WeftService) TestPeer(host string, port int, via string) (string, error
 	if eng == nil {
 		return "", fmt.Errorf("引擎尚未就绪")
 	}
-	var d dialFunc
+	var d model.DialFunc
 	label := "系统 TUN"
 	if via == "netstack" {
 		label = "netstack 用户态"
-		if nd, ok := eng.(interface{ NetstackDialer() dialFunc }); ok {
+		if nd, ok := eng.(interface{ NetstackDialer() model.DialFunc }); ok {
 			d = nd.NetstackDialer()
 		}
 	}
@@ -2019,30 +2014,30 @@ func (s *WeftService) TestPeer(host string, port int, via string) (string, error
 
 // GetHelperStatus 让前端知道「打开就能连」是否已经成立。
 func (s *WeftService) GetHelperStatus() (string, error) {
-	return toJSON(helperStatus())
+	return toJSON(engine.HelperStatus())
 }
 
 // InstallHelper 安装常驻助手：一次授权，之后连接零弹窗。
 func (s *WeftService) InstallHelper() (string, error) {
-	if err := installHelper(); err != nil {
+	if err := engine.InstallHelper(); err != nil {
 		return "", err
 	}
 	s.store.AddAudit("安装系统助手", helperLabelSafe())
-	st, _ := toJSON(helperStatus())
+	st, _ := toJSON(engine.HelperStatus())
 	return st, nil
 }
 
 func (s *WeftService) UninstallHelper() (string, error) {
-	if err := uninstallHelper(); err != nil {
+	if err := engine.UninstallHelper(); err != nil {
 		return "", err
 	}
 	s.store.AddAudit("移除系统助手", helperLabelSafe())
-	st, _ := toJSON(helperStatus())
+	st, _ := toJSON(engine.HelperStatus())
 	return st, nil
 }
 
 func helperLabelSafe() string {
-	if h := helperStatus(); h.Installed {
+	if h := engine.HelperStatus(); h.Installed {
 		return "已安装"
 	}
 	return "未安装"

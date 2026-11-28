@@ -4,6 +4,32 @@
 
 名字取自李白《蜀道难》「天梯石栈相钩连」：在没有路的地方凿出一条通路。可执行文件、安装目录、包名统一用 `weft`（Windows 为 `weft.exe`，macOS 为 `Weft.app`，Linux 为 `/usr/local/bin/weft`）；`云栈` 只作为界面里的显示名，不出现在任何文件路径上。
 
+## 代码结构
+
+根目录只放入口与界面装配：`main.go`（embed 前端、建窗口、托盘、快捷键）、
+`weft.go`（`WeftService`，前端唯一入口）、`diag.go` / `selfcheck.go`（诊断，
+方法挂在服务层上）、`appoverlay.go` / `tray.go`（应用内窗口的悬浮条、托盘）、
+`appname_darwin.*`（cgo 改菜单栏名字，必须在根包）。
+
+其余按职责放在 `internal/`：
+
+| 包 | 内容 |
+|---|---|
+| `model` | 前后端交换的结构体、配置字段 |
+| `appinfo` | 版本号、发布源、数据目录、默认节点名 |
+| `store` | SQLite：配置、书签、端口转发、策略历史、审计 |
+| `secret` | 系统钥匙串（macOS Keychain / Windows 凭据管理器 / Linux Secret Service） |
+| `controlplane` | Headscale `/api/v1` 客户端与 TLS、地址校验 |
+| `sysproxy` | 读系统代理设置（平台各一份） |
+| `engine` | 隧道引擎（TUN + tsnet）、提权助手、本地反向代理、单实例、平台路由 |
+| `netio` | 端口转发与 SOCKS5 |
+| `appsync` | 应用书签同步 |
+| `update` | 自动更新（绑定方法在根包的 `update_api.go` 转发） |
+
+依赖是单向的：`model` 在最底下，`store`、`controlplane`、`engine` 依赖它；
+`WeftService` 在最上层把各部分接起来。子包不认识 `WeftService`，需要运行时
+状态的地方（当前引擎、同步码、本机地址）用函数注入，避免回调绕回根包。
+
 ## 功能
 
 管理端完整对接 Headscale `/api/v1`（按服务端 swagger）：

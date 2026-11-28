@@ -1,148 +1,33 @@
 package main
 
-// 应用书签同步：不经过任何第三方服务，直接在两台设备的 tailnet 地址上互传。
-//
-// 开着同步的那台在 tailnet 上监听一个端口，另一台凭同步码来拉或推。
-// 监听只挂在 100.x 上，tailnet 外的机器连不上；同账号但 ACL 不放行的也连不上。
+// 应用书签同步的绑定方法。收发逻辑在 internal/appsync，这里只保留
+// 前端能看到的入口与同步码的存取。
 
 import (
-	"context"
-	"crypto/rand"
-	"crypto/subtle"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"net/http"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
+
+	"github.com/boothua/weft/internal/appsync"
+	"github.com/boothua/weft/internal/model"
+	"github.com/boothua/weft/internal/secret"
 )
-
-const defaultSyncPort = 4160
-
-// 同步码字母表去掉 I O 0 1，念给另一台设备或手输时不容易错。
-const syncAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-
-// syncServer 是本机在 tailnet 上的监听，只在开关打开且隧道起来后存在。
-type syncServer struct {
-	mu     sync.Mutex
-	ln     net.Listener
-	http   *http.Server
-	cancel context.CancelFunc
-	err    string
-}
-
-func (ss *syncServer) start(svc *WeftService, port int) {
-	ss.mu.Lock()
-	if ss.cancel != nil {
-		ss.mu.Unlock()
-		return
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	ss.cancel, ss.err = cancel, ""
-	ss.mu.Unlock()
-
-	srv := &http.Server{Handler: svc.syncMux(), ReadHeaderTimeout: 5 * time.Second}
-	go func() {
-		// 节点没上线时这里会等，成功后才开始服务。
-		ln, err := svc.engine.ListenTailnet(port)
-		if err != nil {
-			ss.fail(err)
-			return
-		}
-		if ctx.Err() != nil {
-			_ = ln.Close()
-			return
-		}
-		ss.mu.Lock()
-		ss.ln, ss.http = ln, srv
-		ss.mu.Unlock()
-		log.Printf("[sync] 已在 tailnet 监听 :%d", port)
-		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			ss.fail(err)
-		}
-	}()
-}
-
-func (ss *syncServer) fail(err error) {
-	log.Printf("[sync] 监听失败: %v", err)
-	ss.mu.Lock()
-	ss.err = err.Error()
-	ss.ln, ss.http, ss.cancel = nil, nil, nil
-	ss.mu.Unlock()
-}
-
-func (ss *syncServer) stop() {
-	ss.mu.Lock()
-	cancel, h, ln := ss.cancel, ss.http, ss.ln
-	ss.cancel, ss.http, ss.ln = nil, nil, nil
-	ss.mu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
-	if h != nil {
-		_ = h.Close()
-	}
-	if ln != nil {
-		_ = ln.Close()
-	}
-}
-
-func (ss *syncServer) state() (bool, string) {
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
-	return ss.cancel != nil && ss.ln != nil, ss.err
-}
-
-// ---------- 同步码 ----------
-
-// newSyncToken 生成 16 位同步码，形如 7KQ2-M4XR-9TPD-HB8N。
-func newSyncToken() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return ""
-	}
-	out := make([]byte, 16)
-	for i := range out {
-		out[i] = syncAlphabet[int(b[i])%len(syncAlphabet)]
-	}
-	s := string(out)
-	return s[0:4] + "-" + s[4:8] + "-" + s[8:12] + "-" + s[12:16]
-}
-
-// normalizeSyncToken 去掉分隔符和大小写差异，输入时不用管格式。
-func normalizeSyncToken(raw string) string {
-	var b strings.Builder
-	for _, r := range strings.ToUpper(strings.TrimSpace(raw)) {
-		if r == '-' || r == ' ' {
-			continue
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
-}
 
 // syncToken 取本机同步码。mint 为 true 时没有就生成一个。
 func (s *WeftService) syncToken(mint bool) string {
-	if v := secretGet(secretSync); v != "" || !mint {
+	if v := secret.Get(secret.Sync); v != "" || !mint {
 		return v
 	}
-	t := newSyncToken()
+	t := appsync.NewToken()
 	if t == "" {
 		return ""
 	}
-	if err := secretSet(secretSync, t); err != nil {
+	if err := secret.Set(secret.Sync, t); err != nil {
 		log.Printf("[sync] 同步码写入钥匙串失败: %v", err)
 		return ""
 	}
 	return t
 }
-
-// ---------- 服务层方法 ----------
 
 // GetSync 返回同步状态。同步码只在本机界面出现。
 func (s *WeftService) GetSync() (string, error) {
@@ -154,7 +39,7 @@ func (s *WeftService) GetSync() (string, error) {
 	}
 	ip, host := s.selfPlace()
 	apps, _ := s.store.ListApps()
-	info := SyncInfo{
+	info := model.SyncInfo{
 		Enabled:  cfg.SyncEnabled,
 		Port:     cfg.SyncPort,
 		Token:    s.syncToken(false),
@@ -163,7 +48,7 @@ func (s *WeftService) GetSync() (string, error) {
 		Count:    len(apps),
 	}
 	if ss != nil {
-		info.Listening, info.Error = ss.state()
+		info.Listening, info.Error = ss.State()
 	}
 	return toJSON(info)
 }
@@ -186,7 +71,7 @@ func (s *WeftService) SetSync(enabled bool, port int) (string, error) {
 	s.mu.Unlock()
 
 	if ss != nil {
-		ss.stop()
+		ss.Stop()
 	}
 	if enabled {
 		s.syncToken(true)
@@ -197,15 +82,15 @@ func (s *WeftService) SetSync(enabled bool, port int) (string, error) {
 
 // RotateSyncToken 换一个同步码，已经配对过的设备要重新输。
 func (s *WeftService) RotateSyncToken() (string, error) {
-	t := newSyncToken()
+	t := appsync.NewToken()
 	if t == "" {
 		return "", fmt.Errorf("生成同步码失败")
 	}
-	if err := secretSet(secretSync, t); err != nil {
+	if err := secret.Set(secret.Sync, t); err != nil {
 		return "", fmt.Errorf("同步码写入钥匙串失败: %w", err)
 	}
 	if ss := s.syncSrv; ss != nil {
-		ss.stop()
+		ss.Stop()
 		s.startSyncServer()
 	}
 	return s.GetSync()
@@ -218,7 +103,7 @@ func (s *WeftService) startSyncServer() {
 	if !cfg.SyncEnabled || ss == nil {
 		return
 	}
-	ss.start(s, cfg.SyncPort)
+	ss.Start(cfg.SyncPort)
 }
 
 func (s *WeftService) stopSyncServer() {
@@ -226,302 +111,53 @@ func (s *WeftService) stopSyncServer() {
 	ss := s.syncSrv
 	s.mu.Unlock()
 	if ss != nil {
-		ss.stop()
+		ss.Stop()
 	}
 }
-
-// ---------- 对端接口（本机是被拉取的一方） ----------
-
-func (s *WeftService) syncMux() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/info", s.guardSync(func(w http.ResponseWriter, r *http.Request) {
-		_, host := s.selfPlace()
-		apps, _ := s.store.ListApps()
-		writeJSON(w, map[string]any{
-			"app":      "云栈",
-			"version":  appVersion,
-			"hostname": host,
-			"count":    len(apps),
-			"enabled":  true,
-		})
-	}))
-	mux.HandleFunc("/v1/apps", s.guardSync(s.handleSyncApps))
-	return mux
-}
-
-// guardSync 校验同步码。对端要么带 Authorization: Bearer，要么带 X-Weft-Token。
-func (s *WeftService) guardSync(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		got := r.Header.Get("X-Weft-Token")
-		if v, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
-			got = v
-		}
-		want := s.syncToken(false)
-		if want == "" || subtle.ConstantTimeCompare([]byte(normalizeSyncToken(got)), []byte(normalizeSyncToken(want))) != 1 {
-			writeErr(w, http.StatusUnauthorized, "同步码不对")
-			return
-		}
-		next(w, r)
-	}
-}
-
-type syncPayload struct {
-	Host    string        `json:"host"`
-	Version string        `json:"version"`
-	Apps    []AppBookmark `json:"apps"`
-	At      string        `json:"at"`
-}
-
-func (s *WeftService) handleSyncApps(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		apps, err := s.store.ListApps()
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		_, host := s.selfPlace()
-		writeJSON(w, syncPayload{Host: host, Version: appVersion, Apps: apps, At: time.Now().Format(time.RFC3339)})
-
-	case http.MethodPost:
-		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-		var p syncPayload
-		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-			writeErr(w, http.StatusBadRequest, "内容读不出来: "+err.Error())
-			return
-		}
-		local, err := s.store.ListApps()
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		merged, added, updated, skipped := mergeApps(local, p.Apps)
-		for _, a := range merged {
-			if err := s.store.SaveAppRaw(a); err != nil {
-				writeErr(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-		}
-		if added+updated > 0 {
-			s.store.AddAudit("接收应用同步", fmt.Sprintf("来自 %s：新增 %d、更新 %d", p.Host, added, updated))
-		}
-		writeJSON(w, SyncResult{Peer: p.Host, Added: added, Updated: updated, Skipped: skipped, Total: len(merged)})
-
-	default:
-		writeErr(w, http.StatusMethodNotAllowed, "只支持 GET 和 POST")
-	}
-}
-
-// ---------- 本机主动同步 ----------
 
 // PullAppsFrom 从另一台设备拉取书签并合并进本机。
 func (s *WeftService) PullAppsFrom(target, token string) (string, error) {
-	body, err := s.syncRequest(http.MethodGet, target, token, nil)
+	if s.syncSrv == nil {
+		return "", fmt.Errorf("同步还没准备好")
+	}
+	res, err := s.syncSrv.Pull(target, token)
 	if err != nil {
 		return "", err
-	}
-	var p syncPayload
-	if err := json.Unmarshal(body, &p); err != nil {
-		return "", fmt.Errorf("对方返回的内容看不懂，确认地址和端口对不对")
-	}
-	local, err := s.store.ListApps()
-	if err != nil {
-		return "", err
-	}
-	merged, added, updated, skipped := mergeApps(local, p.Apps)
-	for _, a := range merged {
-		if err := s.store.SaveAppRaw(a); err != nil {
-			return "", err
-		}
-	}
-	name := p.Host
-	if name == "" {
-		name = target
-	}
-	if added+updated > 0 {
-		s.store.AddAudit("拉取应用同步", fmt.Sprintf("来自 %s：新增 %d、更新 %d", name, added, updated))
-	}
-	return toJSON(SyncResult{Peer: name, Added: added, Updated: updated, Skipped: skipped, Total: len(merged)})
-}
-
-// PushAppsTo 把本机书签推到另一台，由对方合并。
-func (s *WeftService) PushAppsTo(target, token string) (string, error) {
-	apps, err := s.store.ListApps()
-	if err != nil {
-		return "", err
-	}
-	_, host := s.selfPlace()
-	p := syncPayload{Host: host, Version: appVersion, Apps: apps, At: time.Now().Format(time.RFC3339)}
-	raw, err := json.Marshal(p)
-	if err != nil {
-		return "", err
-	}
-	body, err := s.syncRequest(http.MethodPost, target, token, raw)
-	if err != nil {
-		return "", err
-	}
-	var res SyncResult
-	if err := json.Unmarshal(body, &res); err != nil {
-		return "", fmt.Errorf("对方返回的内容看不懂，确认地址和端口对不对")
-	}
-	if res.Peer == "" {
-		res.Peer = target
-	}
-	if res.Added+res.Updated > 0 {
-		s.store.AddAudit("推送应用同步", fmt.Sprintf("到 %s：新增 %d、更新 %d", res.Peer, res.Added, res.Updated))
 	}
 	return toJSON(res)
 }
 
-// syncRequest 发一次请求。地址可以是 100.x、MagicDNS 名，带不带端口都行。
-func (s *WeftService) syncRequest(method, target, token string, body []byte) ([]byte, error) {
-	if strings.TrimSpace(token) == "" {
-		return nil, fmt.Errorf("先填同步码")
+// PushAppsTo 把本机书签推到另一台，由对方合并。
+func (s *WeftService) PushAppsTo(target, token string) (string, error) {
+	if s.syncSrv == nil {
+		return "", fmt.Errorf("同步还没准备好")
 	}
-	url, err := syncURL(target)
+	res, err := s.syncSrv.Push(target, token)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	var rd io.Reader
-	if body != nil {
-		rd = strings.NewReader(string(body))
-	}
-	req, err := http.NewRequest(method, url, rd)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+normalizeSyncToken(token))
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("连不上 %s：确认对方开着同步、两台都在同一个 tailnet 里", url)
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		var e struct {
-			Error string `json:"error"`
-		}
-		if json.Unmarshal(raw, &e) == nil && e.Error != "" {
-			return nil, fmt.Errorf("%s", e.Error)
-		}
-		return nil, fmt.Errorf("对方返回 %s", resp.Status)
-	}
-	return raw, nil
+	return toJSON(res)
 }
-
-// syncURL 补上协议和默认端口。已经带端口的原样用。
-// 显式写了 https 就按 https 走（对端可能挂了反代），不悄悄降级成 http。
-func syncURL(target string) (string, error) {
-	t := strings.TrimSpace(target)
-	scheme := "http"
-	if rest, ok := strings.CutPrefix(t, "https://"); ok {
-		scheme, t = "https", rest
-	} else {
-		t = strings.TrimPrefix(t, "http://")
-	}
-	t = strings.TrimRight(t, "/")
-	if t == "" {
-		return "", fmt.Errorf("先选一台设备或填地址")
-	}
-	if i := strings.IndexByte(t, '/'); i >= 0 {
-		t = t[:i]
-	}
-	if !strings.Contains(t, ":") {
-		t = net.JoinHostPort(t, strconv.Itoa(defaultSyncPort))
-	}
-	return scheme + "://" + t, nil
-}
-
-// ---------- 合并 ----------
-
-// appKey 把地址归一成比较用的键：忽略大小写的 host、末尾斜杠、空白。
-func appKey(raw string) string {
-	u := strings.TrimSpace(raw)
-	u = strings.TrimRight(u, "/")
-	if i := strings.Index(u, "://"); i > 0 {
-		scheme := strings.ToLower(u[:i])
-		rest := u[i+3:]
-		if j := strings.IndexAny(rest, "/?#"); j >= 0 {
-			return scheme + "://" + strings.ToLower(rest[:j]) + rest[j:]
-		}
-		return scheme + "://" + strings.ToLower(rest)
-	}
-	return strings.ToLower(u)
-}
-
-func appTime(a AppBookmark) time.Time {
-	t, err := time.Parse(time.RFC3339, a.UpdatedAt)
-	if err != nil {
-		return time.Time{}
-	}
-	return t
-}
-
-// mergeApps 按地址合并：同一地址在两边算同一条，取更新时间较新的那份。
-// 不处理删除——对端没有的记录不会从本机被删掉。
-func mergeApps(local, incoming []AppBookmark) (out []AppBookmark, added, updated, skipped int) {
-	out = append([]AppBookmark{}, local...)
-	index := make(map[string]int, len(out))
-	for i, a := range out {
-		if k := appKey(a.URL); k != "" {
-			index[k] = i
-		}
-	}
-	for _, in := range incoming {
-		in.Name = strings.TrimSpace(in.Name)
-		in.URL = strings.TrimSpace(in.URL)
-		if in.Name == "" || in.URL == "" {
-			skipped++
-			continue
-		}
-		k := appKey(in.URL)
-		if i, ok := index[k]; ok {
-			cur := out[i]
-			if !appTime(in).After(appTime(cur)) {
-				skipped++
-				continue
-			}
-			in.ID = cur.ID // 沿用本机 ID，避免同一地址出现两条
-			out[i] = in
-			updated++
-			continue
-		}
-		// ID 一律在本机生成。对端的 ID 只说明它自己库里的那条，
-		// 直接沿用的话，两台设备撞上同一个 ID 就会把本机另一条覆盖掉
-		// （合并、复制数据库、早期版本的固定 ID 都可能撞）。
-		in.ID = fmt.Sprintf("app-%d", time.Now().UnixNano()+int64(added))
-		out = append(out, in)
-		index[k] = len(out) - 1
-		added++
-	}
-	return out, added, updated, skipped
-}
-
-// ---------- 杂项 ----------
 
 // selfPlace 取本机在 tailnet 里的地址和名字。引擎没起来时返回空，不报错。
 func (s *WeftService) selfPlace() (string, string) {
-	if s.engine == nil {
+	s.mu.Lock()
+	eng := s.engine
+	s.mu.Unlock()
+	if eng == nil {
 		return "", ""
 	}
-	_, ip, host := s.engine.Status()
+	_, ip, host := eng.Status()
 	return ip, host
 }
 
-func writeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func writeErr(w http.ResponseWriter, code int, msg string) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+// listenTailnet 给同步服务用：隧道重建后引擎会换实例，这里每次都取当前的。
+func (s *WeftService) listenTailnet(port int) (net.Listener, error) {
+	s.mu.Lock()
+	eng := s.engine
+	s.mu.Unlock()
+	if eng == nil {
+		return nil, fmt.Errorf("隧道还没起来")
+	}
+	return eng.ListenTailnet(port)
 }
