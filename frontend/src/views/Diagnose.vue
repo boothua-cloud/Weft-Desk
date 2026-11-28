@@ -26,7 +26,8 @@ async function run(p: PeerInfo) {
   failures.value = { ...failures.value, [key]: '' }
   try {
     const r = await api.diagnose(p.ip, port.value || 22)
-    reports.value = { ...reports.value, [key]: r }
+    // hints 可能是 null（Go 的 nil 切片），模板里要当数组用，这里补上
+    reports.value = { ...reports.value, [key]: { ...r, hints: r.hints ?? [] } }
     emit('notify', r.dialErr ? '检查完成：不通' : '检查完成：通路正常')
   } catch (err: any) {
     failures.value = { ...failures.value, [key]: String(err?.message ?? err) }
@@ -171,7 +172,7 @@ function fmtKb(n: number): string {
             </div>
           </div>
 
-          <ul v-if="reports[p.ip].hints.length" class="hints">
+          <ul v-if="reports[p.ip].hints?.length" class="hints">
             <li v-for="(h, i) in reports[p.ip].hints" :key="i">{{ h }}</li>
           </ul>
 

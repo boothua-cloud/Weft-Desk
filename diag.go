@@ -150,6 +150,10 @@ func (s *WeftService) Diagnose(ip string, port int) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// nil 切片会被序列化成 null，前端拿它当数组用就炸。统一成 []。
+	if rep.Hints == nil {
+		rep.Hints = []string{}
+	}
 	out, err := json.Marshal(rep)
 	return string(out), err
 }
@@ -253,7 +257,8 @@ func diagVerdict(r DiagReport) (string, []string) {
 			return fmt.Sprintf("能连上 %s，但探测 3 次全丢", target),
 				[]string{"端口是通的，探测包可能被中间设备限速拦了，不影响使用"}
 		}
-		return fmt.Sprintf("能连上 %s · %s", target, linkNote), nil
+		// 返回空切片而不是 nil：JSON 里要是 null，前端一读 length 就崩。
+		return fmt.Sprintf("能连上 %s · %s", target, linkNote), []string{}
 	}
 
 	if !linkOK {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/netip"
 	"strings"
 	"testing"
@@ -105,6 +106,10 @@ func TestDiagVerdict(t *testing.T) {
 	if !strings.Contains(v, "能连上") || len(h) != 0 {
 		t.Fatalf("通的时候不该给原因: %q %v", v, h)
 	}
+	// 必须是非 nil 的空切片：nil 会序列化成 null，前端读 .length 直接崩
+	if h == nil {
+		t.Fatal("通的时候原因要返回空切片，不能是 nil")
+	}
 
 	// 链路不通
 	v, h = diagVerdict(DiagReport{
@@ -139,5 +144,18 @@ func TestDiagVerdict(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(h, " "), "端口") {
 		t.Fatalf("原因里该提端口: %v", h)
+	}
+}
+
+// 界面直接吃这份 JSON。hints 一旦是 null，Vue 读 length 就抛错，整页白屏。
+func TestDiagReportJSONHints(t *testing.T) {
+	rep := DiagReport{IP: "100.64.0.3", Port: 22, Online: true, Path: "直连", PingMs: 8, DialMs: 12}
+	rep.Verdict, rep.Hints = diagVerdict(rep)
+	b, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"hints":[]`) {
+		t.Fatalf("hints 要序列化成空数组: %s", b)
 	}
 }
