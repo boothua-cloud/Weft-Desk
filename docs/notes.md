@@ -7,9 +7,15 @@
 ## 代码结构
 
 根目录只放入口与界面装配：`main.go`（embed 前端、建窗口、托盘、快捷键）、
-`weft.go`（`WeftService`，前端唯一入口）、`diag.go` / `selfcheck.go`（诊断，
-方法挂在服务层上）、`appoverlay.go` / `tray.go`（应用内窗口的悬浮条、托盘）、
-`appname_darwin.*`（cgo 改菜单栏名字，必须在根包）。
+`tray.go`（托盘菜单）、`appoverlay.go`（应用内窗口的悬浮条与加载页）、
+`diag.go`（`--diag` 终端诊断）、`appname_darwin.*`（cgo 改菜单栏名字，必须在根包）。
+
+`WeftService` 的方法按业务域拆在 `weft_*.go`：`weft.go` 只留结构体、构造、
+启动与退出，其余是 `weft_config.go`（配置与 Profile）、`weft_credential.go`
+（偏好与 Key）、`weft_state.go`（状态与连接）、`weft_nodes.go`（设备与节点认证）、
+`weft_admin.go`（成员、授权 Key、ACL）、`weft_apps.go`（书签）、
+`weft_forwards.go`（端口转发）、`weft_helper.go`（提权助手），
+以及几个纯转发的 `weft_sync.go` / `weft_update.go` / `weft_selfcheck.go`。
 
 其余按职责放在 `internal/`：
 
@@ -24,7 +30,7 @@
 | `engine` | 隧道引擎（TUN + tsnet）、提权助手、本地反向代理、单实例、平台路由 |
 | `netio` | 端口转发与 SOCKS5 |
 | `appsync` | 应用书签同步 |
-| `update` | 自动更新（绑定方法在根包的 `update_api.go` 转发） |
+| `update` | 自动更新（绑定方法在根包的 `weft_update.go` 转发） |
 
 依赖是单向的：`model` 在最底下，`store`、`controlplane`、`engine` 依赖它；
 `WeftService` 在最上层把各部分接起来。子包不认识 `WeftService`，需要运行时

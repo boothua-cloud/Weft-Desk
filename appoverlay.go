@@ -2,7 +2,9 @@ package main
 
 import (
 	"crypto/subtle"
+	"encoding/base64"
 	"fmt"
+	"html"
 	"log"
 	"net"
 	"net/http"
@@ -149,4 +151,34 @@ wrap.appendChild(btn);wrap.appendChild(menu);
 	js := strings.ReplaceAll(tpl, "{{PORT}}", strconv.Itoa(port))
 	js = strings.ReplaceAll(js, "{{TOKEN}}", token)
 	return strings.ReplaceAll(js, "{{ID}}", strconv.FormatUint(uint64(winID), 10))
+}
+
+// appLoadingHTML 是应用内窗口在目标站点加载前显示的过渡页。
+// 全部内联，不依赖外部资源，窗口一出现就能画出来。
+func appLoadingHTML(name string) string {
+	safe := html.EscapeString(name)
+	icon := ""
+	if len(appIcon) > 0 {
+		icon = "data:image/png;base64," + base64.StdEncoding.EncodeToString(appIcon)
+	}
+	return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><style>
+html,body{margin:0;height:100%;background:#F4F6F9;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+#l{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+background:radial-gradient(560px 360px at 50% 12%,rgba(74,118,216,.13),transparent 70%),#F4F6F9}
+.mark{width:60px;height:60px;border-radius:14px;object-fit:contain;
+filter:drop-shadow(0 14px 26px rgba(16,26,60,.35));animation:lift 2s ease-in-out infinite}
+.name{margin-top:16px;font-size:13px;color:#0F172A;font-weight:600}
+.hint{margin-top:6px;font-size:11px;color:#8A94A3}
+.bar{position:relative;margin-top:18px;width:140px;height:3px;border-radius:3px;background:#E3E8EF;overflow:hidden}
+.bar i{position:absolute;top:0;bottom:0;left:0;width:46%;border-radius:3px;
+background:linear-gradient(90deg,rgba(58,95,208,0),#3A5FD0 55%,#5A82E8);
+animation:slide 1.2s cubic-bezier(.55,.1,.35,.9) infinite}
+@keyframes lift{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-3px) scale(1.035)}}
+@keyframes slide{0%{transform:translateX(-110%)}100%{transform:translateX(238%)}}
+</style></head><body><div id="l">
+<img class="mark" src="` + icon + `" alt="">
+<div class="name">` + safe + `</div>
+<div class="hint">正在加载内网地址…</div>
+<div class="bar"><i></i></div>
+</div></body></html>`
 }

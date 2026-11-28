@@ -212,6 +212,63 @@ CI 在 `.github/workflows/build.yml`，只在打 tag 或手动触发时跑，日
 
 Linux 必须带 `gtk3` 标签。Wails 默认走 GTK4 + WebKitGTK 6.0，主流发行版仓库里只有 GTK3 那版。
 
+## 代码结构
+
+后端一个 Go module，界面在 `frontend/`。根目录只放入口和前端看得见的那一层：
+
+```
+main.go              启动：窗口、托盘、快捷键
+tray.go              托盘菜单、最小化到托盘
+appoverlay.go        应用内窗口的悬浮条与加载页
+diag.go              weft --diag 的终端诊断，不进 GUI
+appname_darwin.*     cgo 改菜单栏名字，必须在根包
+
+weft.go              WeftService：结构体、构造、启动、重连、退出
+weft_config.go       配置与连接档案（Profile）
+weft_credential.go   界面偏好、Auth Key 与管理 Key 的存取、到期续期
+weft_state.go        总览页状态、连接与断开
+weft_nodes.go        设备、路由审批、节点认证
+weft_admin.go        成员、授权 Key、ACL 策略
+weft_apps.go         应用书签
+weft_forwards.go     端口转发与 SOCKS5
+weft_helper.go       系统提权助手
+weft_sync.go         书签同步的绑定方法
+weft_update.go       自动更新的绑定方法
+weft_selfcheck.go    诊断页的本机自检
+```
+
+`weft_*` 全是同一个类型 `WeftService` 的方法，只是按业务域分了文件。这个类型是前端唯一能调到的入口：Wails 启动时扫它的公开方法生成 `frontend/bindings/`，参数和返回值都是 JSON 字符串，所以加接口只动这一层，界面不碰 Go 的 struct。
+
+实现放在 `internal/`：
+
+| 包 | 管什么 |
+|---|---|
+| `model` | 前后端交换的结构体、配置字段、`DialFunc` |
+| `appinfo` | 版本号、发布源、数据目录、默认节点名 |
+| `store` | SQLite：配置、书签、转发、策略历史、审计 |
+| `secret` | 系统钥匙串（Keychain / 凭据管理器 / Secret Service） |
+| `controlplane` | Headscale `/api/v1` 客户端、TLS、地址校验、离线缓存 |
+| `sysproxy` | 读系统代理设置，三个平台各一份 |
+| `engine` | 隧道（TUN + tsnet）、提权助手、本地反向代理、单实例、平台路由 |
+| `netio` | 端口转发与 SOCKS5 |
+| `appsync` | 应用书签的局域网同步 |
+| `update` | 自动更新：检查、下载、校验、替换 |
+
+依赖是单向的，`model` 在最底下：
+
+```
+root (WeftService)
+  ├── store      ├── controlplane   ├── engine
+  ├── netio      ├── appsync        ├── update
+  └──────────────── model ────────────────
+```
+
+子包不认识 `WeftService`。需要运行时状态的地方（当前引擎、同步码、本机 `100.x` 地址）通过构造函数注入函数，回调不会绕回根包。
+
+平台差异用文件名后缀分：`foo_darwin.go` / `foo_windows.go` / `foo_linux.go`，公共逻辑放在无后缀的 `foo.go` 里。
+
+测试分两类：`go test ./...` 全部离线可跑；带真实服务端的联调用例（`internal/*/live_test.go`）默认跳过，`WEFT_LIVE=1 go test ./...` 才执行，用的是钥匙串里存的那把管理 Key。
+
 ## 已知限制
 
 - 只支持 Headscale，不兼容 Tailscale 官方 API
