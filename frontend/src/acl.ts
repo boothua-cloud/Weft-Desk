@@ -323,12 +323,12 @@ export function validateAcl(form: AclForm, ctx: ValidateCtx = {}): AclIssue[] {
   for (const v of [...(ctx.members ?? []), ...form.groups.flatMap((g) => g.values)]) {
     const t = v.trim()
     if (!t) continue
-    // dst 里可能手打成 joey 或 joey@，两种都算「这是个人名」
+    // dst 里可能手打成 alice 或 alice@，两种都算「这是个人名」
     members.add(t)
     members.add(userToken(t))
     members.add(t.replace(/@$/, ''))
   }
-  // 服务端认得的成员（统一成 joey@ 的形式），用来抓「名字写错了」这类错
+  // 服务端认得的成员（统一成 alice@ 的形式），用来抓「名字写错了」这类错
   const known = new Set((ctx.members ?? []).map(userToken).filter(Boolean))
   // 最常见的一种错法：把显示名（Alice）当用户名写进策略，服务端里其实叫 alice。
   // 名字对不上时顺手把服务端那个名字带出来，用户知道该换成谁。

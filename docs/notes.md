@@ -158,7 +158,7 @@ tag 触发时附件挂到 `v0.1.1` 这个发布；手动触发时用 `build-<com
 `windows` job 顺带出 NSIS 安装包（`dist/*-windows-amd64-setup.exe`）；`macos` 需要 macOS runner。
 
 > runner 侧的两个环境要求（本机 Docker runner 已配好）：容器要能访问 github.com 拉
-> action 源码（配置了走网关代理，`NO_PROXY` 放行 `git.boothua.cn`，避免出口 IP 被
+> action 源码（配置了走网关代理，`NO_PROXY` 放行内网 Git 域名，避免出口 IP 被
 > 仓库前面的 WAF 限流）；`HOME=/data` 让 action 缓存落在挂载卷上，重启不用重拉。
 
 本机手动构建：

@@ -11,7 +11,7 @@ func TestLiveDevices(t *testing.T) {
 	if os.Getenv("WEFT_LIVE") == "" {
 		t.Skip("设置 WEFT_LIVE=1 才执行")
 	}
-	c := &headscaleCP{cfg: Config{BaseURL: "https://headscale.boothua.cn"}}
+	c := &headscaleCP{cfg: Config{BaseURL: "https://headscale.example.com"}}
 	if c.bearer() == "" {
 		t.Skip("钥匙串里没有 API Key")
 	}

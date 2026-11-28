@@ -8,7 +8,7 @@ const props = defineProps<{
   disabled?: boolean
   /** 提交时把用户手打的值变成规范写法，例如成员名补上 headscale 要求的 @ */
   normalize?: (v: string) => string
-  /** 展示用：值可能是 joey@ / group:devs，显示成更好读的样子 */
+  /** 展示用：值可能是 alice@ / group:devs，显示成更好读的样子 */
   display?: (v: string) => string
 }>()
 const emit = defineEmits(['update:modelValue'])
