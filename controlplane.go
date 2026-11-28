@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -86,6 +89,51 @@ type ControlPlane interface {
 
 var sharedHTTP = &http.Client{Timeout: 15 * time.Second}
 
+// cpClient 是当前服务端用的 client。换服务端时重建，证书与代理跟着换。
+var cpClient atomic.Pointer[http.Client]
+
+func clientFor() *http.Client {
+	if cl := cpClient.Load(); cl != nil {
+		return cl
+	}
+	return sharedHTTP
+}
+
+// newHTTPClient 按服务端配置构造 client。
+// 证书：填了 CA 就只认这个 CA，没填而勾了「自签」就跳过校验，都没配走系统 CA。
+// 代理：环境变量优先，其次读系统代理设置。
+func newHTTPClient(c Config) *http.Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.Proxy = proxyFromSystem
+	switch {
+	case strings.TrimSpace(c.CACert) != "":
+		if pool, err := certPool(c.CACert); err == nil {
+			tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+		}
+	case c.ControlInsecure:
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}
+	}
+	return &http.Client{Timeout: 15 * time.Second, Transport: tr}
+}
+
+// certPool 把粘贴进来的 PEM 转成证书池，读不出来就报错，别静默退回系统 CA。
+func certPool(pemText string) (*x509.CertPool, error) {
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM([]byte(pemText)) {
+		return nil, errors.New("CA 证书解析不了，要 PEM 格式（-----BEGIN CERTIFICATE----- 开头）")
+	}
+	return pool, nil
+}
+
+// proxyFromSystem 先看环境变量（http_proxy / https_proxy / no_proxy），
+// 没有再用系统代理设置。两条都没有就直连。
+func proxyFromSystem(req *http.Request) (*url.URL, error) {
+	if u, err := http.ProxyFromEnvironment(req); err == nil && u != nil {
+		return u, nil
+	}
+	return systemProxyURL(req.URL.Hostname()), nil
+}
+
 func short(raw []byte) string {
 	s := strings.TrimSpace(string(raw))
 	if len(s) > 400 {
@@ -117,7 +165,7 @@ func doJSON(method, endpoint, bearer string, body any, out any) (http.Header, er
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := sharedHTTP.Do(req)
+	resp, err := clientFor().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -182,23 +230,23 @@ type hsPreAuthKey struct {
 }
 
 type hsNode struct {
-	ID              string          `json:"id"`
-	MachineKey      string          `json:"machineKey"`
-	NodeKey         string          `json:"nodeKey"`
-	DiscoKey        string          `json:"discoKey"`
-	IPAddresses     []string        `json:"ipAddresses"`
-	Name            string          `json:"name"`
-	GivenName       string          `json:"givenName"`
-	User            *hsUser         `json:"user"`
-	LastSeen        string          `json:"lastSeen"`
-	Expiry          string          `json:"expiry"`
-	CreatedAt       string          `json:"createdAt"`
-	RegisterMethod  any             `json:"registerMethod"`
-	Online          bool            `json:"online"`
-	ApprovedRoutes  []string        `json:"approvedRoutes"`
-	AvailableRoutes []string        `json:"availableRoutes"`
-	SubnetRoutes    []string        `json:"subnetRoutes"`
-	Tags            []string        `json:"tags"`
+	ID              string   `json:"id"`
+	MachineKey      string   `json:"machineKey"`
+	NodeKey         string   `json:"nodeKey"`
+	DiscoKey        string   `json:"discoKey"`
+	IPAddresses     []string `json:"ipAddresses"`
+	Name            string   `json:"name"`
+	GivenName       string   `json:"givenName"`
+	User            *hsUser  `json:"user"`
+	LastSeen        string   `json:"lastSeen"`
+	Expiry          string   `json:"expiry"`
+	CreatedAt       string   `json:"createdAt"`
+	RegisterMethod  any      `json:"registerMethod"`
+	Online          bool     `json:"online"`
+	ApprovedRoutes  []string `json:"approvedRoutes"`
+	AvailableRoutes []string `json:"availableRoutes"`
+	SubnetRoutes    []string `json:"subnetRoutes"`
+	Tags            []string `json:"tags"`
 }
 
 type hsAPIKey struct {
@@ -243,7 +291,7 @@ func (n hsNode) toDevice() Device {
 	d := Device{
 		ID: n.ID, Name: name, Hostname: n.Name, GivenName: n.GivenName,
 		IP: strings.Join(n.IPAddresses, ", "), IPs: append([]string{}, n.IPAddresses...),
-		Tags: strings.Join(n.Tags, ", "),
+		Tags:     strings.Join(n.Tags, ", "),
 		LastSeen: fmtTS(n.LastSeen), CreatedAt: fmtTS(n.CreatedAt), Expiry: fmtTS(n.Expiry),
 		Online: n.Online, RegisterMethod: n.registerLabel(),
 		MachineKey: n.MachineKey, NodeKey: n.NodeKey, DiscoKey: n.DiscoKey,
@@ -329,7 +377,10 @@ type headscaleCP struct{ cfg Config }
 
 var headscaleCPImpl ControlPlane = (*headscaleCP)(nil)
 
-func newControlPlane(c Config) ControlPlane { return &headscaleCP{cfg: c} }
+func newControlPlane(c Config) ControlPlane {
+	cpClient.Store(newHTTPClient(c))
+	return &headscaleCP{cfg: c}
+}
 
 func (c *headscaleCP) bearer() string { return strings.TrimSpace(secretGet(secretMain)) }
 

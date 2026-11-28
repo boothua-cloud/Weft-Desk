@@ -5,26 +5,28 @@ package main
 
 type Config struct {
 	// ControlPlane 仅保留字段兼容旧配置，固定为 headscale。
-	ControlPlane   string `json:"controlPlane"`
-	BaseURL        string `json:"baseURL"`
-	Tailnet        string `json:"tailnet"`
-	AuthMode       string `json:"authMode"`      // apikey | oauth
-	APIStyle       string `json:"apiStyle"`      // auto | v1 | v2
-	TunnelEngine   string `json:"tunnelEngine"`  // 已固定为 system，保留字段只为兼容旧配置
-	Hostname       string `json:"hostname"`      // 内嵌节点在 tailnet 里的名字
-	AllowInsecure  bool   `json:"allowInsecure"` // 信任内网应用自签 HTTPS 证书
-	AuthKey        string `json:"authKey"`       // 隧道注册用，存钥匙串
-	AutoConnect    bool   `json:"autoConnect"`
-	AutoReconnect  bool   `json:"autoReconnect"`
-	MinimizeToTray bool   `json:"minimizeToTray"`
-	Demo           bool   `json:"demo"`         // 已移除，恒为 false，保留字段只为兼容旧配置
-	DevTools       bool   `json:"devTools"`     // 允许应用窗口调试（F12）
-	SocksEnabled   bool   `json:"socksEnabled"` // 通用 SOCKS5 代理
-	SocksPort      int    `json:"socksPort"`    // 默认 1080
-	ForwardBind    string `json:"forwardBind"`  // 本地监听地址：127.0.0.1（仅本机）| 0.0.0.0（同网段可达）
-	AutoForward    bool   `json:"autoForward"`  // 隧道起来后自动拉起已启用的端口映射
-	SyncEnabled    bool   `json:"syncEnabled"`  // 允许同 tailnet 的其他设备拉取应用书签
-	SyncPort       int    `json:"syncPort"`     // 同步端口，默认 4160
+	ControlPlane    string `json:"controlPlane"`
+	BaseURL         string `json:"baseURL"`
+	Tailnet         string `json:"tailnet"`
+	AuthMode        string `json:"authMode"`      // apikey | oauth
+	APIStyle        string `json:"apiStyle"`      // auto | v1 | v2
+	TunnelEngine    string `json:"tunnelEngine"`  // 已固定为 system，保留字段只为兼容旧配置
+	Hostname        string `json:"hostname"`      // 内嵌节点在 tailnet 里的名字
+	AllowInsecure   bool   `json:"allowInsecure"` // 信任内网应用自签 HTTPS 证书
+	AuthKey         string `json:"authKey"`       // 隧道注册用，存钥匙串
+	AutoConnect     bool   `json:"autoConnect"`
+	AutoReconnect   bool   `json:"autoReconnect"`
+	MinimizeToTray  bool   `json:"minimizeToTray"`
+	Demo            bool   `json:"demo"`            // 已移除，恒为 false，保留字段只为兼容旧配置
+	DevTools        bool   `json:"devTools"`        // 允许应用窗口调试（F12）
+	SocksEnabled    bool   `json:"socksEnabled"`    // 通用 SOCKS5 代理
+	SocksPort       int    `json:"socksPort"`       // 默认 1080
+	ForwardBind     string `json:"forwardBind"`     // 本地监听地址：127.0.0.1（仅本机）| 0.0.0.0（同网段可达）
+	AutoForward     bool   `json:"autoForward"`     // 隧道起来后自动拉起已启用的端口映射
+	CACert          string `json:"caCert"`          // 控制面自签证书的 CA（PEM），填了只认它
+	ControlInsecure bool   `json:"controlInsecure"` // 没给 CA 时跳过控制面证书校验
+	SyncEnabled     bool   `json:"syncEnabled"`     // 允许同 tailnet 的其他设备拉取应用书签
+	SyncPort        int    `json:"syncPort"`        // 同步端口，默认 4160
 
 	// 多服务端：Profiles 存着每个 Headscale 的连接信息，顶层的 BaseURL/凭证等
 	// 始终是「当前激活那个」的副本，这样其余代码不用关心多套配置。
@@ -44,6 +46,9 @@ type Profile struct {
 	AuthMode      string `json:"authMode"`
 	AllowInsecure bool   `json:"allowInsecure"`
 	Hostname      string `json:"hostname"`
+	// 控制面是自签证书时的两选一：给 CA，或者干脆不校验。
+	CACert          string `json:"caCert"`
+	ControlInsecure bool   `json:"controlInsecure"`
 }
 
 type Capabilities struct {
@@ -58,27 +63,27 @@ type Capabilities struct {
 }
 
 type State struct {
-	Connected    bool         `json:"connected"`
-	Connecting   bool         `json:"connecting"` // 正在建卡 / 等管理员授权
-	Mode         string       `json:"mode"`       // demo | live
-	ControlPlane string       `json:"controlPlane"`
-	Endpoint     string       `json:"endpoint"`
-	SelfIP       string       `json:"selfIP"`
-	Hostname     string       `json:"hostname"`
-	Engine       string       `json:"engine"`
-	EngineReady  bool         `json:"engineReady"`
-	LoginURL     string       `json:"loginURL"`   // 首次交互式注册时由 tsnet 给出
-	LastError    string       `json:"lastError"`  // 最近一次启动/配置路由失败的原因
-	Platform     string       `json:"platform"`   // darwin / windows / linux，界面按它选文案
-	AppVersion   string       `json:"appVersion"` // 客户端版本，界面不再硬编码
-	DataDir      string       `json:"dataDir"`    // 配置与数据库实际所在目录
-	Routes       []string     `json:"routes"`     // 已安装的系统路由（system 模式）
-	Peers        []PeerInfo   `json:"peers"`      // 来自本地 netmap，无需 API Key
-	Skipped      []string     `json:"skipped"`    // 因与本地网段冲突被跳过的路由
-	NetErr       string       `json:"netErr"`     // 路由配置错误
-	CLIReady     bool         `json:"cliReady"`   // 兼容旧前端：等价于 EngineReady
-	Configured   bool         `json:"configured"` // 是否已填控制面凭证
-	HasAPIKey    bool         `json:"hasApiKey"`  // 是否配了能用的管理 API Key（不是节点 Auth Key）
+	Connected    bool       `json:"connected"`
+	Connecting   bool       `json:"connecting"` // 正在建卡 / 等管理员授权
+	Mode         string     `json:"mode"`       // demo | live
+	ControlPlane string     `json:"controlPlane"`
+	Endpoint     string     `json:"endpoint"`
+	SelfIP       string     `json:"selfIP"`
+	Hostname     string     `json:"hostname"`
+	Engine       string     `json:"engine"`
+	EngineReady  bool       `json:"engineReady"`
+	LoginURL     string     `json:"loginURL"`   // 首次交互式注册时由 tsnet 给出
+	LastError    string     `json:"lastError"`  // 最近一次启动/配置路由失败的原因
+	Platform     string     `json:"platform"`   // darwin / windows / linux，界面按它选文案
+	AppVersion   string     `json:"appVersion"` // 客户端版本，界面不再硬编码
+	DataDir      string     `json:"dataDir"`    // 配置与数据库实际所在目录
+	Routes       []string   `json:"routes"`     // 已安装的系统路由（system 模式）
+	Peers        []PeerInfo `json:"peers"`      // 来自本地 netmap，无需 API Key
+	Skipped      []string   `json:"skipped"`    // 因与本地网段冲突被跳过的路由
+	NetErr       string     `json:"netErr"`     // 路由配置错误
+	CLIReady     bool       `json:"cliReady"`   // 兼容旧前端：等价于 EngineReady
+	Configured   bool       `json:"configured"` // 是否已填控制面凭证
+	HasAPIKey    bool       `json:"hasApiKey"`  // 是否配了能用的管理 API Key（不是节点 Auth Key）
 	// APIKeyIssue 是「为什么不算配了」：非空时界面要把它显示出来，
 	// 否则入口突然消失会让人以为软件坏了
 	APIKeyIssue  string       `json:"apiKeyIssue"`
@@ -137,13 +142,13 @@ type AuthKey struct {
 }
 
 type APIKey struct {
-	ID       string `json:"id"`
-	Prefix   string `json:"prefix"`
-	IsCurrent bool  `json:"isCurrent"` // 是否就是当前正在用的这把
-	Expires  string `json:"expires"`
-	Created  string `json:"created"`
-	LastSeen string `json:"lastSeen"`
-	Status   string `json:"status"`
+	ID        string `json:"id"`
+	Prefix    string `json:"prefix"`
+	IsCurrent bool   `json:"isCurrent"` // 是否就是当前正在用的这把
+	Expires   string `json:"expires"`
+	Created   string `json:"created"`
+	LastSeen  string `json:"lastSeen"`
+	Status    string `json:"status"`
 }
 
 // HealthInfo 服务端健康状态。

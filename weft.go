@@ -358,6 +358,8 @@ func (s *WeftService) SwitchProfile(id string) error {
 	cfg.Tailnet = target.Tailnet
 	cfg.AuthMode = target.AuthMode
 	cfg.AllowInsecure = target.AllowInsecure
+	cfg.CACert = target.CACert
+	cfg.ControlInsecure = target.ControlInsecure
 	if target.Hostname != "" {
 		cfg.Hostname = target.Hostname
 	}
@@ -402,14 +404,16 @@ func (s *WeftService) SaveProfile(name string) error {
 		// 新条目一开始沿用同一份凭证，用户可在设置里改
 		id := fmt.Sprintf("p%d", time.Now().UnixNano())
 		p := Profile{
-			ID:            id,
-			Name:          name,
-			ControlPlane:  cfg.ControlPlane,
-			BaseURL:       cfg.BaseURL,
-			Tailnet:       cfg.Tailnet,
-			AuthMode:      cfg.AuthMode,
-			AllowInsecure: cfg.AllowInsecure,
-			Hostname:      cfg.Hostname,
+			ID:              id,
+			Name:            name,
+			ControlPlane:    cfg.ControlPlane,
+			BaseURL:         cfg.BaseURL,
+			Tailnet:         cfg.Tailnet,
+			AuthMode:        cfg.AuthMode,
+			AllowInsecure:   cfg.AllowInsecure,
+			Hostname:        cfg.Hostname,
+			CACert:          cfg.CACert,
+			ControlInsecure: cfg.ControlInsecure,
 		}
 		cfg.Profiles = append(cfg.Profiles, p)
 		if err := s.store.SaveConfig(cfg); err != nil {
@@ -466,6 +470,8 @@ func (s *WeftService) DeleteProfile(id string) error {
 				cfg.Tailnet = p.Tailnet
 				cfg.AuthMode = p.AuthMode
 				cfg.AllowInsecure = p.AllowInsecure
+				cfg.CACert = p.CACert
+				cfg.ControlInsecure = p.ControlInsecure
 				if p.Hostname != "" {
 					cfg.Hostname = p.Hostname
 				}
@@ -503,15 +509,17 @@ func (s *WeftService) DeleteProfile(id string) error {
 // 凭证留空表示不修改；要删掉得显式给 Clear*Key —— 以前「空 = 不改」既没法测
 // 「没 Key 会怎样」，也没法把填错的那串删掉。
 type profileInput struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	BaseURL       string `json:"baseURL"`
-	Hostname      string `json:"hostname"`
-	APIKey        string `json:"apiKey"`
-	AuthKey       string `json:"authKey"`
-	ClearAPIKey   bool   `json:"clearApiKey"`
-	ClearAuthKey  bool   `json:"clearAuthKey"`
-	AllowInsecure bool   `json:"allowInsecure"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	BaseURL         string `json:"baseURL"`
+	Hostname        string `json:"hostname"`
+	APIKey          string `json:"apiKey"`
+	AuthKey         string `json:"authKey"`
+	ClearAPIKey     bool   `json:"clearApiKey"`
+	ClearAuthKey    bool   `json:"clearAuthKey"`
+	AllowInsecure   bool   `json:"allowInsecure"`
+	CACert          string `json:"caCert"`
+	ControlInsecure bool   `json:"controlInsecure"`
 }
 
 // SaveProfileRaw 新建或更新一个服务端配置，返回它的 ID。
@@ -551,15 +559,23 @@ func (s *WeftService) SaveProfileRaw(raw string) (string, error) {
 	if hostname == "" {
 		hostname = defaultHostname()
 	}
+	// CA 现在就解析一遍，填错了当场报，别等连不上再猜
+	if ca := strings.TrimSpace(in.CACert); ca != "" {
+		if _, err := certPool(ca); err != nil {
+			return "", err
+		}
+	}
 	p := Profile{
-		ID:            id,
-		Name:          in.Name,
-		ControlPlane:  "headscale",
-		BaseURL:       in.BaseURL,
-		Tailnet:       "-",
-		AuthMode:      "apikey",
-		AllowInsecure: in.AllowInsecure,
-		Hostname:      hostname,
+		ID:              id,
+		Name:            in.Name,
+		ControlPlane:    "headscale",
+		BaseURL:         in.BaseURL,
+		Tailnet:         "-",
+		AuthMode:        "apikey",
+		AllowInsecure:   in.AllowInsecure,
+		Hostname:        hostname,
+		CACert:          strings.TrimSpace(in.CACert),
+		ControlInsecure: in.ControlInsecure,
 	}
 
 	idx := -1
@@ -593,6 +609,8 @@ func (s *WeftService) SaveProfileRaw(raw string) (string, error) {
 		cfg.BaseURL = p.BaseURL
 		cfg.Hostname = p.Hostname
 		cfg.AllowInsecure = p.AllowInsecure
+		cfg.CACert = p.CACert
+		cfg.ControlInsecure = p.ControlInsecure
 		cfg.ControlPlane = p.ControlPlane
 		cfg.AuthKey = ""
 		loadProfileSecrets(id)
@@ -653,6 +671,8 @@ func syncProfileFromConfig(c *Config) {
 		c.Profiles[i].Tailnet = c.Tailnet
 		c.Profiles[i].AuthMode = c.AuthMode
 		c.Profiles[i].AllowInsecure = c.AllowInsecure
+		c.Profiles[i].CACert = c.CACert
+		c.Profiles[i].ControlInsecure = c.ControlInsecure
 		c.Profiles[i].Hostname = c.Hostname
 		if c.Profiles[i].ControlPlane == "" {
 			c.Profiles[i].ControlPlane = c.ControlPlane
@@ -786,9 +806,9 @@ func parseExpires(s string) (time.Time, error) {
 // EnsureAPIKeyFresh 在当前管理密钥快过期时自动换一把新的。
 //
 // headscale 没有「续期」接口，只能新建后替换。流程：
-//   1. 列出所有 API Key，用前缀认出当前这把
-//   2. 剩余天数小于阈值就新建一把（用旧 Key 授权），立刻写进钥匙串
-//   3. 旧 Key 吊销，避免留着一把没人管的凭证
+//  1. 列出所有 API Key，用前缀认出当前这把
+//  2. 剩余天数小于阈值就新建一把（用旧 Key 授权），立刻写进钥匙串
+//  3. 旧 Key 吊销，避免留着一把没人管的凭证
 //
 // 失败不会抛出到界面，只写审计；下次定时器还会再试。
 func (s *WeftService) EnsureAPIKeyFresh(window time.Duration) (bool, error) {

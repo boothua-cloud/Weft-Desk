@@ -8,7 +8,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -134,9 +134,9 @@ export function DownloadUpdate(): $CancellablePromise<string> {
  * EnsureAPIKeyFresh 在当前管理密钥快过期时自动换一把新的。
  * 
  * headscale 没有「续期」接口，只能新建后替换。流程：
- *   1. 列出所有 API Key，用前缀认出当前这把
- *   2. 剩余天数小于阈值就新建一把（用旧 Key 授权），立刻写进钥匙串
- *   3. 旧 Key 吊销，避免留着一把没人管的凭证
+ *  1. 列出所有 API Key，用前缀认出当前这把
+ *  2. 剩余天数小于阈值就新建一把（用旧 Key 授权），立刻写进钥匙串
+ *  3. 旧 Key 吊销，避免留着一把没人管的凭证
  * 
  * 失败不会抛出到界面，只写审计；下次定时器还会再试。
  */

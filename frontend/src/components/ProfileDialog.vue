@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { api } from '../api'
 
-type Row = { id: string; name: string; baseURL: string; hostname?: string; allowInsecure?: boolean }
+type Row = { id: string; name: string; baseURL: string; hostname?: string; allowInsecure?: boolean; caCert?: string; controlInsecure?: boolean }
 
 const props = defineProps<{ profile: Row | null }>()
 const emit = defineEmits(['close', 'saved', 'notify'])
@@ -13,6 +13,9 @@ const hostname = ref('')
 const apiKey = ref('')
 const authKey = ref('')
 const allowInsecure = ref(false)
+// 控制面是自签证书：贴了 CA 就只认这份 CA，没贴就跳过校验
+const selfSigned = ref(false)
+const caCert = ref('')
 const saving = ref(false)
 // 已存的密钥默认不显示，点「显示」才从钥匙串读明文
 const shownKey = ref<Record<string, string>>({})
@@ -30,6 +33,8 @@ watch(
     baseURL.value = p?.baseURL ?? ''
     hostname.value = p?.hostname ?? ''
     allowInsecure.value = !!p?.allowInsecure
+    caCert.value = p?.caCert ?? ''
+    selfSigned.value = !!p?.caCert || !!p?.controlInsecure
     apiKey.value = ''
     authKey.value = ''
     shownKey.value = {}
@@ -94,6 +99,8 @@ async function save() {
       clearApiKey: clearApi.value,
       clearAuthKey: clearAuth.value,
       allowInsecure: allowInsecure.value,
+      caCert: selfSigned.value ? caCert.value.trim() : '',
+      controlInsecure: selfSigned.value && !caCert.value.trim(),
     }))
     emit('saved')
   } catch (err: any) {
@@ -185,10 +192,31 @@ async function save() {
         </div>
       </section>
 
+      <section class="pf-sec">
+        <div class="pf-sec-title">控制面证书</div>
+        <div class="pf-inline" style="padding-top:0;border-top:0">
+          <div style="min-width:0">
+            <span class="pf-switch-title">服务端用自签证书</span>
+            <p class="pf-hint" style="margin-top:4px">地址是 https、证书不是公网 CA 签的，就打开</p>
+          </div>
+          <button class="switch" :class="{ on: selfSigned }" @click="selfSigned = !selfSigned"></button>
+        </div>
+        <div v-if="selfSigned" class="pf-field">
+          <label class="field-label">CA 证书 <span class="pf-en">PEM</span></label>
+          <textarea class="input mono" rows="4" v-model="caCert"
+                    placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+          <p class="pf-hint">
+            贴了只认这份 CA；留空就不校验证书，能连上但挡不住中间人。
+            caddy 的 CA 在 <code>~/.local/share/caddy/pki/authorities/local/root.crt</code>，
+            mkcert 的用 <code>mkcert -CAROOT</code> 找。
+          </p>
+        </div>
+      </section>
+
       <section class="pf-sec pf-inline">
         <div style="min-width:0">
-          <span class="pf-switch-title">信任自签 HTTPS 证书</span>
-          <p class="pf-hint" style="margin-top:4px">内网应用用自签证书时，应用内窗口不报错</p>
+          <span class="pf-switch-title">信任内网应用的自签证书</span>
+          <p class="pf-hint" style="margin-top:4px">应用窗口打开内网 https 站点时不报错</p>
         </div>
         <button class="switch" :class="{ on: allowInsecure }" @click="allowInsecure = !allowInsecure"></button>
       </section>

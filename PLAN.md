@@ -22,15 +22,15 @@ https://github.com/boothua-cloud/Weft-Desk/releases/tag/v0.1.5
 
 主题：连不上、为什么慢，都要在界面上看得见。
 
-- [ ] 控制面自签证书
-  - `sharedHTTP` 换成带 `tls.Config` 的 Transport。CA PEM 或证书指纹按服务端存，跟 Key 一样进配置。
-  - `AllowInsecure` 的文案改成「信任内网应用的自签证书」——它一直是应用侧开关，不是控制面开关。
-  - 改 `controlplane.go`、`model.go`、`store.go`、`ProfileDialog.vue`。
+- [x] 控制面自签证书
+  - `sharedHTTP` 换成按服务端配置构造的 client。CA PEM 或「跳过校验」按服务端存，跟 Key 一样进配置。
+  - 结果：`newHTTPClient` 里挂 `tls.Config`，`newControlPlane` 时重建。CA 解析不了的当场报错。
+  - 验：`httptest.NewTLSServer` 起自签服务，不配 CA 连不上、配了 CA 能连、勾跳过也能连。
 
-- [ ] 读系统代理
-  - macOS 走 `scutil --proxy`，Windows 读注册表 `ProxyEnable` / `ProxyServer`，环境变量优先。
-  - 结果只喂给控制面请求，不开代理时不发额外请求。
-  - 改 `controlplane.go`，新增 `proxycfg_darwin.go`、`proxycfg_windows.go`。
+- [x] 读系统代理
+  - macOS 走 `scutil --proxy`（连例外列表一起解析），Windows 读注册表，环境变量优先。
+  - 结果：新增 `proxycfg_darwin.go`、`proxycfg_windows.go`、`proxycfg_other.go`。命中例外就不走代理，内网域名不会被绕进去。
+  - 验：单测覆盖例外匹配与 scutil 输出解析；Windows 交叉编译通过。
 
 - [x] 应用书签在多台设备间同步
   - 本机在 tailnet 上开一个只给同账号设备访问的端口，另一台凭同步码拉取或推送；按 URL 合并，删除不传播。

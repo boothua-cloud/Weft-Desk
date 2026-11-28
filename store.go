@@ -122,16 +122,19 @@ func (s *Store) GetConfig() (Config, error) {
 		c.SyncPort = defaultSyncPort
 	}
 	// 从单服务端升级上来：把现有配置收成第一个 profile
-	if len(c.Profiles) == 0 {		id := "default"
+	if len(c.Profiles) == 0 {
+		id := "default"
 		c.Profiles = []Profile{{
-			ID:            id,
-			Name:          profileLabel(c.BaseURL, "默认服务端"),
-			ControlPlane:  c.ControlPlane,
-			BaseURL:       c.BaseURL,
-			Tailnet:       c.Tailnet,
-			AuthMode:      c.AuthMode,
-			AllowInsecure: c.AllowInsecure,
-			Hostname:      c.Hostname,
+			ID:              id,
+			Name:            profileLabel(c.BaseURL, "默认服务端"),
+			ControlPlane:    c.ControlPlane,
+			BaseURL:         c.BaseURL,
+			Tailnet:         c.Tailnet,
+			AuthMode:        c.AuthMode,
+			AllowInsecure:   c.AllowInsecure,
+			Hostname:        c.Hostname,
+			CACert:          c.CACert,
+			ControlInsecure: c.ControlInsecure,
 		}}
 		c.ActiveID = id
 	}

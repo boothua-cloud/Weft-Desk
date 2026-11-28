@@ -206,7 +206,7 @@ function describe(r: { peer: string; added: number; updated: number; skipped: nu
     </div>
 
     <div v-if="hasHTTPS && !allowInsecure" class="notice warn" style="margin-bottom:14px">
-      有应用用了 HTTPS：自签证书在应用窗口里会白屏。去「连接设置」打开「信任自签 HTTPS 证书」。
+      有应用用了 HTTPS：自签证书在应用窗口里会白屏。去服务端编辑弹窗打开「信任内网应用的自签证书」。
     </div>
 
     <div class="filter-bar">

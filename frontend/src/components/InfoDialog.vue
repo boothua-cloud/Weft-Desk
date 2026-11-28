@@ -234,7 +234,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
             每张卡片三个动作：<span class="hl">应用内打开</span>（在本地起反向代理，用独立窗口加载，浏览器按钮同样走它）、
             <span class="mono">↗</span> 用系统浏览器打开、<span class="mono">✎</span> 编辑。
             表单里打开「用系统浏览器打开」后，卡片主按钮会变成「浏览器打开」。
-            应用是自签 HTTPS 时应用内窗口会白屏，去连接设置打开「信任自签 HTTPS 证书」。
+            应用是自签 HTTPS 时应用内窗口会白屏，在服务端编辑弹窗里打开「信任内网应用的自签证书」。
             反代只在云栈运行期间有效，关掉应用链接就断了。
           </p>
           <p style="margin-top:10px">
@@ -314,7 +314,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
             <li>
               看详细日志：<template v-if="isMac">终端里跑 <span class="mono">/Applications/云栈.app/Contents/MacOS/weft --diag</span></template><template v-else>在安装目录里用命令行启动 <span class="mono">weft.exe --diag</span></template>，<span class="mono">[system]</span> 开头的是节点日志，会打印每个对端的在线状态和 DERP。
             </li>
-            <li>应用内窗口白屏且地址是 https：打开「信任自签 HTTPS 证书」，或改用系统浏览器打开。</li>
+            <li>应用内窗口白屏且地址是 https：打开服务端弹窗里的「信任内网应用的自签证书」，或改用系统浏览器。</li>
           </ul>
         </section>
 
