@@ -596,14 +596,19 @@ table.tbl tr:last-child td { border-bottom: 0; }
 
 /* ---------------- 抽屉 / 遮罩 / 提示 ---------------- */
 
+/* 抽屉和遮罩钉在视口上，不跟着正文滚。
+   之前是 absolute，挂在 .content 里：正文一滚，遮罩跟着滚走半截，
+   下面露出一段没盖住的白底，抽屉也跟着往上滑。 */
 .drawer {
-  position: absolute; right: 0; top: 0; bottom: 0; width: 360px;
+  position: fixed; right: 0; top: 0; bottom: 0; width: 360px;
   background: var(--surface); border-left: 1px solid var(--line);
   box-shadow: var(--shadow-pop); padding: 22px; z-index: 3; overflow: auto;
   animation: weft-slide .22s cubic-bezier(.22, .8, .3, 1);
 }
 @keyframes weft-slide { from { transform: translateX(18px); opacity: .4; } }
-.mask { position: absolute; inset: 0; background: rgba(8, 12, 18, .32); backdrop-filter: blur(2px); z-index: 2; }
+.mask { position: fixed; inset: 0; background: rgba(8, 12, 18, .32); backdrop-filter: blur(2px); z-index: 2; }
+/* 抽屉开着的时候正文别再滚，不然背景在遮罩后面滑来滑去 */
+.content:has(.mask) { overflow: hidden; }
 
 /* 确认框：吊销 / 删除这类不可逆操作先用它挡一下，样式复用 .modal-mask + .modal */
 .modal.modal-confirm { width: min(400px, 100%); padding: 24px; }
