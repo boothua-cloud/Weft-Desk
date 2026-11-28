@@ -11,7 +11,9 @@
 
 **版本规则**：0.x 阶段，minor 表示一个能力批次，patch 只修 bug 不动界面。
 
-## 0.1.5 — 已冻结
+## 0.1.5 — 已发布
+
+发布页：https://github.com/boothua-cloud/Weft-Desk/releases/tag/v0.1.5
 
 - [x] ACL 拆成「用户组与标签 / 规则 / 源码」三页签，矩阵钉在规则下方
 - [x] 权限矩阵去掉白卡背景与上浮阴影
