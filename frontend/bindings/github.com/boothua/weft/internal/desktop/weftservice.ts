@@ -14,6 +14,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as time$0 from "../../../../../time/models.js";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
 export function ApplyUpdate(): $CancellablePromise<void> {
     return $Call.ByID(4066642766);
 }
@@ -31,6 +35,22 @@ export function ApproveRoutes(id: string, routes: string): $CancellablePromise<v
  */
 export function BackfillIPs(confirmed: boolean): $CancellablePromise<number> {
     return $Call.ByID(2066106723, confirmed);
+}
+
+/**
+ * BatchAPIKeys 批量吊销 / 删除 API Key。吊销优先用 id，删除只能用前缀，
+ * 所以界面把两个都传上来，别在这里再猜一次。
+ */
+export function BatchAPIKeys(keys: $models.KeyRef[] | null, op: string): $CancellablePromise<string> {
+    return $Call.ByID(3905743725, keys, op);
+}
+
+/**
+ * BatchAuthKeys 批量吊销 / 删除授权 Key。op 取 expire 或 delete，
+ * 界面按下的按钮不一样，做的事就是单台那两个接口，逐个来。
+ */
+export function BatchAuthKeys(ids: string[] | null, op: string): $CancellablePromise<string> {
+    return $Call.ByID(2395774057, ids, op);
 }
 
 export function BatchExpiry(ids: string[] | null, expire: boolean): $CancellablePromise<string> {
@@ -104,6 +124,14 @@ export function DeleteProfile(id: string): $CancellablePromise<void> {
 
 export function DeleteUser(id: string): $CancellablePromise<void> {
     return $Call.ByID(2077173953, id);
+}
+
+/**
+ * DeleteUsers 批量删除成员。headscale 没有批量接口，逐个删；
+ * 某个删不动（名下还有设备）就记下来继续，最后一起说。
+ */
+export function DeleteUsers(ids: string[] | null): $CancellablePromise<string> {
+    return $Call.ByID(2568818742, ids);
 }
 
 /**

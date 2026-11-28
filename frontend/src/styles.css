@@ -958,6 +958,9 @@ html[data-theme="dark"] .help-body::-webkit-scrollbar-thumb {
 }
 .pick-box:hover { border-color: var(--brand); }
 .pick-box.on { background: var(--brand); border-color: var(--brand); }
+/* 不让选的行（比如当前正在用的 API Key）灰掉，理由写在 title 里 */
+.pick-box:disabled { opacity: .3; cursor: not-allowed; }
+.pick-box:disabled:hover { border-color: var(--line); }
 .pick-box svg { width: 9px; height: 9px; display: block; }
 tr.picked-row > td { background: var(--brand-soft); }
 .batch-bar {

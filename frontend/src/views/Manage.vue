@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { api, type State, type Device, type User, type AuthKey, type APIKey, type Cached } from '../api'
+import { api, type State, type Device, type User, type AuthKey, type APIKey, type Cached, type BatchResult, type KeyRef } from '../api'
 import Pick from '../components/Pick.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useConfirm } from '../confirm'
-import { reloadTick } from '../bus'
+import { reloadTick, pendingDeviceQuery } from '../bus'
 
 const props = defineProps<{ tab: string; state: State | null }>()
 const emit = defineEmits(['notify', 'navigate'])
@@ -166,6 +166,15 @@ watch(() => props.tab, () => {
 }, { immediate: true })
 
 watch(reloadTick, load)
+
+// 命令面板搜到某台设备后跳过来：把名字填进搜索框再拉一次。
+// 页签是 App 切的，这里只负责「填上并让它显示出来」。
+watch(pendingDeviceQuery, (v) => {
+  if (!v) return
+  keyword.value = v
+  pendingDeviceQuery.value = ''
+  if (props.tab === 'devices') load()
+}, { immediate: true })
 // 首次挂载时 state 可能还是 null，那时 api 还没配置好，拉回来的是空列表。
 // 等 state 首次到达时补一次；之后只有 endpoint 变了（切了服务端）才重拉。
 let readyOnce = false
@@ -554,14 +563,21 @@ function deleteUser(u: User) {
 
 // 所有写操作走这里：失败就把服务端原文抛出来，不做假成功
 // ---------- 批量操作 ----------
-// 勾选只在设备页用。表头那格是全选，选的是「当前筛选结果」而不是整张表，
-// 筛完再全选是常规用法，全选到看不见的行反而危险。
+// 四个页签共用一套勾选：切页签时清空，所以一个 Set 就够。
+// 表头那格是全选，选的是「当前筛选结果」而不是整张表，筛完再全选是常规用法，
+// 全选到看不见的行反而危险。
 const picked = ref<Set<string>>(new Set())
 const batchMode = ref<'' | 'tag'>('')
 const batchTag = ref('')
 
+const shownPickable = computed<{ id: string }[]>(() => {
+  if (props.tab === 'devices') return shownDevices.value
+  if (props.tab === 'users') return users.value
+  if (props.tab === 'keys') return shownKeys.value
+  return shownApiKeys.value
+})
 const allPicked = computed(() =>
-  shownDevices.value.length > 0 && shownDevices.value.every((d) => picked.value.has(d.id)),
+  shownPickable.value.length > 0 && shownPickable.value.every((x) => picked.value.has(x.id)),
 )
 
 function togglePick(id: string) {
@@ -576,7 +592,7 @@ function togglePickAll() {
     picked.value = new Set()
     return
   }
-  picked.value = new Set(shownDevices.value.map((d) => d.id))
+  picked.value = new Set(shownPickable.value.map((x) => x.id))
 }
 
 function clearPick() {
@@ -635,6 +651,87 @@ async function batchExpiry(expire: boolean) {
       } finally {
         busy.value = false
       }
+    },
+  })
+}
+
+// 批量结果统一一句话：成功几个，失败几个，失败的第一个带原因
+function batchMessage(r: BatchResult, verb: string, unit: string): string {
+  if (!r.failed.length) return `${verb}完成，共 ${r.done} ${unit}`
+  const f = r.failed[0]
+  return `${verb}完成 ${r.done} ${unit}，${r.failed.length} ${unit}失败：${f.name || f.id} ${f.error}`
+}
+
+async function batchDeleteUsers() {
+  if (blocked()) return
+  const ids = [...picked.value]
+  const names = users.value.filter((u) => ids.includes(u.id)).map((u) => u.rawName || u.name)
+  askConfirm({
+    title: `删除选中的 ${ids.length} 个成员？`,
+    desc: `${names.join('、')}\n名下还有设备的成员删不掉，得先把设备清空。删除后无法恢复。`,
+    ok: '删除',
+    tone: 'danger',
+    action: async () => {
+      busy.value = true
+      try {
+        const r = await api.deleteUsers(ids)
+        emit('notify', batchMessage(r, '删除', '个'))
+        clearPick()
+        await load()
+      } catch (err: any) { emit('notify', '批量删除失败：' + (err?.message ?? err)) }
+      finally { busy.value = false }
+    },
+  })
+}
+
+async function batchAuthKeyAction(op: 'expire' | 'delete') {
+  if (blocked()) return
+  const ids = [...picked.value]
+  const verb = op === 'expire' ? '吊销' : '删除'
+  askConfirm({
+    title: `${verb}选中的 ${ids.length} 把授权 Key？`,
+    desc: op === 'expire'
+      ? '吊销后立即失效，无法恢复。已经用它注册过的节点不受影响。'
+      : '删除后记录彻底消失，无法恢复。已经用它注册过的节点不受影响。',
+    ok: verb,
+    tone: op === 'delete' ? 'danger' : 'primary',
+    action: async () => {
+      busy.value = true
+      try {
+        const r = await api.batchAuthKeys(ids, op)
+        emit('notify', batchMessage(r, verb, '把'))
+        clearPick()
+        await load()
+      } catch (err: any) { emit('notify', verb + '失败：' + (err?.message ?? err)) }
+      finally { busy.value = false }
+    },
+  })
+}
+
+async function batchApiKeyAction(op: 'expire' | 'delete') {
+  if (blocked()) return
+  // 当前正在用的那把不参与：把它作废等于把自己的管理入口关掉
+  const refs: KeyRef[] = shownApiKeys.value
+    .filter((k) => picked.value.has(k.id) && !k.isCurrent)
+    .map((k) => ({ prefix: k.prefix, id: k.id, name: k.prefix }))
+  if (!refs.length) { emit('notify', '选中的都是当前正在用的那把，换一把再试'); return }
+  const verb = op === 'expire' ? '吊销' : '删除'
+  askConfirm({
+    title: `${verb}选中的 ${refs.length} 把 API Key？`,
+    desc: op === 'expire'
+      ? '吊销后立即失效，正在用它的客户端马上失去管理权限，无法恢复。'
+      : '删除后记录彻底消失，无法恢复。想留痕就吊销。',
+    ok: verb,
+    tone: op === 'delete' ? 'danger' : 'primary',
+    action: async () => {
+      busy.value = true
+      try {
+        const r = await api.batchAPIKeys(refs, op)
+        emit('notify', batchMessage(r, verb, '把'))
+        clearPick()
+        await load()
+      } catch (err: any) { emit('notify', verb + '失败：' + (err?.message ?? err)) }
+      finally { busy.value = false }
     },
   })
 }
@@ -787,7 +884,7 @@ function splitList(v: string) {
           <button class="btn sm" :disabled="locked" @click="batchMode = 'tag'">打标签</button>
           <button class="btn sm" :disabled="locked" @click="batchExpiry(false)">取消到期</button>
           <button class="btn sm danger" :disabled="locked" @click="batchExpiry(true)">登出</button>
-          <button class="btn sm ghost" :disabled="locked" @click="clearPick">清除</button>
+          <button class="btn sm ghost" :disabled="locked" @click="clearPick">取消选择</button>
         </template>
       </div>
     </div>
@@ -802,11 +899,21 @@ function splitList(v: string) {
         <div v-if="loading" class="load-overlay"><span class="spinner"></span>加载中…</div>
         <table class="tbl">
           <thead><tr>
+            <th style="width:34px"><button type="button" class="pick-box" :class="{ on: allPicked }"
+                  :title="allPicked ? '取消全选' : '选中全部成员'" @click="togglePickAll">
+              <svg v-if="allPicked" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.3 4.9 8.8 9.6 3.4"/></svg>
+            </button></th>
             <th style="width:24%">成员 / 命名空间</th><th>显示名称</th><th>邮箱</th>
             <th style="width:100px">设备</th><th>创建时间</th><th style="width:150px"></th>
           </tr></thead>
           <tbody>
-            <tr v-for="u in users" :key="u.id">
+            <tr v-for="u in users" :key="u.id" :class="{ 'picked-row': picked.has(u.id) }">
+              <td><button type="button" class="pick-box" :class="{ on: picked.has(u.id) }"
+                    :title="picked.has(u.id) ? '取消选中' : '选中'" @click="togglePick(u.id)">
+                <svg v-if="picked.has(u.id)" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="1.8"
+                     stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.3 4.9 8.8 9.6 3.4"/></svg>
+              </button></td>
               <td class="cell-main">
                 <input v-if="editingUser === u.id" class="input" style="height:28px;max-width:200px"
                        v-model="editUserName" @keyup.enter="commitRename(u)" @keyup.esc="editingUser = ''" />
@@ -833,7 +940,7 @@ function splitList(v: string) {
                 </template>
               </td>
             </tr>
-            <tr v-if="!users.length"><td colspan="6">
+            <tr v-if="!users.length"><td colspan="7">
               <div class="empty-state">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="12" cy="8" r="3.2"/><path d="M5 19c1.2-3.2 3.8-4.6 7-4.6s5.8 1.4 7 4.6"/></svg>
                 <b>还没有成员</b>
@@ -842,6 +949,11 @@ function splitList(v: string) {
             </td></tr>
           </tbody>
         </table>
+        <div v-if="picked.size && tab === 'users'" class="batch-bar">
+          <span class="batch-count">已选 {{ picked.size }} 个成员</span>
+          <button class="btn sm danger" :disabled="locked" @click="batchDeleteUsers">删除成员</button>
+          <button class="btn sm ghost" :disabled="locked" @click="clearPick">取消选择</button>
+        </div>
       </div>
     </div>
 
@@ -849,9 +961,21 @@ function splitList(v: string) {
     <div class="card table-scroll" style="padding:0;position:relative" v-else-if="tab === 'keys'">
       <div v-if="loading" class="load-overlay"><span class="spinner"></span>加载中…</div>
       <table class="tbl">
-        <thead><tr><th>Key</th><th>成员</th><th>类型</th><th>到期</th><th>创建时间</th><th>状态</th><th style="width:120px"></th></tr></thead>
+        <thead><tr>
+          <th style="width:34px"><button type="button" class="pick-box" :class="{ on: allPicked }"
+                :title="allPicked ? '取消全选' : '选中当前列表'" @click="togglePickAll">
+            <svg v-if="allPicked" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.3 4.9 8.8 9.6 3.4"/></svg>
+          </button></th>
+          <th>Key</th><th>成员</th><th>类型</th><th>到期</th><th>创建时间</th><th>状态</th><th style="width:120px"></th>
+        </tr></thead>
         <tbody>
-          <tr v-for="k in shownKeys" :key="k.id">
+          <tr v-for="k in shownKeys" :key="k.id" :class="{ 'picked-row': picked.has(k.id) }">
+            <td><button type="button" class="pick-box" :class="{ on: picked.has(k.id) }"
+                  :title="picked.has(k.id) ? '取消选中' : '选中'" @click="togglePick(k.id)">
+              <svg v-if="picked.has(k.id)" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.3 4.9 8.8 9.6 3.4"/></svg>
+            </button></td>
             <td>
               <div class="cell-main mono">{{ k.key }}</div>
               <div class="cell-sub">
@@ -870,7 +994,7 @@ function splitList(v: string) {
               <button class="btn ghost sm" @click="deleteKey(k)">删除</button>
             </td>
           </tr>
-          <tr v-if="!shownKeys.length"><td colspan="7">
+          <tr v-if="!shownKeys.length"><td colspan="8">
             <div class="empty-state">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="9" r="3.2"/><path d="M10.4 11.4 19 20M16 17l2-2"/></svg>
               <b>{{ keys.length ? '没有符合条件的 Key' : '还没有授权 Key' }}</b>
@@ -879,15 +1003,35 @@ function splitList(v: string) {
           </td></tr>
         </tbody>
       </table>
+      <div v-if="picked.size && tab === 'keys'" class="batch-bar">
+        <span class="batch-count">已选 {{ picked.size }} 把授权 Key</span>
+        <button class="btn sm" :disabled="locked" @click="batchAuthKeyAction('expire')">吊销</button>
+        <button class="btn sm danger" :disabled="locked" @click="batchAuthKeyAction('delete')">删除</button>
+        <button class="btn sm ghost" :disabled="locked" @click="clearPick">取消选择</button>
+      </div>
     </div>
 
     <!-- API Key -->
     <div class="card table-scroll" style="padding:0;position:relative" v-else>
       <div v-if="loading" class="load-overlay"><span class="spinner"></span>加载中…</div>
       <table class="tbl">
-        <thead><tr><th style="width:20%">前缀</th><th>到期</th><th>创建时间</th><th>最后使用</th><th>状态</th><th style="width:120px"></th></tr></thead>
+        <thead><tr>
+          <th style="width:34px"><button type="button" class="pick-box" :class="{ on: allPicked }"
+                :title="allPicked ? '取消全选' : '选中当前列表'" @click="togglePickAll">
+            <svg v-if="allPicked" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.3 4.9 8.8 9.6 3.4"/></svg>
+          </button></th>
+          <th style="width:20%">前缀</th><th>到期</th><th>创建时间</th><th>最后使用</th><th>状态</th><th style="width:120px"></th>
+        </tr></thead>
         <tbody>
-          <tr v-for="k in shownApiKeys" :key="k.id">
+          <tr v-for="k in shownApiKeys" :key="k.id" :class="{ 'picked-row': picked.has(k.id) }">
+            <td><button type="button" class="pick-box" :class="{ on: picked.has(k.id) }"
+                  :disabled="k.isCurrent"
+                  :title="k.isCurrent ? '当前正在用的这把不能批量处理' : (picked.has(k.id) ? '取消选中' : '选中')"
+                  @click="togglePick(k.id)">
+              <svg v-if="picked.has(k.id)" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.3 4.9 8.8 9.6 3.4"/></svg>
+            </button></td>
             <td class="cell-main mono">{{ k.prefix }}</td>
             <td>{{ k.expires || '—' }}</td><td>{{ k.created || '—' }}</td><td>{{ k.lastSeen || '—' }}</td>
             <td><span class="tag" :class="statusTag(k.status)">{{ k.status }}</span></td>
@@ -897,7 +1041,7 @@ function splitList(v: string) {
               <button class="btn ghost sm" @click="deleteApiKey(k)">删除</button>
             </td>
           </tr>
-          <tr v-if="!shownApiKeys.length"><td colspan="6">
+          <tr v-if="!shownApiKeys.length"><td colspan="7">
             <div class="empty-state">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="9" r="3.2"/><path d="M10.4 11.4 19 20M16 17l2-2"/></svg>
               <b>{{ apiKeys.length ? '没有符合条件的 API Key' : '还没有 API Key' }}</b>
@@ -906,6 +1050,12 @@ function splitList(v: string) {
           </td></tr>
         </tbody>
       </table>
+      <div v-if="picked.size && tab === 'api'" class="batch-bar">
+        <span class="batch-count">已选 {{ picked.size }} 把 API Key</span>
+        <button class="btn sm" :disabled="locked" @click="batchApiKeyAction('expire')">吊销</button>
+        <button class="btn sm danger" :disabled="locked" @click="batchApiKeyAction('delete')">删除</button>
+        <button class="btn sm ghost" :disabled="locked" @click="clearPick">取消选择</button>
+      </div>
     </div>
 
     <template v-if="drawer">

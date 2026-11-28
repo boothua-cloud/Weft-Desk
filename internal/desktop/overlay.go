@@ -50,6 +50,9 @@ func ensureControlServer(svc *WeftService) int {
 			}
 		}
 		mux.HandleFunc("/close", handle("close"))
+		// 钉在最前：内网后台常常要一边看日志一边点，切走就找不到了
+		mux.HandleFunc("/pin", handle("pin"))
+		mux.HandleFunc("/unpin", handle("unpin"))
 
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -78,8 +81,13 @@ func (s *WeftService) windowAction(id, action string) {
 		if fmt.Sprint(w.ID()) != id {
 			continue
 		}
-		if action == "close" {
+		switch action {
+		case "close":
 			w.Close()
+		case "pin":
+			w.SetAlwaysOnTop(true)
+		case "unpin":
+			w.SetAlwaysOnTop(false)
 		}
 		return
 	}
@@ -133,14 +141,29 @@ var css='.__weft_wrap{position:fixed!important;top:10px!important;right:10px!imp
 +'.__weft_menu button:hover{background:#f2f4f7!important}';
 var st=document.createElement('style');st.textContent=css;(document.head||document.documentElement).appendChild(st);
 var wrap=document.createElement('div');wrap.className='__weft_wrap';
+// 页面导航会把注入的节点清掉，钉住的状态存在 sessionStorage 里，
+// 重新注入后菜单文字还能对上
+var pinned=(function(){try{return sessionStorage.getItem('__weftPin')==='1'}catch(e){return false}})();
 var btn=document.createElement('button');btn.className='__weft_btn';btn.title='页面菜单';btn.textContent='⋯';
 var menu=document.createElement('div');menu.className='__weft_menu';
 [['刷新',function(){location.reload()}],
  ['后退',function(){history.back()}],
  ['复制地址',function(){try{navigator.clipboard.writeText(location.href)}catch(e){}}],
+ ['钉在最前',function(){}],
  ['关闭窗口',function(){act('close')}]].forEach(function(it){
   var b=document.createElement('button');b.textContent=it[0];
-  b.addEventListener('click',function(e){e.stopPropagation();menu.classList.remove('__weft_open');it[1]()});
+  if(it[0]==='钉在最前'){
+    if(pinned)b.textContent='取消钉住';
+    // 钉住状态只在这个窗口里记，菜单文字跟着变，不用回 Go 侧查
+    b.addEventListener('click',function(e){
+      e.stopPropagation();menu.classList.remove('__weft_open');
+      pinned=!pinned;act(pinned?'pin':'unpin');
+      try{sessionStorage.setItem('__weftPin',pinned?'1':'0')}catch(e){}
+      b.textContent=pinned?'取消钉住':'钉在最前';
+    });
+  }else{
+    b.addEventListener('click',function(e){e.stopPropagation();menu.classList.remove('__weft_open');it[1]()});
+  }
   menu.appendChild(b);
 });
 btn.addEventListener('click',function(e){e.stopPropagation();menu.classList.toggle('__weft_open')});

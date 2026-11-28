@@ -95,12 +95,15 @@ function revoke(r: Row) {
 }
 
 // ---------- 选中 ----------
-// 只让选待批准的行：已批准的行没有「批准」这个动作，勾上也没事可做。
+// 批准和撤销都能批量做，所以两种状态的行都能勾。两个按钮各看各的那部分，
+// 勾了待批准的点「撤销选中」不会有反应，也不会误伤。
 const picked = ref<Set<string>>(new Set())
 const pendingRows = computed(() => rows.value.filter((r) => !r.approved))
-const pickedRows = computed(() => pendingRows.value.filter((r) => picked.value.has(r.key)))
+const pickedRows = computed(() => rows.value.filter((r) => picked.value.has(r.key)))
+const pickedPending = computed(() => pickedRows.value.filter((r) => !r.approved))
+const pickedApproved = computed(() => pickedRows.value.filter((r) => r.approved))
 const allPicked = computed(() =>
-  pendingRows.value.length > 0 && pickedRows.value.length === pendingRows.value.length,
+  rows.value.length > 0 && pickedRows.value.length === rows.value.length,
 )
 
 function togglePick(key: string) {
@@ -111,18 +114,18 @@ function togglePick(key: string) {
 }
 
 function togglePickAll() {
-  picked.value = allPicked.value ? new Set() : new Set(pendingRows.value.map((r) => r.key))
+  picked.value = allPicked.value ? new Set() : new Set(rows.value.map((r) => r.key))
 }
 
 // 按设备分组提交：服务端是整份替换，逐条发会把同一台设备之前批准的挤掉
 function approvePicked() {
   const byDev = new Map<string, { d: Device; list: string[] }>()
-  for (const r of pickedRows.value) {
+  for (const r of pickedPending.value) {
     const cur = byDev.get(r.dev.id) || { d: r.dev, list: splitList(r.dev.approvedRoutes) }
     if (!cur.list.includes(r.prefix)) cur.list.push(r.prefix)
     byDev.set(r.dev.id, cur)
   }
-  const n = pickedRows.value.length
+  const n = pickedPending.value.length
   if (!n) return
   askConfirm({
     title: `批准选中的 ${n} 条路由？`,
@@ -135,6 +138,40 @@ function approvePicked() {
         for (const { d, list } of byDev.values()) await api.approveRoutes(d.id, list.join(','))
         await load()
         emit('notify', `已批准 ${n} 条`)
+      } catch (err: any) {
+        await load()
+        emit('notify', '操作失败：' + (err?.message ?? err))
+      } finally {
+        busy.value = ''
+      }
+    },
+  })
+}
+
+// 撤销选中：同样按设备分组，把选中的网段从「已批准」里减掉再整份提交。
+// 逐条发会把同一台设备上没勾的也一起撤销掉。
+function revokePicked() {
+  if (stale.value) { emit('notify', '服务端连不上，先恢复连接再改'); return }
+  const n = pickedApproved.value.length
+  if (!n) return
+  const byDev = new Map<string, { d: Device; drop: string[]; list: string[] }>()
+  for (const r of pickedApproved.value) {
+    const cur = byDev.get(r.dev.id) || { d: r.dev, drop: [], list: splitList(r.dev.approvedRoutes) }
+    cur.drop.push(r.prefix)
+    byDev.set(r.dev.id, cur)
+  }
+  for (const v of byDev.values()) v.list = v.list.filter((x) => !v.drop.includes(x))
+  askConfirm({
+    title: `撤销选中的 ${n} 条路由？`,
+    desc: `${[...byDev.values()].map((v) => `${v.d.name}：${v.drop.join('、')}`).join('\n')}\n\n撤销后这些网段从服务端路由表里移除，下次下发后客户端就访问不到了。`,
+    ok: '撤销',
+    tone: 'danger',
+    action: async () => {
+      busy.value = '__batch__'
+      try {
+        for (const { d, list } of byDev.values()) await api.approveRoutes(d.id, list.join(','))
+        await load()
+        emit('notify', `已撤销 ${n} 条`)
       } catch (err: any) {
         await load()
         emit('notify', '操作失败：' + (err?.message ?? err))
@@ -188,8 +225,11 @@ function approveAll() {
         <button class="btn" :disabled="loading" @click="load">
           <span v-if="loading" class="spinner"></span>{{ loading ? '刷新中…' : '刷新' }}
         </button>
-        <button class="btn" :disabled="!pickedRows.length || !!busy || stale" @click="approvePicked">
-          批准选中{{ pickedRows.length ? `（${pickedRows.length}）` : '' }}
+        <button class="btn" :disabled="!pickedPending.length || !!busy || stale" @click="approvePicked">
+          批准选中{{ pickedPending.length ? `（${pickedPending.length}）` : '' }}
+        </button>
+        <button class="btn" :disabled="!pickedApproved.length || !!busy || stale" @click="revokePicked">
+          撤销选中{{ pickedApproved.length ? `（${pickedApproved.length}）` : '' }}
         </button>
         <button class="btn primary" :disabled="!pending || stale" :title="stale ? '服务端连不上，先恢复连接' : ''"
                 @click="approveAll">全部批准</button>
@@ -209,7 +249,7 @@ function approveAll() {
         <thead>
           <tr>
             <th style="width:34px"><button type="button" class="pick-box" :class="{ on: allPicked }"
-                  :disabled="!pendingRows.length" :title="allPicked ? '取消全选' : '选中全部待批准'"
+                  :disabled="!rows.length" :title="allPicked ? '取消全选' : '选中当前列表'"
                   @click="togglePickAll">
               <svg v-if="allPicked" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="1.8"
                    stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.3 4.9 8.8 9.6 3.4"/></svg>
@@ -224,7 +264,7 @@ function approveAll() {
         <tbody>
           <tr v-for="r in rows" :key="r.key" :class="{ 'picked-row': picked.has(r.key) }">
             <td>
-              <button v-if="!r.approved" type="button" class="pick-box" :class="{ on: picked.has(r.key) }"
+              <button type="button" class="pick-box" :class="{ on: picked.has(r.key) }"
                       :title="picked.has(r.key) ? '取消选中' : '选中'" @click="togglePick(r.key)">
                 <svg v-if="picked.has(r.key)" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="1.8"
                      stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.3 4.9 8.8 9.6 3.4"/></svg>

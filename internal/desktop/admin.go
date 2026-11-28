@@ -55,6 +55,33 @@ func (s *WeftService) DeleteUser(ctx context.Context, id string) error {
 	return nil
 }
 
+// DeleteUsers 批量删除成员。headscale 没有批量接口，逐个删；
+// 某个删不动（名下还有设备）就记下来继续，最后一起说。
+func (s *WeftService) DeleteUsers(ctx context.Context, ids []string) (string, error) {
+	if !s.callerAllowed(ctx) {
+		return "", errNotMainWindow
+	}
+	res := BatchResult{Failed: []BatchFail{}}
+	names := map[string]string{}
+	if list, err := s.cp.Users(); err == nil {
+		for _, u := range list {
+			names[u.ID] = u.RawName
+			if names[u.ID] == "" {
+				names[u.ID] = u.Name
+			}
+		}
+	}
+	for _, id := range ids {
+		if err := s.cp.DeleteUser(id); err != nil {
+			res.Failed = append(res.Failed, BatchFail{ID: id, Name: names[id], Error: err.Error()})
+			continue
+		}
+		res.Done++
+	}
+	s.audit("批量删除成员", res.summary("处理", "个"), res.asError("个"))
+	return wrapOne(res)
+}
+
 // ---------- 授权 Key ----------
 
 func (s *WeftService) ListAuthKeys() (string, error) {
@@ -98,6 +125,43 @@ func (s *WeftService) DeleteAuthKey(ctx context.Context, id string) error {
 	return nil
 }
 
+// BatchAuthKeys 批量吊销 / 删除授权 Key。op 取 expire 或 delete，
+// 界面按下的按钮不一样，做的事就是单台那两个接口，逐个来。
+func (s *WeftService) BatchAuthKeys(ctx context.Context, ids []string, op string) (string, error) {
+	if !s.callerAllowed(ctx) {
+		return "", errNotMainWindow
+	}
+	if op != "expire" && op != "delete" {
+		return "", fmt.Errorf("不认识的操作：%s", op)
+	}
+	action := "批量吊销授权 Key"
+	if op == "delete" {
+		action = "批量删除授权 Key"
+	}
+	res := BatchResult{Failed: []BatchFail{}}
+	keys := map[string]string{}
+	if list, err := s.cp.AuthKeys(); err == nil {
+		for _, k := range list {
+			keys[k.ID] = k.Key
+		}
+	}
+	for _, id := range ids {
+		var err error
+		if op == "expire" {
+			err = s.cp.ExpireAuthKey(id)
+		} else {
+			err = s.cp.DeleteAuthKey(id)
+		}
+		if err != nil {
+			res.Failed = append(res.Failed, BatchFail{ID: id, Name: keys[id], Error: err.Error()})
+			continue
+		}
+		res.Done++
+	}
+	s.audit(action, res.summary("处理", "个"), res.asError("个"))
+	return wrapOne(res)
+}
+
 // ---------- API Key ----------
 
 func (s *WeftService) ListAPIKeys() (string, error) {
@@ -139,6 +203,44 @@ func (s *WeftService) DeleteAPIKey(ctx context.Context, prefix, id string) error
 	}
 	s.audit("删除 API Key", prefix, nil)
 	return nil
+}
+
+// KeyRef 是批量操作要用的最小信息：吊销认 id，删除认前缀，名字只为报错好认。
+type KeyRef struct {
+	Prefix string `json:"prefix"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+}
+
+// BatchAPIKeys 批量吊销 / 删除 API Key。吊销优先用 id，删除只能用前缀，
+// 所以界面把两个都传上来，别在这里再猜一次。
+func (s *WeftService) BatchAPIKeys(ctx context.Context, keys []KeyRef, op string) (string, error) {
+	if !s.callerAllowed(ctx) {
+		return "", errNotMainWindow
+	}
+	if op != "expire" && op != "delete" {
+		return "", fmt.Errorf("不认识的操作：%s", op)
+	}
+	action := "批量吊销 API Key"
+	if op == "delete" {
+		action = "批量删除 API Key"
+	}
+	res := BatchResult{Failed: []BatchFail{}}
+	for _, k := range keys {
+		var err error
+		if op == "expire" {
+			err = s.cp.ExpireAPIKey(k.Prefix, k.ID)
+		} else {
+			err = s.cp.DeleteAPIKey(k.Prefix, k.ID)
+		}
+		if err != nil {
+			res.Failed = append(res.Failed, BatchFail{ID: k.ID, Name: k.Name, Error: err.Error()})
+			continue
+		}
+		res.Done++
+	}
+	s.audit(action, res.summary("处理", "个"), res.asError("个"))
+	return wrapOne(res)
 }
 
 // ---------- 策略 ----------

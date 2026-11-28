@@ -5,3 +5,7 @@ import * as WeftService from "./weftservice.js";
 export {
     WeftService
 };
+
+export type {
+    KeyRef
+} from "./models.js";

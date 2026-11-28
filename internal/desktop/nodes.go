@@ -169,19 +169,20 @@ type BatchResult struct {
 	Failed []BatchFail `json:"failed"`
 }
 
-func (r BatchResult) summary(what string) string {
+// unit 是量词：设备论台，成员和 Key 论个。
+func (r BatchResult) summary(what, unit string) string {
 	if len(r.Failed) == 0 {
-		return fmt.Sprintf("%s %d 台", what, r.Done)
+		return fmt.Sprintf("%s %d %s", what, r.Done, unit)
 	}
-	return fmt.Sprintf("%s %d 台，%d 台失败", what, r.Done, len(r.Failed))
+	return fmt.Sprintf("%s %d %s，%d %s失败", what, r.Done, unit, len(r.Failed), unit)
 }
 
-func (r BatchResult) asError() error {
+func (r BatchResult) asError(unit string) error {
 	if len(r.Failed) == 0 {
 		return nil
 	}
 	first := r.Failed[0]
-	return fmt.Errorf("%d 台失败，第一台「%s」：%s", len(r.Failed), first.Name, first.Error)
+	return fmt.Errorf("%d %s失败，第一项「%s」：%s", len(r.Failed), unit, first.Name, first.Error)
 }
 
 // 设备列表只取一次：批量打标签要先读原有标签再合并，
@@ -222,7 +223,7 @@ func (s *WeftService) TagDevices(ctx context.Context, ids []string, tags string,
 		}
 		res.Done++
 	}
-	s.audit("批量打标签", res.summary("处理"), res.asError())
+	s.audit("批量打标签", res.summary("处理", "台"), res.asError("台"))
 	return wrapOne(res)
 }
 
@@ -258,6 +259,6 @@ func (s *WeftService) BatchExpiry(ctx context.Context, ids []string, expire bool
 		}
 		res.Done++
 	}
-	s.audit(action, res.summary("处理"), res.asError())
+	s.audit(action, res.summary("处理", "台"), res.asError("台"))
 	return wrapOne(res)
 }

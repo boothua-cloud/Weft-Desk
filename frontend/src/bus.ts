@@ -7,3 +7,7 @@ export const reloadTick = ref(0)
 export function requestReload() {
   reloadTick.value++
 }
+
+// 命令面板搜到设备后，把名字交给设备页填进搜索框。
+// 页签切换和搜索框都在 Manage 里，命令面板够不着，只能走这里。
+export const pendingDeviceQuery = ref('')

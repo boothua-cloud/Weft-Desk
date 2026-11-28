@@ -242,6 +242,8 @@ export interface AuditEvent {
 }
 export interface BatchFail { id: string; name: string; error: string }
 export interface BatchResult { done: number; failed: BatchFail[] }
+// 批量处理 Key：吊销认 id，删除认前缀，两个都带上省得后端猜
+export interface KeyRef { prefix: string; id: string; name: string }
 export interface PolicyTemplate { id: number; name: string; content: string; source: string; at: string }
 export interface Cached<T> { items: T[]; source: string; updatedAt: string; error?: string }
 export interface HelperStatus {
@@ -319,6 +321,7 @@ export const api = {
     parse<User>(WeftService.CreateUser(name, displayName, email, pictureUrl)),
   renameUser: (id: string, name: string) => WeftService.RenameUser(id, name),
   deleteUser: (id: string) => WeftService.DeleteUser(id),
+  deleteUsers: (ids: string[]) => parse<BatchResult>(WeftService.DeleteUsers(ids)),
 
   // 授权 Key
   authKeys: () => parse<Cached<AuthKey>>(WeftService.ListAuthKeys()),
@@ -326,12 +329,16 @@ export const api = {
     WeftService.CreateAuthKey(user, reusable, ephemeral, days, tags),
   expireAuthKey: (id: string) => WeftService.ExpireAuthKey(id),
   deleteAuthKey: (id: string) => WeftService.DeleteAuthKey(id),
+  batchAuthKeys: (ids: string[], op: 'expire' | 'delete') =>
+    parse<BatchResult>(WeftService.BatchAuthKeys(ids, op)),
 
   // API Key
   apiKeys: () => parse<Cached<APIKey>>(WeftService.ListAPIKeys()),
   createAPIKey: (days: number) => WeftService.CreateAPIKey(days),
   expireAPIKey: (prefix: string, id: string) => WeftService.ExpireAPIKey(prefix, id),
   deleteAPIKey: (prefix: string, id: string) => WeftService.DeleteAPIKey(prefix, id),
+  batchAPIKeys: (keys: KeyRef[], op: 'expire' | 'delete') =>
+    parse<BatchResult>(WeftService.BatchAPIKeys(keys, op)),
 
   policyHistory: () => parse<PolicyVersion[]>(WeftService.ListPolicyHistory()),
   policyVersion: (id: number) =>

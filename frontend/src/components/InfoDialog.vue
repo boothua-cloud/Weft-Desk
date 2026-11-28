@@ -179,7 +179,9 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
               </p>
               <p style="margin-top:8px">
                 路由不用逐台点进去：左侧「子网路由」把所有设备通告的网段列在一张表里，待批准的排前面，出口节点（<span class="mono">0.0.0.0/0</span>）单独标出来，
-                行上直接批准或撤销，也能一次全部批准，或者勾几条点「批准选中」。批量删除没有，一次误选十几台的代价太大。
+                行上直接批准或撤销，也能一次全部批准，或者勾几条点「批准选中」。已批准的行同样能勾，
+                勾完点「撤销选中」；提交按设备分组整份替换，逐条发会把同一台设备上没勾的一起撤掉。
+                设备没有批量删除，一次误选十几台的代价太大。
               </p>
               <figure class="shot">
                 <img src="/help/routes.png" alt="子网路由" />
@@ -201,6 +203,10 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
                 「+ 新建成员」填名称（必填）、显示名称、邮箱、头像地址，后三项可空。行内「编辑」可改名，
                 改名会同步到 headscale，设备归属和 ACL 引用跟着走；「删除」要求先把该成员名下的设备清空。
                 服务端不支持创建用户的版本，这两个按钮是灰的。
+              </p>
+              <p style="margin-top:8px">
+                要一次删几个成员就在第一列勾上，底部浮出「删除成员」，点下去先列出这些名字再确认。
+                名下还有设备的成员删不掉，会出现在失败汇总里，得先去设备页处理。
               </p>
             </section>
 
@@ -224,6 +230,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
               </ul>
               <p style="margin-top:8px">
                 生成后明文只显示一次，关掉就查不到了，点「复制」先存好。列表里「吊销」让 Key 立即作废（用过它的设备不受影响），「删除」抹掉记录。
+                攒了一堆过期的可以勾上批量「吊销」或「删除」，中途有一把失败不影响其余，最后汇总数量。
               </p>
             </section>
 
@@ -240,6 +247,7 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
               <p style="margin-top:10px">
                 新建只要选有效期（1 到 365 天）。「吊销」立即作废，正在用它的客户端当场失去管理权限；
                 「删除」只是清掉这条记录，想留痕就用吊销。当前这把被吊销后，去连接设置换成新的才能继续管理。
+                批量时当前正在用的那把勾选框是灰的：一次误选就再也管不了服务端，所以干脆不让勾。
               </p>
             </section>
 
@@ -324,6 +332,10 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
                 表单里打开「用系统浏览器打开」后，卡片主按钮会变成「浏览器打开」。
                 应用是自签 HTTPS 时应用内窗口会白屏，在服务端编辑弹窗里打开「信任内网应用的自签证书」。
                 反代只在云栈运行期间有效，关掉应用链接就断了。
+              </p>
+              <p style="margin-top:8px">
+                应用窗口右上角那三个点是页面菜单：刷新、后退、复制地址、<span class="hl">钉在最前</span>、关闭窗口。
+                钉住后窗口浮在别的应用上面，一边看日志一边点东西不会再找不到；钉住的状态跟这个窗口走，翻页也不会掉。
               </p>
               <p style="margin-top:10px">
                 换设备不用重加。一台点<span class="hl">同步到其他设备</span>，打开「让其他设备同步本机」，
@@ -435,15 +447,20 @@ const quitHint = computed(() => (isMac.value ? '⌘Q' : '托盘菜单「退出�
               <p>
                 侧栏最下面是当前<span class="hl">服务端</span>：名字、绿点（连接状态），点开可以切换服务端，
                 菜单底部是「管理服务端…」。它下面一排三枚按钮——主题、刷新、<span class="hl">更多</span>
-                （刷新数据、切换主题、帮助手册、检查更新、关于云栈）。
+                （命令面板、刷新数据、切换主题、生成诊断包、帮助手册、检查更新、关于云栈）。
               </p>
               <p style="margin-top:8px">
                 侧栏收起时只剩状态点和「更多」，刷新和主题都在那个菜单里。
               </p>
               <p style="margin-top:8px">
+                <span class="mono">{{ isMac ? '⌘K' : 'Ctrl+K' }}</span> 打开<span class="hl">命令面板</span>：
+                一个框里搜页面、设备名、应用书签名，也能直接打「刷新」「连接」「诊断包」「切换主题」。
+                ↑↓ 选，回车执行，esc 关掉。搜到设备会跳到设备页并把名字填进搜索框，省得再打一遍。
+              </p>
+              <p style="margin-top:8px">
                 窗口内 <span class="mono">F12</span> / <span class="mono">⌘⌥I</span> 打开 WebView 调试器。
-                <template v-if="isMac">快捷键：<span class="mono">⌘R</span> 刷新数据，<span class="mono">⌘W</span> 收起窗口，<span class="mono">⌘Q</span> 退出。</template>
-                <template v-else>刷新、主题、退出都在「更多」菜单和托盘菜单里。</template>
+                <template v-if="isMac">快捷键：<span class="mono">⌘K</span> 命令面板，<span class="mono">⌘R</span> 刷新数据，<span class="mono">⌘W</span> 收起窗口，<span class="mono">⌘Q</span> 退出。</template>
+                <template v-else>刷新、主题、退出都在「更多」菜单和托盘菜单里，命令面板是 Ctrl+K。</template>
               </p>
             </section>
 

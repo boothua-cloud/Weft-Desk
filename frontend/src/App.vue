@@ -14,6 +14,7 @@ import Diagnose from './views/Diagnose.vue'
 import Audit from './views/Audit.vue'
 import Settings from './views/Settings.vue'
 import InfoDialog from './components/InfoDialog.vue'
+import CommandPalette from './components/CommandPalette.vue'
 import UpdateDialog from './components/UpdateDialog.vue'
 
 const page = ref('overview')
@@ -77,6 +78,36 @@ async function exportBundle() {
     notify('生成诊断包失败：' + (err?.message ?? err))
   }
 }
+// ⌘K 面板：页面、动作、设备、应用都在里面找。面板自己渲染，
+// 但动作真正执行的地方在 App，状态和页面切换都在这里
+const paletteOpen = ref(false)
+async function paletteCommand(name: string) {
+  paletteOpen.value = false
+  if (name === 'refresh') { refreshAll(); return }
+  if (name === 'theme') { toggleTheme(); return }
+  if (name === 'help') { info.value = 'help'; return }
+  if (name === 'update') { openUpdate(); return }
+  if (name === 'bundle') { exportBundle(); return }
+  if (name === 'connect' || name === 'disconnect') {
+    try {
+      state.value = name === 'connect' ? await api.connect() : await api.disconnect()
+      notify(name === 'connect' ? '正在建立连接…' : '已断开')
+    } catch (err: any) {
+      notify('操作失败：' + (err?.message ?? err))
+    }
+  }
+}
+function onGlobalKey(e: KeyboardEvent) {
+  if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'k') return
+  e.preventDefault()
+  info.value = ''
+  paletteOpen.value = !paletteOpen.value
+}
+function openPalette(key: string) {
+  paletteOpen.value = false
+  page.value = key
+}
+
 const state = ref<State | null>(null)
 const toast = ref('')
 let toastTimer: number | undefined
@@ -242,6 +273,7 @@ function dismissBoot() {
   window.setTimeout(() => el.remove(), 340)
 }
 onMounted(async () => {
+  window.addEventListener('keydown', onGlobalKey)
   // 托盘菜单「设置…」直接跳到连接设置页。没有事件通道也不能挡住启动流程。
   try {
     offNavigate = Events.On('weft:navigate', (ev) => {
@@ -311,6 +343,7 @@ onMounted(async () => {
   window.setTimeout(fallback, 160)
 })
 onUnmounted(() => {
+  window.removeEventListener('keydown', onGlobalKey)
   try { offUpdate?.() } catch { /* 忽略 */ }
   try { offRefresh?.() } catch { /* 忽略 */ }
   window.clearInterval(pollTimer)
@@ -399,6 +432,9 @@ onUnmounted(() => {
           </button>
           <template v-if="menuOpen">
             <div class="menu-panel">
+              <button class="menu-item" @click="menuOpen = false; paletteOpen = true">
+                <span>命令面板</span><small>⌘K</small>
+              </button>
               <button class="menu-item" @click="refreshFromMenu">
                 <span>刷新数据</span><small>⌘R</small>
               </button>
@@ -460,6 +496,8 @@ onUnmounted(() => {
     <InfoDialog v-if="info" :kind="info" :state="state" @close="info = ''"
                 @check-update="openUpdate" />
     <UpdateDialog v-if="updateOpen" :state="state" @close="updateOpen = false" @notify="notify" />
+    <CommandPalette v-if="paletteOpen" :state="state" @close="paletteOpen = false"
+                    @navigate="openPalette" @command="paletteCommand" @notify="notify" />
     <div v-if="toast" class="toast">{{ toast }}</div>
   </div>
 </template>
